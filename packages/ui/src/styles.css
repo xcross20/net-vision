@@ -1,0 +1,18 @@
+/* Net Vision base styles. Imported by apps/web/app/globals.css. */
+
+:root {
+  --nv-bg: #08110D;
+  --nv-panel: #101B15;
+  --nv-panel-elevated: #14231B;
+  --nv-green: #74F0A7;
+  --nv-green-strong: #35C97B;
+  --nv-text: #EAF5EE;
+  --nv-muted: #9FB6A8;
+  --nv-border: #294335;
+  --nv-danger: #FF6B6B;
+  --nv-warning: #E8C86A;
+
+  --nv-radius-sm: 4px;
+  --nv-radius-md: 6px;
+  --nv-radius-lg: 10px;
+}

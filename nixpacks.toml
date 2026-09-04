@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs-20_x", "npm-10_x"]
+
+[phases.install]
+cmds = ["npm ci --no-audit --no-fund || npm install --no-audit --no-fund"]
+
+[phases.build]
+cmds = ["npm run build --workspaces --if-present"]
+
+[start]
+cmd = "cd apps/web && npm run start"

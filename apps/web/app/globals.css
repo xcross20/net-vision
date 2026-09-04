@@ -1,0 +1,172 @@
+@import "@net-vision/ui/styles.css";
+
+html, body {
+  background-color: var(--nv-bg);
+  color: var(--nv-text);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background-color: var(--nv-green-strong);
+  color: var(--nv-bg);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.nv-panel {
+  background-color: var(--nv-panel);
+  border: 1px solid var(--nv-border);
+  border-radius: var(--nv-radius-md);
+}
+
+.nv-panel-elevated {
+  background-color: var(--nv-panel-elevated);
+  border: 1px solid var(--nv-border);
+  border-radius: var(--nv-radius-md);
+}
+
+.nv-mono {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.nv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--nv-radius-sm);
+  border: 1px solid var(--nv-border);
+  background-color: var(--nv-panel);
+  color: var(--nv-muted);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  white-space: nowrap;
+}
+
+.nv-chip-strong {
+  background-color: var(--nv-panel-elevated);
+  color: var(--nv-text);
+  border-color: var(--nv-green);
+}
+
+.nv-link {
+  color: var(--nv-green);
+}
+.nv-link:hover {
+  color: var(--nv-green-strong);
+}
+
+.nv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+@media (min-width: 768px) {
+  .nv-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+}
+
+.nv-numeral {
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.nv-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--nv-radius-md);
+  border: 1px solid var(--nv-green-strong);
+  background-color: var(--nv-green-strong);
+  color: var(--nv-bg);
+  font-weight: 600;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  transition: filter 120ms ease;
+}
+
+.nv-button:hover {
+  filter: brightness(1.08);
+}
+
+.nv-button-ghost {
+  background-color: transparent;
+  color: var(--nv-text);
+  border-color: var(--nv-border);
+}
+
+.nv-button-ghost:hover {
+  border-color: var(--nv-green);
+  color: var(--nv-green);
+}
+
+.nv-button-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.nv-section-title {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--nv-muted);
+}
+
+.nv-divider {
+  height: 1px;
+  background-color: var(--nv-border);
+  border: 0;
+  margin: 1rem 0;
+}
+
+.nv-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.nv-stat-label {
+  color: var(--nv-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.nv-stat-value {
+  color: var(--nv-text);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.nv-stat-value-strong {
+  color: var(--nv-green);
+}
+
+.nv-danger-banner {
+  border: 1px solid var(--nv-danger);
+  background-color: rgba(255, 107, 107, 0.08);
+  color: var(--nv-text);
+  border-radius: var(--nv-radius-md);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+}
