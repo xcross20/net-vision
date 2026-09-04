@@ -57,3 +57,7 @@ Trading remains feature-flagged off.
 ## Deployment
 
 This repo is configured for Railway. See `railway.toml`. The web app boots without secrets for the read-only slice; production deployment must supply `OPENSEA_API_KEY`, `ROBINHOOD_RPC_PRIMARY`, and `SESSION_SECRET`.
+
+Current deployment: https://web-production-38d29.up.railway.app
+
+Project: https://railway.com/project/df70d7dc-8293-4b29-979f-a89591fd9df3
