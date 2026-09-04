@@ -7,14 +7,3 @@ healthcheckPath = "/api/health"
 healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
-
-[[services]]
-name = "web"
-root = "apps/web"
-
-[variables]
-NEXT_PUBLIC_TRADING_ENABLED = "false"
-NEXT_PUBLIC_APP_URL = "https://net-vision.up.railway.app"
-NEXT_PUBLIC_CHAIN_ID = "1311"
-NEXT_PUBLIC_COLLECTION_CONTRACT = "0xE5143de9D3CcBc31Ffb4e7Fc66d8320e0E2693D2"
-NEXT_PUBLIC_OPENSEA_COLLECTION_SLUG = "button-presser"
