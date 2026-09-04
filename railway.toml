@@ -7,3 +7,7 @@ healthcheckPath = "/api/health"
 healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
+
+# Railway sets $PORT to 8080 by default; Next.js must bind to it.
+[env]
+PORT = "8080"
