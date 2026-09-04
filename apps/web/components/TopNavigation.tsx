@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { ConnectButton } from '@/components/ConnectButton';
 
 export function TopNavigation(props: {
   chainName: string;
@@ -31,14 +34,7 @@ export function TopNavigation(props: {
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--nv-green)]" />
             {props.chainShortName}
           </span>
-          <button
-            type="button"
-            className="nv-button nv-button-ghost text-xs px-3 py-1.5"
-            disabled
-            aria-disabled="true"
-          >
-            Connect
-          </button>
+          <ConnectButton />
         </div>
       </div>
     </header>

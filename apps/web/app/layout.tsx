@@ -3,6 +3,7 @@ import './globals.css';
 import { TopNavigation } from '@/components/TopNavigation';
 import { Footer } from '@/components/Footer';
 import { CHAIN_DISPLAY } from '@net-vision/chain-config';
+import { WalletProvider } from '@/lib/wallet/WalletProvider';
 
 export const metadata: Metadata = {
   title: 'Net Vision — Button Presser Market Terminal',
@@ -15,17 +16,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <div className="min-h-screen flex flex-col">
-          <TopNavigation
-            chainName={CHAIN_DISPLAY.name}
-            chainShortName={CHAIN_DISPLAY.shortName}
-            chainId={CHAIN_DISPLAY.id}
-          />
-          <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6">
-            {children}
-          </main>
-          <Footer />
-        </div>
+        <WalletProvider>
+          <div className="min-h-screen flex flex-col">
+            <TopNavigation
+              chainName={CHAIN_DISPLAY.name}
+              chainShortName={CHAIN_DISPLAY.shortName}
+              chainId={CHAIN_DISPLAY.id}
+            />
+            <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6">{children}</main>
+            <Footer />
+          </div>
+        </WalletProvider>
       </body>
     </html>
   );

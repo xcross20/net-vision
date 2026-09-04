@@ -16,9 +16,12 @@
     "@net-vision/taxonomy": "*",
     "@net-vision/transaction-policy": "*",
     "@net-vision/ui": "*",
+    "@tanstack/react-query": "^5.102.8",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "viem": "^2.56.3",
+    "wagmi": "^2.19.5",
     "zod": "^3.23.0"
   },
   "devDependencies": {

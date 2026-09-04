@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getToken } from '@/lib/data/tokens';
 import { getMarketSource } from '@/lib/market';
-import { formatPrice } from '@net-vision/ui';
 import { DataFreshnessBadge } from '@/components/DataFreshnessBadge';
+import { TokenCommercePanel } from '@/components/TokenCommercePanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,66 +71,22 @@ export default async function TokenDetailPage({
             <h1 className="text-4xl md:text-5xl font-semibold tracking-tight nv-numeral">
               #{token.tokenId}
             </h1>
+            <span className="text-xs nv-mono text-[var(--nv-muted)]">
+              Owner {token.ownerAddress ? shortenAddress(token.ownerAddress) : '—'}
+            </span>
+            <span className="text-xs nv-mono text-[var(--nv-muted)]">
+              Rarity{' '}
+              {token.rarityRank !== null ? `#${token.rarityRank.toLocaleString()}` : '—'}
+            </span>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-b border-[var(--nv-border)] py-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[var(--nv-muted)]">Best ask</span>
-              <span className="text-2xl font-semibold nv-mono">{formatPrice(ask)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[var(--nv-muted)]">Last sale</span>
-              <span className="text-sm nv-mono">{formatPrice(lastSale)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[var(--nv-muted)]">Owner</span>
-              <span className="text-xs nv-mono">
-                {token.ownerAddress ? shortenAddress(token.ownerAddress) : '—'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-[var(--nv-muted)]">Rarity</span>
-              <span className="text-xs nv-mono">
-                {token.rarityRank !== null ? `#${token.rarityRank.toLocaleString()}` : '—'}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <button
-              type="button"
-              className="nv-button nv-button-disabled"
-              disabled
-              aria-disabled="true"
-            >
-              Buy now
-            </button>
-            <button
-              type="button"
-              className="nv-button nv-button-ghost nv-button-disabled"
-              disabled
-              aria-disabled="true"
-            >
-              Make offer
-            </button>
-            <button
-              type="button"
-              className="nv-button nv-button-ghost nv-button-disabled"
-              disabled
-              aria-disabled="true"
-            >
-              Add to cart
-            </button>
-          </div>
-
-          <a
-            href={`https://opensea.io/assets/robinhood/${token.contractAddress}/${token.tokenId}`}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-[var(--nv-muted)] hover:text-[var(--nv-text)]"
-          >
-            View on OpenSea ↗
-          </a>
+          <TokenCommercePanel
+            tokenId={token.tokenId}
+            imageUrl={token.imageUrl}
+            ask={ask}
+            lastSale={lastSale}
+            openseaUrl={`https://opensea.io/assets/robinhood/${token.contractAddress}/${token.tokenId}`}
+          />
         </div>
       </section>
 
