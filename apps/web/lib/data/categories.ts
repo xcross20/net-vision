@@ -1,66 +1,47 @@
 /**
- * Virtual collection analytics derived from the seeded tokens.
+ * Production category reads.
  *
- * In production these numbers come from floor_snapshots, market_orders,
- * and virtual_collection_memberships tables. For the read-only slice
- * they are computed on the fly from the deterministic seed.
+ * Every metric is derived from the live MarketSource (OpenSea-backed).
+ * Seed data is no longer used in production code paths. The fixtures
+ * remain in `apps/web/lib/data/__fixtures__` for local UI iteration and
+ * adversarial test fixtures.
  */
+
+import { getMarketSource } from '@/lib/market';
 import { VIRTUAL_COLLECTION_CATALOG, type VirtualCollectionSlug } from '@net-vision/taxonomy';
-import { getSeededTokens, getSeededTotalSupply, type SeededToken } from './seed';
+import type { CategoryMetrics, Token } from '@/lib/market';
 
-export type CategoryMetrics = {
-  slug: string;
-  name: string;
-  family: string;
-  description: string;
-  memberSupply: number;
-  totalSupply: number;
-  listedCount: number;
-  floorPriceEth: number | null;
-  lastSalePriceEth: number | null;
-  volume24hEth: number;
-};
+export type { CategoryMetrics } from '@/lib/market';
 
-function isMember(token: SeededToken, slug: VirtualCollectionSlug | string): boolean {
-  return token.traits.some((t) => t.slug === slug);
-}
-
-export function getCategoryMetrics(slug: string): CategoryMetrics | null {
+export async function getCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
   const meta = VIRTUAL_COLLECTION_CATALOG.find((c) => c.slug === slug);
   if (!meta) return null;
-  const tokens = getSeededTokens();
-  const members = tokens.filter((t) => isMember(t, slug));
-  const listed = members.filter((t) => t.listingPriceEth !== null);
-  const floors = listed
-    .map((t) => (t.listingPriceEth ? Number.parseFloat(t.listingPriceEth) : null))
-    .filter((n): n is number => n !== null);
-  const floor = floors.length > 0 ? Math.min(...floors) : null;
-  const lastSales = members
-    .map((t) => (t.lastSalePriceEth ? Number.parseFloat(t.lastSalePriceEth) : null))
-    .filter((n): n is number => n !== null);
-  const lastSale = lastSales.length > 0 ? lastSales[lastSales.length - 1] ?? null : null;
-  const volume = lastSales.reduce((a, b) => a + b, 0);
-
+  const live = await getMarketSource().getCategoryMetrics(slug);
+  if (!live) return null;
   return {
-    slug: meta.slug,
+    ...live,
     name: meta.name,
     family: meta.family,
     description: meta.description,
-    memberSupply: members.length,
-    totalSupply: getSeededTotalSupply(),
-    listedCount: listed.length,
-    floorPriceEth: floor,
-    lastSalePriceEth: lastSale,
-    volume24hEth: volume,
   };
 }
 
-export function listCategories(): CategoryMetrics[] {
-  return VIRTUAL_COLLECTION_CATALOG.map((c) => getCategoryMetrics(c.slug)).filter(
-    (m): m is CategoryMetrics => m !== null,
-  );
+export async function listCategories(): Promise<CategoryMetrics[]> {
+  const live = await getMarketSource().listCategories();
+  return live.map((c) => {
+    const meta = VIRTUAL_COLLECTION_CATALOG.find((m) => m.slug === c.slug);
+    return {
+      ...c,
+      name: meta?.name ?? c.name,
+      family: meta?.family ?? c.family,
+      description: meta?.description ?? c.description,
+    };
+  });
 }
 
-export function listCategoryTokens(slug: string): SeededToken[] {
-  return getSeededTokens().filter((t) => isMember(t, slug));
+export async function listCategoryTokens(slug: string): Promise<Token[]> {
+  const page = await getMarketSource().listTokens({ category: slug, limit: 60 });
+  return page.tokens;
 }
+
+export type CategorySlug = VirtualCollectionSlug;

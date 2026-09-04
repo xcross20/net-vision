@@ -291,15 +291,188 @@ export class OpenSeaClient {
       { retry: false },
     );
   }
+
+  /**
+   * Discover the canonical OpenSea chain identifier for Robinhood Chain.
+   *
+   * OpenSea exposes `/api/v2/chains`. The exact slug for Robinhood Chain
+   * must be verified at deploy time rather than hard-coded. The response
+   * is matched by numeric chain id against `ROBINHOOD_CHAIN.id`.
+   */
+  async getChains(): Promise<ChainInfo[]> {
+    return this.request('GET', '/api/v2/chains', z.array(ChainInfoSchema));
+  }
+
+  /**
+   * Find the OpenSea chain slug for the configured Robinhood Chain.
+   * Falls back to the constructor default if the discovery call fails.
+   */
+  async resolveChainSlug(): Promise<ChainInfo> {
+    const chains = await this.getChains();
+    const match = chains.find((c) => c.chain_id === ROBINHOOD_CHAIN_ID);
+    if (!match) {
+      throw new OpenSeaResponseError(
+        `Robinhood Chain (chain id ${ROBINHOOD_CHAIN_ID}) not present in /api/v2/chains response`,
+        404,
+      );
+    }
+    return match;
+  }
+
+  /**
+   * Get NFT metadata, traits, ownership, and rarity for a single token.
+   * Path: `GET /api/v2/chain/{chain}/contract/{contract}/nfts/{tokenId}`.
+   */
+  async getNFT(input: {
+    chain: string;
+    contractAddress: string;
+    tokenId: string;
+  }): Promise<NftInfo> {
+    const path = `/api/v2/chain/${encodeURIComponent(input.chain)}/contract/${encodeURIComponent(input.contractAddress)}/nfts/${encodeURIComponent(input.tokenId)}`;
+    return this.request('GET', path, NftInfoSchema);
+  }
+
+  /**
+   * Get active listings for a wallet address.
+   * Path: `GET /api/v2/account/{address}/listings`.
+   */
+  async getProfileListings(input: {
+    address: string;
+    chain?: string;
+  }): Promise<Order[]> {
+    const path = `/api/v2/account/${encodeURIComponent(input.address)}/listings`;
+    const data = await this.request<unknown>(
+      'GET',
+      path,
+      z.unknown(),
+      { query: { chain: input.chain } },
+    );
+    return ProfileListingsResponseSchema.parse(data).listings;
+  }
+
+  /**
+   * Get active offers received or made by a wallet address.
+   * Path: `GET /api/v2/account/{address}/offers`.
+   */
+  async getAccountOffers(input: {
+    address: string;
+    chain?: string;
+  }): Promise<Order[]> {
+    const path = `/api/v2/account/${encodeURIComponent(input.address)}/offers`;
+    const data = await this.request<unknown>(
+      'GET',
+      path,
+      z.unknown(),
+      { query: { chain: input.chain } },
+    );
+    return ProfileListingsResponseSchema.parse(data).offers ?? [];
+  }
+
+  /**
+   * Get the best item offer for a collection.
+   * Path: `GET /api/v2/offers/collection/{slug}/best`.
+   */
+  async getBestOffer(input: { slug: string }): Promise<Order | null> {
+    const path = `/api/v2/offers/collection/${encodeURIComponent(input.slug)}/best`;
+    return this.request('GET', path, BestListingSchema);
+  }
+
+  /**
+   * Offer fulfillment data is what the user's wallet signs to accept an
+   * offer. Same shape as listing fulfillment_data; the transaction
+   * policy engine validates it before the wallet sees it.
+   */
+  async getOfferFulfillmentData(input: FulfillmentRequest): Promise<FulfillmentResponse> {
+    const raw = await this.request<unknown>(
+      'POST',
+      '/api/v2/offers/fulfillment_data',
+      z.unknown(),
+      { body: input },
+      { retry: false },
+    );
+    return { raw };
+  }
 }
+
+/* -------------------------------------------------------------------------- */
+/*  New schemas: chains, nft, profile listings/offers                         */
+/* -------------------------------------------------------------------------- */
+
+const ROBINHOOD_CHAIN_ID = 1311;
+
+export const ChainInfoSchema = z
+  .object({
+    chain: z.string().min(1),
+    chain_id: z.number().int(),
+    name: z.string().min(1),
+    native_currency: z.string().optional(),
+    erc20_tokens: z.array(z.string()).optional(),
+    opensea_verified_at: z.union([z.string(), z.number()]).optional(),
+  })
+  .passthrough();
+
+export type ChainInfo = z.infer<typeof ChainInfoSchema>;
+
+export const NftInfoSchema = z
+  .object({
+    identifier: z.union([z.string(), z.number()]),
+    collection: z.string().optional(),
+    contract: z.string().regex(HEX_ADDRESS).optional(),
+    token_standard: z.string().optional(),
+    name: z.string().optional(),
+    image_url: z.string().url().optional(),
+    image_preview_url: z.string().url().optional(),
+    image_original_url: z.string().url().optional(),
+    animation_url: z.string().url().optional().nullable(),
+    owner: z.string().regex(HEX_ADDRESS).optional().nullable(),
+    traits: z
+      .array(
+        z
+          .object({
+            trait_type: z.string().optional(),
+            value: z.union([z.string(), z.number()]).optional(),
+            display_type: z.string().optional(),
+            rarity: z.number().optional(),
+            frequency: z.number().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    rarity: z
+      .object({
+        rank: z.number().optional(),
+        score: z.number().optional(),
+        total_supply: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+    owners: z.number().optional(),
+    total_supply: z.number().optional(),
+  })
+  .passthrough();
+
+export type NftInfo = z.infer<typeof NftInfoSchema>;
+
+const ProfileListingsResponseSchema = z
+  .object({
+    listings: z.array(OrderSchema),
+    offers: z.array(OrderSchema).optional(),
+    next: z.string().nullish(),
+  })
+  .passthrough();
 
 /**
  * Build a client from the server environment. This is the only entry
  * point the web app should use; it fails fast on missing configuration.
+ *
+ * The `OPENSEA_CHAIN` environment variable is treated as a hint only.
+ * The authoritative chain slug is discovered via `/api/v2/chains` at
+ * server boot. See `apps/web/lib/opensea/chain-discovery.ts`.
  */
 export function createOpenSeaClient(env: {
   OPENSEA_API_KEY?: string;
   OPENSEA_BASE_URL?: string;
+  /** Optional hint; the resolved value is logged at boot. */
   OPENSEA_CHAIN?: string;
 }): OpenSeaClient {
   if (!env.OPENSEA_API_KEY) {
@@ -310,6 +483,6 @@ export function createOpenSeaClient(env: {
   return new OpenSeaClient({
     baseUrl: env.OPENSEA_BASE_URL ?? 'https://api.opensea.io',
     apiKey: env.OPENSEA_API_KEY,
-    chain: env.OPENSEA_CHAIN ?? 'Robinhood',
+    chain: env.OPENSEA_CHAIN ?? '',
   });
 }

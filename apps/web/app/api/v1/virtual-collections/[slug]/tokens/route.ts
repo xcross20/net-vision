@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCategoryMetrics, listCategoryTokens } from '@/lib/data/categories';
+import { listCategoryTokens } from '@/lib/data/categories';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,16 +8,12 @@ export async function GET(
   ctx: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await ctx.params;
-  const metrics = getCategoryMetrics(slug);
-  if (!metrics) {
-    return NextResponse.json({ error: 'category not found' }, { status: 404 });
-  }
-  const tokens = listCategoryTokens(slug);
   const url = new URL(request.url);
   const limit = Math.min(parseInt(url.searchParams.get('limit') ?? '50', 10) || 50, 200);
+  const tokens = (await listCategoryTokens(slug)).slice(0, limit);
   return NextResponse.json({
-    category: { slug: metrics.slug, name: metrics.name },
-    tokens: tokens.slice(0, limit).map((t) => ({
+    category: { slug },
+    tokens: tokens.map((t: { tokenId: string; ownerAddress: string | null; imageUrl: string; listingPriceEth: string | null; lastSalePriceEth: string | null; traits: { slug: string }[] }) => ({
       tokenId: t.tokenId,
       ownerAddress: t.ownerAddress,
       imageUrl: t.imageUrl,

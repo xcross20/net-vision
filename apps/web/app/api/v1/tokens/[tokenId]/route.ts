@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSeededToken } from '@/lib/data/seed';
+import { getToken } from '@/lib/data/tokens';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +8,7 @@ export async function GET(
   ctx: { params: Promise<{ tokenId: string }> },
 ) {
   const { tokenId } = await ctx.params;
-  const token = getSeededToken(tokenId);
+  const token = await getToken(tokenId);
   if (!token) {
     return NextResponse.json({ error: 'token not found' }, { status: 404 });
   }
@@ -23,5 +23,8 @@ export async function GET(
       family: t.family,
       label: t.label,
     })),
+    rarityRank: token.rarityRank,
+    contractAddress: token.contractAddress,
+    chainId: token.chainId,
   });
 }

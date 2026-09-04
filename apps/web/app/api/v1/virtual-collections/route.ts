@@ -4,7 +4,7 @@ import { listCategories } from '@/lib/data/categories';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const categories = listCategories();
+  const categories = await listCategories();
   return NextResponse.json({
     categories: categories.map((c) => ({
       slug: c.slug,

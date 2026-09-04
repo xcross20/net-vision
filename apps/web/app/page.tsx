@@ -1,90 +1,133 @@
 import Link from 'next/link';
 import { listCategories } from '@/lib/data/categories';
-import { getCollectionMetadata, getSeededTokens } from '@/lib/data/seed';
-import { CategoryCard } from '@/components/CategoryCard';
+import { getCollectionSnapshot, listTokens } from '@/lib/data/tokens';
+import { getMarketSource } from '@/lib/market';
+import type { CategoryMetrics, Token } from '@/lib/market';
 import { TokenCard } from '@/components/TokenCard';
-import { TradingGateBanner } from '@/components/TradingGateBanner';
+import { DataFreshnessBadge } from '@/components/DataFreshnessBadge';
 import { formatPrice } from '@net-vision/ui';
 
-export default function HomePage() {
-  const collection = getCollectionMetadata();
-  const tokens = getSeededTokens();
-  const listed = tokens.filter((t) => t.listingPriceEth !== null);
-  const floors = listed
-    .map((t) => (t.listingPriceEth ? Number.parseFloat(t.listingPriceEth) : null))
-    .filter((n): n is number => n !== null);
-  const collectionFloor = floors.length > 0 ? Math.min(...floors) : null;
-  const featuredCategories = listCategories()
-    .filter((c) => c.memberSupply > 0)
-    .slice(0, 6);
-  const newest = tokens.slice(-12).reverse();
+export const dynamic = 'force-dynamic';
+
+export default async function HomePage() {
+  const snapshot = await getCollectionSnapshot();
+  const tokens = await listTokens({ listedOnly: true, limit: 24 });
+  const categories = (await listCategories()).filter((c) => c.memberSupply > 0).slice(0, 6);
+  const freshness = await getMarketSource().getFreshness();
 
   return (
-    <div className="flex flex-col gap-8">
-      <section className="nv-panel p-6 md:p-8 flex flex-col gap-4">
-        <div className="flex items-center gap-2">
-          <span className="nv-chip nv-chip-strong">Read-only slice</span>
-          <span className="nv-chip">{collection.name}</span>
+    <div className="flex flex-col gap-10">
+      <section className="flex flex-col gap-6">
+        <div className="flex items-center gap-3">
+          <span className="text-[var(--nv-green)] text-xs uppercase tracking-[0.18em]">
+            {snapshot.name}
+          </span>
+          <DataFreshnessBadge freshness={freshness} />
         </div>
-        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">
-          The market terminal for collectible numbers.
+        <h1 className="text-4xl md:text-6xl font-semibold tracking-tight leading-[1.05]">
+          The market for numbers.
         </h1>
-        <p className="text-[var(--nv-muted)] max-w-2xl">
-          Net Vision transforms one Button Presser collection into many algorithmic virtual
-          markets. Browse by number pattern, compare structural rarity, and explore floors
-          across every category.
-        </p>
         <div className="flex flex-wrap gap-3 pt-2">
-          <Link href="/categories" className="nv-button">Browse categories</Link>
-          <Link href="/tokens" className="nv-button nv-button-ghost">Explore all tokens</Link>
+          <Link href="/market" className="nv-button">
+            Explore market
+          </Link>
+          <Link href="/categories" className="nv-button nv-button-ghost">
+            Categories
+          </Link>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t border-[var(--nv-border)]">
-          <div className="nv-stat">
-            <span className="nv-stat-label">Collection floor</span>
-            <span className="nv-stat-value nv-stat-value-strong nv-mono">
-              {formatPrice(collectionFloor)}
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 pt-8 border-t border-[var(--nv-border)]">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Listed</span>
+            <span className="text-2xl md:text-3xl font-semibold nv-mono">
+              {snapshot.listedCount.toLocaleString()}
             </span>
           </div>
-          <div className="nv-stat">
-            <span className="nv-stat-label">Indexed supply (seed)</span>
-            <span className="nv-stat-value nv-mono">{tokens.length}</span>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Floor</span>
+            <span className="text-2xl md:text-3xl font-semibold nv-mono">
+              {formatPrice(snapshot.floorPriceEth)}
+            </span>
           </div>
-          <div className="nv-stat">
-            <span className="nv-stat-label">Categories</span>
-            <span className="nv-stat-value nv-mono">{featuredCategories.length}+</span>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Volume 24h</span>
+            <span className="text-2xl md:text-3xl font-semibold nv-mono">
+              {formatPrice(snapshot.volume24hEth)}
+            </span>
           </div>
-          <div className="nv-stat">
-            <span className="nv-stat-label">Listed</span>
-            <span className="nv-stat-value nv-mono">{listed.length}</span>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Sales 24h</span>
+            <span className="text-2xl md:text-3xl font-semibold nv-mono">
+              {snapshot.sales24h.toLocaleString()}
+            </span>
           </div>
         </div>
       </section>
 
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Featured categories</h2>
-          <Link href="/categories" className="nv-link text-sm">View all →</Link>
+          <h2 className="text-sm uppercase tracking-[0.18em] text-[var(--nv-muted)]">
+            Trending categories
+          </h2>
+          <Link href="/categories" className="text-sm text-[var(--nv-green)] hover:underline">
+            All categories →
+          </Link>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {featuredCategories.map((c) => (
-            <CategoryCard key={c.slug} metrics={c} />
+        <div className="flex flex-col">
+          {categories.map((c) => (
+            <CategoryRow key={c.slug} metrics={c} />
           ))}
         </div>
       </section>
 
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Newest in seed</h2>
-          <Link href="/tokens" className="nv-link text-sm">View all →</Link>
+          <h2 className="text-sm uppercase tracking-[0.18em] text-[var(--nv-muted)]">
+            Market activity
+          </h2>
+          <Link href="/market" className="text-sm text-[var(--nv-green)] hover:underline">
+            All listings →
+          </Link>
         </div>
-        <div className="nv-grid">
-          {newest.map((t) => (
-            <TokenCard key={t.tokenId} token={t} />
-          ))}
-        </div>
+        {tokens.length === 0 ? (
+          <div className="nv-panel p-6 text-sm text-[var(--nv-muted)]">
+            Live listings are unavailable while the OpenSea indexer warms up.
+          </div>
+        ) : (
+          <div className="nv-grid">
+            {tokens.slice(0, 12).map((t: Token) => (
+              <TokenCard key={t.tokenId} token={t} />
+            ))}
+          </div>
+        )}
       </section>
-
-      <TradingGateBanner context="category" />
     </div>
+  );
+}
+
+function CategoryRow({ metrics }: { metrics: CategoryMetrics }) {
+  return (
+    <Link
+      href={`/categories/${metrics.slug}`}
+      className="grid grid-cols-12 gap-4 items-center py-3 border-b border-[var(--nv-border)] hover:bg-[var(--nv-panel-elevated)] transition-colors"
+    >
+      <div className="col-span-1 text-[var(--nv-muted)] text-sm">★</div>
+      <div className="col-span-5">
+        <div className="font-medium">{metrics.name}</div>
+        <div className="text-xs text-[var(--nv-muted)]">{metrics.description}</div>
+      </div>
+      <div className="col-span-2 text-right">
+        <div className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Floor</div>
+        <div className="text-sm nv-mono">{formatPrice(metrics.floorPriceEth)}</div>
+      </div>
+      <div className="col-span-2 text-right">
+        <div className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Listed</div>
+        <div className="text-sm nv-mono">{metrics.listedCount.toLocaleString()}</div>
+      </div>
+      <div className="col-span-2 text-right">
+        <div className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Owners</div>
+        <div className="text-sm nv-mono">{metrics.owners.toLocaleString()}</div>
+      </div>
+    </Link>
   );
 }

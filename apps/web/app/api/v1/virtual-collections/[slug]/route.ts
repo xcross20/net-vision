@@ -8,7 +8,7 @@ export async function GET(
   ctx: { params: Promise<{ slug: string }> },
 ) {
   const { slug } = await ctx.params;
-  const metrics = getCategoryMetrics(slug);
+  const metrics = await getCategoryMetrics(slug);
   if (!metrics) {
     return NextResponse.json({ error: 'category not found' }, { status: 404 });
   }
