@@ -310,7 +310,7 @@ class OpenSeaMarketSource implements MarketSource {
         }
       },
     );
-    startMarketMaintenance(this.client);
+    startMarketMaintenance(this.client, (tokenId) => this.lookupListingObservation(tokenId));
   }
 
   private hydrateFromIndex(): void {

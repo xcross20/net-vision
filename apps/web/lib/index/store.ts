@@ -59,7 +59,11 @@ export type MetadataRetryItem = {
   enqueuedAt: number;
 };
 
+export type StreamHealth = 'initializing' | 'connected' | 'degraded' | 'disconnected';
+
 export type MaintenanceState = {
+  streamHealth: StreamHealth;
+  streamSubscribed: boolean;
   streamConnected: boolean;
   streamLastEventAt: number | null;
   streamEventsTotal: number;
@@ -135,6 +139,8 @@ function emptySnapshot(): IndexSnapshot {
     },
     metadataRetryQueue: [],
     maintenance: {
+      streamHealth: 'disconnected',
+      streamSubscribed: false,
       streamConnected: false,
       streamLastEventAt: null,
       streamEventsTotal: 0,

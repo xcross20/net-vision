@@ -31,6 +31,7 @@ export async function startOpenSeaStreamIngest(): Promise<boolean> {
       onError: (err: unknown) => {
         console.warn('[stream] transport error', err instanceof Error ? err.message : err);
         patchMaintenance({
+          streamHealth: 'disconnected',
           streamConnected: false,
           lastError: err instanceof Error ? err.message : String(err),
         });
@@ -41,7 +42,11 @@ export async function startOpenSeaStreamIngest(): Promise<boolean> {
       if (!event) return;
       const result = applyMarketEvent(event);
       if (result === 'applied') {
-        patchMaintenance({ streamConnected: true, mode: 'stream+rest' });
+        patchMaintenance({
+          streamHealth: 'connected',
+          streamConnected: true,
+          mode: 'stream+rest',
+        });
         scheduleSaveIndex();
       }
     };
@@ -58,7 +63,12 @@ export async function startOpenSeaStreamIngest(): Promise<boolean> {
     maybeClient.onOrderInvalidate?.(slug, handle);
     maybeClient.onOrderRevalidate?.(slug, handle);
     streamStarted = true;
-    patchMaintenance({ streamConnected: true, mode: 'stream+rest' });
+    patchMaintenance({
+      streamHealth: 'initializing',
+      streamSubscribed: true,
+      streamConnected: false,
+      mode: 'stream+rest',
+    });
     saveIndex();
     console.log('[stream] subscribed to', slug);
     return true;
@@ -68,6 +78,8 @@ export async function startOpenSeaStreamIngest(): Promise<boolean> {
       err instanceof Error ? err.message : err,
     );
     patchMaintenance({
+      streamHealth: 'disconnected',
+      streamSubscribed: false,
       streamConnected: false,
       mode: 'rest',
       lastError: err instanceof Error ? err.message : String(err),

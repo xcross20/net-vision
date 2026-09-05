@@ -15,6 +15,8 @@ import {
   workerCheckpoint,
 } from './store';
 import { eventsInWindow } from './market-event';
+import { deriveStreamHealth } from './stream-health';
+import type { StreamHealth } from './store';
 import { BRASS_EXPECTED, isIndexerRunning, isMetadataBootstrapRunning } from './worker';
 
 export const WORKER_HEARTBEAT_STALE_MS = 60_000;
@@ -76,6 +78,7 @@ export type IndexerHealthReport = {
   tokensMissing: number;
   maintenance: {
     mode: 'stream+rest' | 'rest';
+    streamHealth: StreamHealth;
     streamConnected: boolean;
     streamLastEventAt: number | null;
     streamEventsTotal: number;
@@ -121,6 +124,14 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
   const listingRunning = embedded ? isIndexerRunning() : workerOnline;
   const metadataRunning = embedded ? isMetadataBootstrapRunning() : workerOnline;
   const maint = maintenanceState();
+  const restEventsLast15m = eventsInWindow(maint.eventTimestamps, now);
+  const streamHealth = deriveStreamHealth({
+    subscribed: maint.streamSubscribed,
+    lastEventAt: maint.streamLastEventAt,
+    lastError: maint.lastError,
+    restEventsLast15m,
+    now,
+  });
 
   return {
     workerOnline,
@@ -174,13 +185,14 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
     tokensMissing: countMissingTokens(),
     maintenance: {
       mode: maint.mode,
-      streamConnected: maint.streamConnected,
+      streamHealth,
+      streamConnected: streamHealth === 'connected',
       streamLastEventAt: maint.streamLastEventAt,
       streamEventsTotal: maint.streamEventsTotal,
       restLastEventAt: maint.restLastEventAt,
       restEventsTotal: maint.restEventsTotal,
       restLastPollAt: maint.restLastPollAt,
-      eventsLast15m: eventsInWindow(maint.eventTimestamps, now),
+      eventsLast15m: restEventsLast15m,
       lastError: maint.lastError,
     },
   };
