@@ -5,7 +5,7 @@
 import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import { applyMarketEvent } from './apply-event';
 import { streamMessageToMarketEvent } from './market-event';
-import { patchMaintenance, saveIndex } from './store';
+import { patchMaintenance, saveIndex, scheduleSaveIndex } from './store';
 
 let streamStarted = false;
 
@@ -42,7 +42,7 @@ export async function startOpenSeaStreamIngest(): Promise<boolean> {
       const result = applyMarketEvent(event);
       if (result === 'applied') {
         patchMaintenance({ streamConnected: true, mode: 'stream+rest' });
-        saveIndex();
+        scheduleSaveIndex();
       }
     };
 

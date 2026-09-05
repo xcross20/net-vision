@@ -229,6 +229,20 @@ export function loadIndex(): IndexSnapshot {
   }
 }
 
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Coalesce hot-path Stream writes so 200 events/min do not stampede Postgres. */
+export function scheduleSaveIndex(delayMs = 2_000): void {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    saveIndex();
+  }, delayMs);
+  if (typeof saveTimer === 'object' && saveTimer && 'unref' in saveTimer) {
+    saveTimer.unref();
+  }
+}
+
 export function saveIndex(): void {
   if (!memory) return;
   // Bump revision *before* scheduling the async PG write so a slower
