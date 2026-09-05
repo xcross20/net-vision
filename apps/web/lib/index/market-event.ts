@@ -89,9 +89,20 @@ const REST_KIND: Record<string, MarketEventKind> = {
   item_metadata_updated: 'metadata',
 };
 
-export function restEventToMarketEvent(event: AssetEvent, now = Date.now()): MarketEvent | null {
+function restKind(event: AssetEvent): MarketEventKind | null {
   const rawType = (event.event_type ?? '').toLowerCase();
-  const kind = REST_KIND[rawType];
+  if (REST_KIND[rawType]) return REST_KIND[rawType];
+  const orderType = (event.order_type ?? '').toLowerCase();
+  if (rawType === 'order') {
+    if (orderType === 'listing' || orderType.includes('listing')) return 'listed';
+    // item_offer / collection_offer / trait_offer are bids — not listing state.
+    return null;
+  }
+  return null;
+}
+
+export function restEventToMarketEvent(event: AssetEvent, now = Date.now()): MarketEvent | null {
+  const kind = restKind(event);
   if (!kind) return null;
   const tokenId = String(event.nft?.identifier ?? event.asset?.identifier ?? '');
   if (!isButtonPresserTokenId(tokenId)) return null;

@@ -19,22 +19,30 @@ export async function pollCollectionEventsOnce(
 ): Promise<{ applied: number; seen: number }> {
   const afterMs = options.afterMs ?? Date.now() - OVERLAP_MS;
   const afterSec = Math.floor(afterMs / 1000);
-  const page = await client.getCollectionEvents({
-    slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-    limit: PAGE_LIMIT,
-    after: afterSec,
-  });
-  const raw = page.asset_events ?? page.events ?? [];
+  // Unfiltered /events defaults to offers (`event_type=order`). Ask for
+  // listing/sale/transfer explicitly so maintenance actually sees asks.
+  const types = ['listing', 'sale', 'transfer'] as const;
   let applied = 0;
-  for (const row of raw) {
-    const event = restEventToMarketEvent(row);
-    if (!event) continue;
-    const result = applyMarketEvent(event);
-    if (result === 'applied') applied += 1;
+  let seen = 0;
+  for (const eventType of types) {
+    const page = await client.getCollectionEvents({
+      slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+      eventType,
+      limit: PAGE_LIMIT,
+      after: afterSec,
+    });
+    const raw = page.asset_events ?? page.events ?? [];
+    seen += raw.length;
+    for (const row of raw) {
+      const event = restEventToMarketEvent(row);
+      if (!event) continue;
+      const result = applyMarketEvent(event);
+      if (result === 'applied') applied += 1;
+    }
   }
   patchMaintenance({ restLastPollAt: Date.now() });
   if (applied > 0) saveIndex();
-  return { applied, seen: raw.length };
+  return { applied, seen };
 }
 
 export function startCollectionEventPoll(client: OpenSeaClient): () => void {

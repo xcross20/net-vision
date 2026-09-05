@@ -203,6 +203,7 @@ const AddressLikeSchema = z.union([
 export const AssetEventSchema = z
   .object({
     event_type: z.string().optional(),
+    order_type: z.string().optional(),
     event_timestamp: z.union([z.number(), z.string()]).optional(),
     closing_date: z.union([z.number(), z.string()]).optional(),
     order_hash: z.string().nullish(),

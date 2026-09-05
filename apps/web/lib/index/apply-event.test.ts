@@ -77,4 +77,16 @@ describe('market event apply', () => {
     expect(applyMarketEvent(event!)).toBe('applied');
     expect(listingRecord('628').state).toBe('LISTED');
   });
+
+  it('ignores REST order/item_offer rows (bids are not listings)', () => {
+    const raw = {
+      event_type: 'order',
+      order_type: 'item_offer',
+      event_timestamp: 1788610000,
+      order_hash: '0xbid',
+      asset: { identifier: '670' },
+      payment: { quantity: '405000000', decimals: 6, symbol: 'USDG' },
+    } as AssetEvent;
+    expect(restEventToMarketEvent(raw)).toBeNull();
+  });
 });
