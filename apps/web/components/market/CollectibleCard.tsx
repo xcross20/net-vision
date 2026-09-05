@@ -1,10 +1,12 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Check, Plus } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
+import { buildTokenImageUrl, isProxyImageUrl } from '@/lib/data/media';
 import { MarketplaceBadge } from '@/components/ui/MarketplaceBadge';
 import { Price } from '@/components/ui/Price';
 
@@ -21,11 +23,17 @@ export function CollectibleCard({
   selectable?: boolean;
   priority?: boolean;
 }) {
+  const [src, setSrc] = useState(token.imageUrl);
+  useEffect(() => {
+    setSrc(token.imageUrl);
+  }, [token.imageUrl]);
+
   const ask = token.listingPrice;
   const topTraits = token.traits
     .filter((t) => t.family !== 'digits' && t.family !== 'number')
     .slice(0, 2);
   const canSelect = selectable && ask !== null && onToggle;
+  const unoptimized = isProxyImageUrl(src) || src.endsWith('.svg');
   return (
     <div
       className={cn(
@@ -55,12 +63,17 @@ export function CollectibleCard({
       <Link href={`/tokens/${token.tokenId}`} className="flex h-full flex-col">
         <div className="relative aspect-square overflow-hidden bg-[var(--color-surface-2)]">
           <Image
-            src={token.imageUrl}
+            src={src}
             alt={`Button Presser #${token.tokenId}`}
             fill
             sizes="(min-width: 1280px) 18rem, (min-width: 768px) 33vw, 50vw"
             priority={priority}
-            className="object-cover"
+            unoptimized={unoptimized}
+            className="object-contain p-3"
+            onError={() => {
+              const fallback = buildTokenImageUrl(token.tokenId);
+              if (src !== fallback) setSrc(fallback);
+            }}
           />
           <div className="pointer-events-none absolute right-2 top-2">
             <MarketplaceBadge source="opensea" />

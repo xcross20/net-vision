@@ -48,8 +48,17 @@ const SAVE_EVERY = 10;
 
 export type BestListingLookup = (tokenId: string) => Promise<ListingObservation>;
 export type ListingSink = (record: ListingRecord) => void;
-/** Fetch NFT metadata and persist Plate facets. Return false if missing. */
-export type MetadataFetch = (tokenId: string) => Promise<boolean>;
+
+/**
+ * Tri-state metadata observation. Transport / rate-limit failures must be
+ * `retry` so the bootstrap cursor does not advance over a hole.
+ */
+export type MetadataObservation =
+  | { kind: 'found' }
+  | { kind: 'missing' }
+  | { kind: 'retry'; reason: string };
+
+export type MetadataFetch = (tokenId: string) => Promise<MetadataObservation>;
 
 function isBuildPhase(): boolean {
   return (
@@ -205,27 +214,37 @@ export async function runMetadataBootstrapPass(
   let missing = 0;
   for (let i = 0; i < limit && cursor < queue.length; i += 1) {
     const tokenId = queue[cursor];
-    cursor += 1;
     if (hasVerifiedMetadata(tokenId)) {
-      // Already hydrated (token page / portfolio / prior pass) — advance.
+      cursor += 1;
       processed += 1;
     } else {
+      let observation: MetadataObservation;
       try {
-        const ok = await fetchMetadata(tokenId);
-        if (!ok) missing += 1;
-        processed += 1;
+        observation = await fetchMetadata(tokenId);
       } catch (err) {
         if (isOpenSeaRateLimited(err)) {
-          writeMetadataCheckpoint({ last429At: Date.now(), lastError: '429', cursor: cursor - 1 });
+          writeMetadataCheckpoint({ last429At: Date.now(), lastError: '429', cursor });
           saveIndex();
           throw err;
         }
-        missing += 1;
-        processed += 1;
-        writeMetadataCheckpoint({
-          lastError: err instanceof Error ? err.message : String(err),
-        });
+        observation = {
+          kind: 'retry',
+          reason: err instanceof Error ? err.message : String(err),
+        };
       }
+
+      if (observation.kind === 'retry') {
+        writeMetadataCheckpoint({
+          cursor, // do not advance
+          lastError: observation.reason,
+        });
+        saveIndex();
+        throw new Error(`metadata-retry:${observation.reason}`);
+      }
+
+      if (observation.kind === 'missing') missing += 1;
+      cursor += 1;
+      processed += 1;
     }
     const brassDone = cursor >= BRASS_MAX;
     writeMetadataCheckpoint({

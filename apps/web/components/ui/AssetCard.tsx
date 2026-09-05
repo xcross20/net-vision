@@ -1,12 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { Heart, ArrowRight, Eye } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
+import { buildTokenImageUrl, isProxyImageUrl } from '@/lib/data/media';
 import { MarketplaceBadge } from './MarketplaceBadge';
 import { Price } from './Price';
 import { AddToCartButton } from '@/components/cart';
@@ -26,11 +27,16 @@ export function AssetCard({
   showActions?: boolean;
 }) {
   const [favorited, setFavorited] = useState(false);
+  const [src, setSrc] = useState(token.imageUrl);
+  useEffect(() => {
+    setSrc(token.imageUrl);
+  }, [token.imageUrl]);
   const ask = token.listingPrice;
   const canTrade = showActions && ask !== null;
   const topTraits = token.traits
     .filter((t) => t.family !== 'digits' && t.family !== 'number')
     .slice(0, 2);
+  const unoptimized = isProxyImageUrl(src) || src.endsWith('.svg');
   return (
     <motion.div
       whileHover={{ y: -2 }}
@@ -49,12 +55,17 @@ export function AssetCard({
       >
         <div className="relative aspect-square overflow-hidden bg-[var(--color-surface-2)]">
           <Image
-            src={token.imageUrl}
+            src={src}
             alt={`Button Presser #${token.tokenId}`}
             fill
             sizes="(min-width: 1280px) 18rem, (min-width: 768px) 33vw, 50vw"
             priority={priority}
-            className="object-cover transition-transform duration-500 ease-out group-hover/card:scale-[1.02]"
+            unoptimized={unoptimized}
+            className="object-contain p-3 transition-transform duration-500 ease-out group-hover/card:scale-[1.02]"
+            onError={() => {
+              const fallback = buildTokenImageUrl(token.tokenId);
+              if (src !== fallback) setSrc(fallback);
+            }}
           />
           <div className="pointer-events-none absolute left-2 top-2 flex items-center gap-1.5">
             <MarketplaceBadge source="opensea" />
