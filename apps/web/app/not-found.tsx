@@ -1,14 +1,16 @@
 import Link from 'next/link';
+import { ArrowR } from '@/components/icons';
 
 export default function NotFound() {
   return (
-    <div className="nv-panel p-8 flex flex-col gap-3 items-start">
-      <span className="nv-section-title">404</span>
-      <h1 className="text-2xl font-semibold">Not found</h1>
-      <p className="text-[var(--nv-muted)]">
-        That page is not part of Net Vision.
-      </p>
-      <Link href="/" className="nv-link">Return home →</Link>
+    <div className="nv-panel-soft flex flex-col items-start gap-3 p-8">
+      <span className="nv-eyebrow">404</span>
+      <h1 className="nv-display text-3xl md:text-4xl">Not found</h1>
+      <p className="nv-body">That page is not part of Net Vision.</p>
+      <Link href="/" className="nv-link inline-flex items-center gap-1 text-sm">
+        Return home
+        <ArrowR size={12} weight="bold" />
+      </Link>
     </div>
   );
 }

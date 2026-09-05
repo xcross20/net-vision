@@ -300,7 +300,12 @@ export class OpenSeaClient {
    * is matched by numeric chain id against `ROBINHOOD_CHAIN.id`.
    */
   async getChains(): Promise<ChainInfo[]> {
-    return this.request('GET', '/api/v2/chains', z.array(ChainInfoSchema));
+    const envelope = await this.request(
+      'GET',
+      '/api/v2/chains',
+      z.object({ chains: z.array(ChainInfoSchema) }).passthrough(),
+    );
+    return envelope.chains;
   }
 
   /**

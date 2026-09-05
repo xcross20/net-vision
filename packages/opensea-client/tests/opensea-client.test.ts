@@ -183,10 +183,12 @@ describe('OpenSeaClient getChains / resolveChainSlug', () => {
       fetchImpl: makeFetch([
         {
           status: 200,
-          body: [
-            { chain: 'ethereum', chain_id: 1, name: 'Ethereum' },
-            { chain: 'robinhood', chain_id: 1311, name: 'Robinhood Chain' },
-          ],
+          body: {
+            chains: [
+              { chain: 'ethereum', chain_id: 1, name: 'Ethereum' },
+              { chain: 'robinhood', chain_id: 1311, name: 'Robinhood Chain' },
+            ],
+          },
         },
       ]) as typeof fetch,
     });
@@ -203,7 +205,7 @@ describe('OpenSeaClient getChains / resolveChainSlug', () => {
       fetchImpl: makeFetch([
         {
           status: 200,
-          body: [{ chain: 'ethereum', chain_id: 1, name: 'Ethereum' }],
+          body: { chains: [{ chain: 'ethereum', chain_id: 1, name: 'Ethereum' }] },
         },
       ]) as typeof fetch,
     });
@@ -218,10 +220,12 @@ describe('OpenSeaClient getChains / resolveChainSlug', () => {
       fetchImpl: makeFetch([
         {
           status: 200,
-          body: [
-            { chain: 'ethereum', name: 'Ethereum' },
-            { chain: 'robinhood', name: 'Robinhood Chain' },
-          ],
+          body: {
+            chains: [
+              { chain: 'ethereum', name: 'Ethereum' },
+              { chain: 'robinhood', name: 'Robinhood Chain' },
+            ],
+          },
         },
       ]) as typeof fetch,
     });
