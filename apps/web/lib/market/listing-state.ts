@@ -31,7 +31,9 @@ export type ListingRecord = {
 export type ListingObservation =
   | { kind: 'ask'; price: number; currency: string; orderHash: string | null; seller: string | null; listedAt: number | null }
   | { kind: 'no-ask' }
-  | { kind: 'error' };
+  | { kind: 'error' }
+  /** Authoritative cancel of a specific (or current) ask — Stream/events path. */
+  | { kind: 'cancel'; orderHash: string | null };
 
 export function emptyListingRecord(tokenId: string): ListingRecord {
   return {
@@ -60,6 +62,28 @@ export function applyObservation(
     return current.state === 'UNKNOWN'
       ? current
       : { ...current, state: 'STALE' };
+  }
+  if (observation.kind === 'cancel') {
+    // Unknown stays unknown — a cancel is not proof the token was listed here.
+    if (current.state === 'UNKNOWN') return current;
+    if (
+      observation.orderHash &&
+      current.orderHash &&
+      observation.orderHash !== current.orderHash
+    ) {
+      return current;
+    }
+    return {
+      ...current,
+      state: 'UNLISTED_VERIFIED',
+      price: null,
+      currency: null,
+      orderHash: null,
+      seller: null,
+      listedAt: null,
+      lastVerifiedAt: now,
+      consecutive404s: 0,
+    };
   }
   if (observation.kind === 'ask') {
     return {

@@ -1,6 +1,6 @@
 import { getMarketSource } from '@/lib/market';
 import { buildIndexerHealthReport } from '@/lib/index/health';
-import { hydrateIndexFromPostgres } from '@/lib/index/store';
+import { refreshIndexFromPostgres } from '@/lib/index/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +14,7 @@ function ageLabel(ms: number | null | undefined, now: number): string {
 }
 
 export default async function ReconcilePage() {
-  await hydrateIndexFromPostgres().catch(() => undefined);
+  await refreshIndexFromPostgres().catch(() => undefined);
   const categories = await getMarketSource().listCategories();
   const health = buildIndexerHealthReport();
   const now = Date.now();
@@ -108,6 +108,22 @@ export default async function ReconcilePage() {
           <div>
             <dt className="text-eyebrow-muted">Last error</dt>
             <dd className="truncate">{health.lastError ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-eyebrow-muted">Maintenance</dt>
+            <dd className="text-numeral">
+              {health.maintenance.mode}
+              {health.maintenance.streamConnected ? ' · stream up' : ' · stream down'} ·{' '}
+              {health.maintenance.eventsLast15m} events / 15m
+            </dd>
+          </div>
+          <div>
+            <dt className="text-eyebrow-muted">Last Stream event</dt>
+            <dd>{ageLabel(health.maintenance.streamLastEventAt, now)}</dd>
+          </div>
+          <div>
+            <dt className="text-eyebrow-muted">Last REST event</dt>
+            <dd>{ageLabel(health.maintenance.restLastEventAt, now)}</dd>
           </div>
         </dl>
         <p className="mt-4 text-xs text-[var(--color-text-tertiary)]">

@@ -53,6 +53,40 @@ describe('listing state machine', () => {
     expect(thrice.price).toBeNull();
   });
 
+  it('unlists immediately on a matching cancel (Stream/events path)', () => {
+    const listed = applyObservation(emptyListingRecord('966'), {
+      kind: 'ask',
+      price: 650,
+      currency: 'USDG',
+      orderHash: '0xfloor',
+      seller: null,
+      listedAt: 1,
+    });
+    const next = applyObservation(listed, { kind: 'cancel', orderHash: '0xfloor' });
+    expect(next.state).toBe('UNLISTED_VERIFIED');
+    expect(next.price).toBeNull();
+    expect(next.orderHash).toBeNull();
+  });
+
+  it('ignores a cancel for a different order hash', () => {
+    const listed = applyObservation(emptyListingRecord('966'), {
+      kind: 'ask',
+      price: 650,
+      currency: 'USDG',
+      orderHash: '0xfloor',
+      seller: null,
+      listedAt: 1,
+    });
+    const next = applyObservation(listed, { kind: 'cancel', orderHash: '0xother' });
+    expect(next.state).toBe('LISTED');
+    expect(next.price).toBe(650);
+  });
+
+  it('does not invent an unlisted state from a cancel on UNKNOWN', () => {
+    const next = applyObservation(emptyListingRecord('1'), { kind: 'cancel', orderHash: '0xabc' });
+    expect(next.state).toBe('UNKNOWN');
+  });
+
   it('does not invent an unlisted state from a transport error', () => {
     const next = applyObservation(emptyListingRecord('968'), { kind: 'error' });
     expect(next.state).toBe('UNKNOWN');
