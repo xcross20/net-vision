@@ -4,11 +4,12 @@
   "private": true,
   "description": "Always-on OpenSea market indexer for Net Vision (ADR 0002).",
   "scripts": {
-    "start": "npx tsx --tsconfig ../web/tsconfig.json ../web/scripts/run-market-worker.ts",
-    "dev": "npx tsx --tsconfig ../web/tsconfig.json ../web/scripts/run-market-worker.ts"
+    "start": "tsx --tsconfig ../web/tsconfig.json ../web/scripts/run-market-worker.ts",
+    "dev": "tsx --tsconfig ../web/tsconfig.json ../web/scripts/run-market-worker.ts"
   },
   "dependencies": {
-    "@net-vision/web": "*"
+    "@net-vision/web": "*",
+    "tsx": "^4.19.4"
   },
   "engines": {
     "node": ">=20"

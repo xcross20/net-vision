@@ -1,21 +1,34 @@
 import { NextResponse } from 'next/server';
 import { BUTTON_PRESSER_COLLECTION, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
-import { describeMarketSourceFailure, getMarketSource } from '@/lib/market';
+import { describeMarketSourceFailure } from '@/lib/market';
+import { loadIndex } from '@/lib/index/store';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Liveness for Railway healthchecks. Must not call OpenSea — a 429 storm
+ * previously hung getFreshness() and failed deploys that enabled this path.
+ */
 export async function GET() {
   const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID ?? '', 10) || ROBINHOOD_CHAIN.id;
   const contract =
     process.env.NEXT_PUBLIC_COLLECTION_CONTRACT ?? BUTTON_PRESSER_COLLECTION.contractAddress;
 
-  let freshness = null;
-  let sourceFailure = null;
+  let refreshedAt: number | null = null;
   try {
-    freshness = await getMarketSource().getFreshness();
-  } catch (err) {
-    sourceFailure = err instanceof Error ? err.message : String(err);
+    const snap = loadIndex();
+    refreshedAt =
+      snap.worker.lastSuccessAt ??
+      snap.worker.workerHeartbeatAt ??
+      snap.worker.lastTickAt ??
+      snap.metadataWorker.lastSuccessAt ??
+      null;
+  } catch {
+    refreshedAt = null;
   }
+
+  const fresh =
+    refreshedAt !== null && Number.isFinite(refreshedAt) && Date.now() - refreshedAt < 10 * 60_000;
 
   return NextResponse.json({
     status: 'ok',
@@ -23,15 +36,14 @@ export async function GET() {
     chain: {
       id: chainId,
       contract,
-      resolvedSlug: freshness?.resolvedChainSlug ?? null,
+      resolvedSlug: null,
     },
     data: {
-      fresh: freshness?.fresh ?? false,
-      refreshedAt: freshness?.refreshedAt ?? null,
-      source: freshness?.source ?? 'fixture',
-      failure: sourceFailure ?? describeMarketSourceFailure() ?? null,
+      fresh,
+      refreshedAt,
+      source: 'index' as const,
+      failure: describeMarketSourceFailure() ?? null,
     },
     time: new Date().toISOString(),
   });
 }
-

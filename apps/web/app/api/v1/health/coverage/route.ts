@@ -1,12 +1,21 @@
 import { NextResponse } from 'next/server';
 import { getMarketSource } from '@/lib/market';
-import { workerCheckpoint, metadataCheckpoint } from '@/lib/index/store';
+import {
+  metadataCheckpoint,
+  refreshIndexFromPostgres,
+  workerCheckpoint,
+} from '@/lib/index/store';
 import { isIndexerRunning, isMetadataBootstrapRunning } from '@/lib/index/worker';
 import { buildIndexerHealthReport } from '@/lib/index/health';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  try {
+    await refreshIndexFromPostgres();
+  } catch {
+    /* fall through to in-memory / local JSON */
+  }
   const categories = await getMarketSource().listCategories();
   const worker = workerCheckpoint();
   const metadataWorker = metadataCheckpoint();

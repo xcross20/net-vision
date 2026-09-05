@@ -10,8 +10,9 @@ buildCommand = "rm -rf apps/web/.next/server apps/web/.next/static apps/web/.nex
 # See docs/deploy/RAILWAY_MARKET_WORKER.md (ADR 0002).
 [deploy]
 startCommand = "npm run start --workspace=apps/web"
+# /api/health is OpenSea-free (local index only). Safe for Railway probes.
 healthcheckPath = "/api/health"
-healthcheckTimeout = 60
+healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
