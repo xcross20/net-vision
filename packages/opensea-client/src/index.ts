@@ -76,6 +76,20 @@ export const OrderSchema = z
             offerer: z.string().regex(HEX_ADDRESS).optional(),
             startTime: z.union([z.string(), z.number()]).optional(),
             endTime: z.union([z.string(), z.number()]).optional(),
+            offer: z
+              .array(
+                z
+                  .object({
+                    itemType: z.number().int(),
+                    identifierOrCriteria: z.union([z.string(), z.number()]).optional(),
+                    token: z.string().regex(HEX_ADDRESS).optional(),
+                    startAmount: z.union([z.string(), z.number()]).optional(),
+                    endAmount: z.union([z.string(), z.number()]).optional(),
+                    recipient: z.string().regex(HEX_ADDRESS).optional(),
+                  })
+                  .passthrough(),
+              )
+              .optional(),
             consideration: z
               .array(
                 z
@@ -85,6 +99,7 @@ export const OrderSchema = z
                     token: z.string().regex(HEX_ADDRESS).optional(),
                     startAmount: z.union([z.string(), z.number()]).optional(),
                     endAmount: z.union([z.string(), z.number()]).optional(),
+                    recipient: z.string().regex(HEX_ADDRESS).optional(),
                   })
                   .passthrough(),
               )

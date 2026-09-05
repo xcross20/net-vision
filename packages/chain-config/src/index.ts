@@ -61,13 +61,36 @@ export const ALLOWLISTED_PROTOCOLS = {
   seaport15: '0x0000000000000068F116a894984e2DB1123eB395' as const,
 } as const;
 
+/**
+ * Settlement assets allowed for Button Presser purchases.
+ * Always match by chainId + contractAddress — never by symbol alone.
+ */
+export const PAYMENT_TOKENS = {
+  USDG: {
+    symbol: 'USDG',
+    chainId: 1311,
+    /** Observed on live button-presser Seaport consideration items. */
+    contractAddress: '0x5fc5360d0400a0fd4f2af552add042d716f1d168' as const,
+    decimals: 6,
+  },
+} as const;
+
+export const ALLOWLISTED_PAYMENT_TOKEN_SET = new Set<string>(
+  Object.values(PAYMENT_TOKENS).map((t) => t.contractAddress.toLowerCase()),
+);
+
 export const ALLOWLISTED_CONTRACT_SET = new Set<string>([
   BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
   ALLOWLISTED_PROTOCOLS.seaport15.toLowerCase(),
+  ...ALLOWLISTED_PAYMENT_TOKEN_SET,
 ]);
 
 export function isAllowlistedContract(address: string): boolean {
   return ALLOWLISTED_CONTRACT_SET.has(address.toLowerCase());
+}
+
+export function isAllowlistedPaymentToken(address: string): boolean {
+  return ALLOWLISTED_PAYMENT_TOKEN_SET.has(address.toLowerCase());
 }
 
 export function getChainId(): number {
