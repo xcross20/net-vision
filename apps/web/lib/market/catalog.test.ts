@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { OpenSeaResponseError } from '@net-vision/opensea-client';
 import { TokenCatalog, dedupeListingsByLowestAsk, isInSupplyRange } from './catalog';
+import { isOpenSeaRateLimited } from './opensea-errors';
 
 const RANGE = { minTokenId: 1, maxTokenId: 999 };
 
@@ -17,6 +19,14 @@ function listing(
     orderHash: extra.orderHash ?? `0x${tokenId}`,
   };
 }
+
+describe('isOpenSeaRateLimited', () => {
+  it('treats 429 as a cooldown, not a missing listing', () => {
+    expect(isOpenSeaRateLimited(new OpenSeaResponseError('rate limited', 429))).toBe(true);
+    expect(isOpenSeaRateLimited(new OpenSeaResponseError('not found', 404))).toBe(false);
+    expect(isOpenSeaRateLimited(new Error('network down'))).toBe(false);
+  });
+});
 
 describe('dedupeListingsByLowestAsk', () => {
   it('collapses repeated token ids to the cheapest ask', () => {

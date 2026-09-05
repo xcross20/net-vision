@@ -33,13 +33,13 @@ import {
   type ChainInfo,
   type NftInfo,
   type Order,
-  OpenSeaResponseError,
 } from '@net-vision/opensea-client';
 import {
   TokenCatalog,
   type CatalogListing,
   type CatalogSale,
 } from './catalog';
+import { isMissingOpenSeaResource, isOpenSeaRateLimited } from './opensea-errors';
 import { buildTokenImageUrl } from '@/lib/data/media';
 import type {
   CategoryMetrics,
@@ -72,8 +72,9 @@ const TTL_MS = 60_000;
 const MAX_LISTING_PAGE_SIZE = 1000;
 const ORDERBOOK_PAGE_SIZE = 200;
 const NFT_METADATA_CONCURRENCY = 4;
-const SCAN_BATCH = 24;
-const SCAN_CONCURRENCY = 4;
+const VISIBLE_CONFIRM_CONCURRENCY = 4;
+const RATE_LIMIT_COOLDOWN_MS = 60_000;
+const VISIBLE_CONFIRM_BUDGET_MS = 1_500;
 
 type TokenCacheEntry = CacheEntry<Token>;
 type NftCacheEntry = CacheEntry<NftInfo>;
@@ -105,7 +106,7 @@ function readEnv(): Env {
 }
 
 function isMissingResource(err: unknown): boolean {
-  return err instanceof OpenSeaResponseError && err.status === 404;
+  return isMissingOpenSeaResource(err);
 }
 
 function normalizeAddress(value: string | undefined | null): string | null {
@@ -208,9 +209,7 @@ class OpenSeaMarketSource implements MarketSource {
   private readonly catalog: TokenCatalog;
   private orderbookIngestedAt = 0;
   private salesIngestedAt = 0;
-  private scanQueue: string[] = [];
-  private scanRunning = false;
-  private scanBooted = false;
+  private rateLimitedUntil = 0;
   private readonly sales: Map<string, SalesCacheEntry> = new Map();
   private readonly offers: Map<string, OffersCacheEntry> = new Map();
   private readonly tokenOffers: Map<string, OffersCacheEntry> = new Map();
@@ -357,24 +356,42 @@ class OpenSeaMarketSource implements MarketSource {
     return page;
   }
 
+  private isCoolingDown(): boolean {
+    return Date.now() < this.rateLimitedUntil;
+  }
+
+  private noteRateLimit(): void {
+    this.rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+  }
+
   private async ensurePipeline(): Promise<void> {
     this.catalog.classify();
     const chain = await this.ensureChain();
     if (!chain) return;
     await Promise.all([this.ingestOrderbook(), this.ingestCollectionSales()]);
-    this.bootBackgroundScan();
   }
 
   private async ingestOrderbook(): Promise<Order[]> {
     const cached = this.collectionOrders.get(ORDERBOOK_PAGE_SIZE);
+    const stale = cached?.value ?? [];
     if (isFresh(cached)) return cached.value;
+    if (this.isCoolingDown()) return stale;
     // OpenSea's public orderbook window is a single page of 200. The
     // `next` cursor currently loops the same page, so walking further
     // duplicates listings (e.g. palindrome #35853 twenty times).
-    const page = await this.client.getCollectionListings({
-      slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-      limit: ORDERBOOK_PAGE_SIZE,
-    });
+    let page: { listings: Order[] };
+    try {
+      page = await this.client.getCollectionListings({
+        slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+        limit: ORDERBOOK_PAGE_SIZE,
+      });
+    } catch (err) {
+      if (isOpenSeaRateLimited(err)) this.noteRateLimit();
+      console.error(
+        `OpenSea orderbook ingest failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return stale;
+    }
     const unique = new Map<string, Order>();
     for (const order of page.listings) {
       const catalogListing = orderToCatalogListing(order);
@@ -423,58 +440,19 @@ class OpenSeaMarketSource implements MarketSource {
     }
   }
 
-  private bootBackgroundScan(): void {
-    if (this.scanBooted) return;
-    this.scanBooted = true;
-    const slugs = [...this.catalog.allCategoryTotals()].sort(
-      (a, b) => a.memberSupply - b.memberSupply,
-    );
-    const seen = new Set<string>();
-    const ordered: string[] = [];
-    for (const row of slugs) {
-      for (const tokenId of this.catalog.memberIds(row.slug)) {
-        if (seen.has(tokenId) || this.catalog.isScanned(tokenId)) continue;
-        seen.add(tokenId);
-        ordered.push(tokenId);
-      }
-    }
-    this.enqueueScan(ordered);
-    void this.pumpScan();
-  }
+  /**
+   * Confirm only the tokens currently on screen. Never walk the full
+   * supply: a collection-wide best-listing scan 429s OpenSea and takes
+   * category pages down with it.
+   */
+  private async confirmVisibleListings(tokenIds: string[]): Promise<void> {
+    if (tokenIds.length === 0 || this.isCoolingDown()) return;
+    const pending = tokenIds.filter((tokenId) => !this.catalog.isScanned(tokenId));
+    if (pending.length === 0) return;
 
-  private prioritizeScan(slug: string, facets?: string[]): void {
-    this.enqueueScan(this.catalog.unscannedIds(slug, facets), true);
-    void this.pumpScan();
-  }
-
-  private enqueueScan(tokenIds: string[], front = false): void {
-    const unseen = tokenIds.filter((tokenId) => !this.catalog.isScanned(tokenId));
-    if (unseen.length === 0) return;
-    this.scanQueue = front ? [...unseen, ...this.scanQueue] : [...this.scanQueue, ...unseen];
-  }
-
-  private async pumpScan(): Promise<void> {
-    if (this.scanRunning) return;
-    this.scanRunning = true;
-    try {
-      while (this.scanQueue.length > 0) {
-        const batch: string[] = [];
-        while (batch.length < SCAN_BATCH && this.scanQueue.length > 0) {
-          const tokenId = this.scanQueue.shift();
-          if (!tokenId || this.catalog.isScanned(tokenId)) continue;
-          batch.push(tokenId);
-        }
-        if (batch.length === 0) continue;
-        await this.scanTokenIds(batch);
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-    } finally {
-      this.scanRunning = false;
-    }
-  }
-
-  private async scanTokenIds(tokenIds: string[]): Promise<void> {
-    await mapWithConcurrency(tokenIds, SCAN_CONCURRENCY, async (tokenId) => {
+    let stopped = false;
+    const confirm = mapWithConcurrency(pending, VISIBLE_CONFIRM_CONCURRENCY, async (tokenId) => {
+      if (stopped || this.isCoolingDown()) return;
       try {
         const listing = await this.client.getBestListing({
           slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
@@ -486,13 +464,20 @@ class OpenSeaMarketSource implements MarketSource {
           this.catalog.confirmScan(tokenId, null);
           return;
         }
+        if (isOpenSeaRateLimited(err)) {
+          stopped = true;
+          this.noteRateLimit();
+          return;
+        }
         console.error(
-          `OpenSea best-listing scan failed for ${tokenId}: ${err instanceof Error ? err.message : String(err)}`,
+          `OpenSea best-listing confirm failed for ${tokenId}: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     });
-    this.tokenPages.clear();
-    this.categories.clear();
+    await Promise.race([
+      confirm,
+      new Promise<void>((resolve) => setTimeout(resolve, VISIBLE_CONFIRM_BUDGET_MS)),
+    ]);
   }
 
   private async fetchListingsPage(filter?: ListTokensFilter): Promise<ListTokensPage> {
@@ -503,12 +488,11 @@ class OpenSeaMarketSource implements MarketSource {
     const offset = Math.max(filter?.offset ?? 0, 0);
 
     if (filter?.category) {
-      this.prioritizeScan(filter.category, filter.facets);
       if (filter.status === 'not-listed') {
         const window = this.catalog
           .notListedIds(filter.category, filter.facets)
           .slice(offset, offset + want);
-        await this.scanTokenIds(window.filter((tokenId) => !this.catalog.isScanned(tokenId)));
+        await this.confirmVisibleListings(window);
         const notListedIds = this.catalog.notListedIds(filter.category, filter.facets);
         return {
           tokens: notListedIds.slice(offset, offset + want).map(buildUnlistedCategoryToken),
@@ -536,7 +520,7 @@ class OpenSeaMarketSource implements MarketSource {
       const listing = this.catalog.listingFor(tokenId);
       if (!listing) return null;
       const listedToken = catalogListingToToken(listing, this.catalog.traitsFor(tokenId));
-      const nft = await this.fetchNFT(tokenId);
+      const nft = this.isCoolingDown() ? null : await this.fetchNFT(tokenId);
       const token = nft ? mergeListedTokenWithNft(listedToken, nft) : listedToken;
       const lastSale = this.catalog.lastSaleFor(tokenId);
       const withSale = lastSale
@@ -607,7 +591,6 @@ class OpenSeaMarketSource implements MarketSource {
     const cached = this.categories.get(slug);
     if (isFresh(cached)) return cached.value;
     await this.ensurePipeline();
-    this.prioritizeScan(slug);
     const snapshot = await this.getCollectionSnapshot();
     const totals = this.catalog.categoryTotals(slug);
     const subFilter =
