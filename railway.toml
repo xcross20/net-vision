@@ -1,13 +1,8 @@
 [build]
 builder = "NIXPACKS"
-# Always nuke any cached .next before Nixpacks runs its auto-detected
-# Next.js build. Without this, Railway serves a stale server bundle
-# after dependency upgrades and the homepage 500s on a createMotion
-# call from a previous build.
-buildCommand = "rm -rf apps/web/.next && cd apps/web && npm run build"
 
 [deploy]
-startCommand = "cd apps/web && npm run start"
+startCommand = "npm start"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
