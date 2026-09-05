@@ -3,13 +3,13 @@ import { notFound } from 'next/navigation';
 import { ArrowRight, ArrowUpRight, Check } from '@phosphor-icons/react/dist/ssr';
 import {
   getCategoryMetrics,
-  listCategoryTokens,
+  listCategoryTokenPage,
 } from '@/lib/data/categories';
 import { VIRTUAL_COLLECTION_CATALOG } from '@net-vision/taxonomy';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
-import { AssetCard } from '@/components/ui/AssetCard';
+import { CategoryTokenGrid } from '@/components/category/CategoryTokenGrid';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { compact, payment } from '@/lib/format';
+import { payment } from '@/lib/format';
 import { getMarketSource } from '@/lib/market';
 
 export const dynamic = 'force-dynamic';
@@ -32,24 +32,37 @@ export async function generateMetadata({
 }
 
 const PALINDROME_DIGIT_KEY = 'digits';
+const LISTING_STATUS_KEY = 'status';
+const CATEGORY_PAGE_SIZE = 24;
 const SUPPORTED_DIGIT_COUNTS = new Set([2, 3, 4, 5]);
+
+type ListingStatus = 'listed' | 'not-listed';
 
 function parseDigitsParam(value: string | string[] | undefined): number[] {
   if (!value) return [];
   const raw = Array.isArray(value) ? value.join(',') : value;
-  return raw
+  return [...new Set(raw
     .split(',')
-    .map((s) => Number.parseInt(s.trim(), 10))
-    .filter((n) => Number.isInteger(n) && SUPPORTED_DIGIT_COUNTS.has(n));
+    .map((part) => Number(part.trim()))
+    .filter((n) => SUPPORTED_DIGIT_COUNTS.has(n)))]
+    .sort((a, b) => a - b);
 }
 
-function buildDigitsHref(current: number[], toggle: number): string {
-  const set = new Set(current);
-  if (set.has(toggle)) set.delete(toggle);
-  else set.add(toggle);
-  const next = [...set].sort((a, b) => a - b);
-  if (next.length === 0) return '';
-  return `?${PALINDROME_DIGIT_KEY}=${next.join(',')}`;
+function parseListingStatus(value: string | string[] | undefined): ListingStatus {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === 'not-listed' ? 'not-listed' : 'listed';
+}
+
+function buildCategoryHref(
+  slug: string,
+  activeDigits: number[],
+  listingStatus: ListingStatus,
+): string {
+  const params = new URLSearchParams({ [LISTING_STATUS_KEY]: listingStatus });
+  if (activeDigits.length > 0) {
+    params.set(PALINDROME_DIGIT_KEY, activeDigits.join(','));
+  }
+  return `/categories/${encodeURIComponent(slug)}?${params.toString()}`;
 }
 
 export default async function CategoryDetailPage({
@@ -61,18 +74,27 @@ export default async function CategoryDetailPage({
 }) {
   const [{ slug }, search] = await Promise.all([params, searchParams]);
   const activeDigits = parseDigitsParam(search[PALINDROME_DIGIT_KEY]);
+  const listingStatus = parseListingStatus(search[LISTING_STATUS_KEY]);
   const facets =
     activeDigits.length > 0
       ? activeDigits.map((d) => `digits-${d}`)
       : undefined;
-  const [metrics, tokens, freshness] = await Promise.all([
+  const [metrics, initialTokenPage, freshness] = await Promise.all([
     getCategoryMetrics(slug),
-    listCategoryTokens(slug, { facets, limit: 60 }),
+    listCategoryTokenPage(slug, {
+      facets,
+      status: listingStatus,
+      limit: CATEGORY_PAGE_SIZE,
+    }),
     getMarketSource().getFreshness(),
   ]);
   if (!metrics) {
     notFound();
   }
+  const tokens = initialTokenPage.tokens;
+  const totalMatchingTokens = initialTokenPage.total;
+  const initialNextOffset =
+    tokens.length < totalMatchingTokens ? tokens.length : null;
   const memberSupplyForView =
     activeDigits.length === 0 || !metrics.subFilter
       ? metrics.memberSupply
@@ -85,8 +107,12 @@ export default async function CategoryDetailPage({
       : metrics.subFilter.facets
           .filter((f) => activeDigits.includes(Number(f.value.replace('digits-', ''))))
           .reduce((sum, f) => sum + f.listedCount, 0);
-  const listedPct =
-    memberSupplyForView > 0 ? (listedCountForView / memberSupplyForView) * 100 : 0;
+  const tokenCountForView =
+    listingStatus === 'not-listed'
+      ? Math.max(memberSupplyForView - listedCountForView, 0)
+      : listedCountForView;
+  const tokenCountPct =
+    memberSupplyForView > 0 ? (tokenCountForView / memberSupplyForView) * 100 : 0;
 
   return (
     <div className="flex flex-col gap-12">
@@ -121,12 +147,12 @@ export default async function CategoryDetailPage({
             <div className="grid grid-cols-2 gap-x-8 gap-y-6 border-y border-[var(--color-border-subtle)] py-6 md:grid-cols-2">
               <Stat label="Floor" value={payment(metrics.floorPrice, metrics.currency)} emphasis />
               <Stat
-                label="Listed"
-                value={listedCountForView.toLocaleString()}
+                label={listingStatus === 'not-listed' ? 'Not listed' : 'Listed'}
+                value={tokenCountForView.toLocaleString()}
                 sub={
                   activeDigits.length > 0
-                    ? `${listedPct.toFixed(1)}% of ${memberSupplyForView.toLocaleString()} filtered`
-                    : `${listedPct.toFixed(1)}% of members`
+                    ? `${tokenCountPct.toFixed(1)}% of ${memberSupplyForView.toLocaleString()} filtered`
+                    : `${tokenCountPct.toFixed(1)}% of members`
                 }
               />
               <Stat label="Owners" value={metrics.owners.toLocaleString()} />
@@ -148,6 +174,7 @@ export default async function CategoryDetailPage({
             slug={slug}
             facets={metrics.subFilter.facets}
             activeDigits={activeDigits}
+            listingStatus={listingStatus}
           />
         ) : null}
       </header>
@@ -157,7 +184,7 @@ export default async function CategoryDetailPage({
           <div className="flex flex-col gap-1">
             <span className="text-eyebrow-muted">Listings</span>
             <h2 className="text-display text-2xl text-[var(--color-text-primary)] md:text-3xl">
-              Active in this category
+              {listingStatus === 'not-listed' ? 'Not listed in this category' : 'Active in this category'}
             </h2>
           </div>
           <Link
@@ -169,22 +196,39 @@ export default async function CategoryDetailPage({
           </Link>
         </div>
 
+        <ListingStatusFilter
+          slug={slug}
+          activeDigits={activeDigits}
+          listingStatus={listingStatus}
+          listedCount={listedCountForView}
+          notListedCount={Math.max(memberSupplyForView - listedCountForView, 0)}
+        />
+
         {tokens.length === 0 ? (
           <EmptyState
-            title="No live listings for this category"
+            title={
+              listingStatus === 'not-listed'
+                ? 'Every member is currently listed'
+                : 'No live listings for this category'
+            }
             body={
-              memberSupplyForView > 0
-                ? `${memberSupplyForView.toLocaleString()} tokens belong to this category, but none are currently listed on the OpenSea orderbook.`
-                : 'No tokens have been classified into this category yet.'
+              listingStatus === 'not-listed'
+                ? `${memberSupplyForView.toLocaleString()} tokens belong to this category and all currently have an active ask.`
+                : memberSupplyForView > 0
+                  ? `${memberSupplyForView.toLocaleString()} tokens belong to this category, but none are currently listed on the OpenSea orderbook.`
+                  : 'No tokens have been classified into this category yet.'
             }
             tone="muted"
           />
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:gap-5 xl:grid-cols-4">
-            {tokens.slice(0, 12).map((t, idx) => (
-              <AssetCard key={t.tokenId} token={t} priority={idx < 4} />
-            ))}
-          </div>
+          <CategoryTokenGrid
+            slug={slug}
+            activeDigits={activeDigits}
+            listingStatus={listingStatus}
+            initialTokens={tokens}
+            initialNextOffset={initialNextOffset}
+            total={totalMatchingTokens}
+          />
         )}
       </section>
 
@@ -199,14 +243,66 @@ export default async function CategoryDetailPage({
   );
 }
 
+function ListingStatusFilter({
+  slug,
+  activeDigits,
+  listingStatus,
+  listedCount,
+  notListedCount,
+}: {
+  slug: string;
+  activeDigits: number[];
+  listingStatus: ListingStatus;
+  listedCount: number;
+  notListedCount: number;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <span className="text-eyebrow-muted">Listing status</span>
+      <div
+        className="inline-flex flex-wrap items-center gap-1 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] p-1"
+        role="group"
+        aria-label="Filter by listing status"
+      >
+        {([
+          ['listed', 'Listed', listedCount],
+          ['not-listed', 'Not listed', notListedCount],
+        ] as const).map(([status, label, count]) => {
+          const isActive = status === listingStatus;
+          return (
+            <Link
+              key={status}
+              href={buildCategoryHref(slug, activeDigits, status)}
+              aria-current={isActive ? 'page' : undefined}
+              className={[
+                'inline-flex h-8 items-center gap-2 rounded-[var(--radius-sm)] px-3 text-xs transition-colors',
+                isActive
+                  ? 'bg-[var(--color-surface-3)] text-[var(--color-text-primary)]'
+                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+              ].join(' ')}
+            >
+              <span>{label}</span>
+              <span className="text-numeral text-[var(--color-text-tertiary)]">
+                {count.toLocaleString()}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function FacetFilter({
   slug,
   facets,
   activeDigits,
+  listingStatus,
 }: {
   slug: string;
   facets: NonNullable<NonNullable<Awaited<ReturnType<typeof getCategoryMetrics>>>['subFilter']>['facets'];
   activeDigits: number[];
+  listingStatus: ListingStatus;
 }) {
   return (
     <div className="flex flex-col gap-3 border-t border-[var(--color-border-subtle)] pt-6">
@@ -214,7 +310,7 @@ function FacetFilter({
         <span className="text-eyebrow-muted">Filter by digit count</span>
         {activeDigits.length > 0 ? (
           <Link
-            href={`/categories/${slug}`}
+            href={buildCategoryHref(slug, [], listingStatus)}
             className="text-[12px] text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-net-green)]"
           >
             Clear filter
@@ -225,11 +321,13 @@ function FacetFilter({
         {facets.map((f) => {
           const digits = Number(f.value.replace('digits-', ''));
           const active = activeDigits.includes(digits);
-          const href = buildDigitsHref(activeDigits, digits);
+          const nextActiveDigits = active
+            ? activeDigits.filter((value) => value !== digits)
+            : [...activeDigits, digits].sort((a, b) => a - b);
           return (
             <Link
               key={f.value}
-              href={href || `/categories/${slug}`}
+              href={buildCategoryHref(slug, nextActiveDigits, listingStatus)}
               className={[
                 'group/filter inline-flex items-center gap-2 rounded-[var(--radius-md)] border px-3 py-2 text-[13px] transition-colors',
                 active

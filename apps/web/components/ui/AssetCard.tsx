@@ -12,20 +12,22 @@ import { Price } from './Price';
 import { AddToCartButton } from '@/components/cart';
 
 /**
- * NFT market card used in grids. Image-first composition with the token
- * number, top traits, executable ask, marketplace badge, and a hover
- * Buy action. Hover chrome only reveals on pointer-fine devices so
- * touch users see the essential information immediately.
+ * NFT market card used in grids. It pairs the token number with its
+ * exact image, traits, and active ask when one is available. Trade actions
+ * remain hidden when no executable ask exists.
  */
 export function AssetCard({
   token,
   priority = false,
+  showActions = true,
 }: {
   token: Token;
   priority?: boolean;
+  showActions?: boolean;
 }) {
   const [favorited, setFavorited] = useState(false);
   const ask = token.listingPrice;
+  const canTrade = showActions && ask !== null;
   const topTraits = token.traits
     .filter((t) => t.family !== 'digits')
     .slice(0, 2);
@@ -76,23 +78,27 @@ export function AssetCard({
               <Heart size={13} weight={favorited ? 'fill' : 'regular'} />
             </button>
           </div>
-          <div className="pointer-events-none absolute inset-x-2 bottom-2 opacity-0 transition-all duration-200 group-hover/card:translate-y-0 group-hover/card:opacity-100 group-hover/card:pointer-events-auto max-md:hidden">
-            <span className="inline-flex h-9 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-net-green)] px-3 text-[13px] font-semibold tracking-tight text-[var(--color-bg)]">
-              Buy now
-              <ArrowRight size={12} weight="bold" />
-            </span>
-          </div>
-          <div className="absolute bottom-2 right-2 opacity-0 transition-opacity duration-200 group-hover/card:opacity-100 max-md:opacity-100">
-            <AddToCartButton
-              variant="compact"
-              className="border-[var(--color-border-default)] bg-[rgba(8,12,10,0.78)] backdrop-blur-md"
-              draft={{
-                token,
-                displayedPriceDecimal: token.listingPrice !== null ? token.listingPrice.toString() : null,
-                currencySymbol: token.currency,
-              }}
-            />
-          </div>
+          {canTrade ? (
+            <>
+              <div className="pointer-events-none absolute inset-x-2 bottom-2 opacity-0 transition-all duration-200 group-hover/card:translate-y-0 group-hover/card:opacity-100 group-hover/card:pointer-events-auto max-md:hidden">
+                <span className="inline-flex h-9 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-net-green)] px-3 text-[13px] font-semibold tracking-tight text-[var(--color-bg)]">
+                  Buy now
+                  <ArrowRight size={12} weight="bold" />
+                </span>
+              </div>
+              <div className="absolute bottom-2 right-2 opacity-0 transition-opacity duration-200 group-hover/card:opacity-100 max-md:opacity-100">
+                <AddToCartButton
+                  variant="compact"
+                  className="border-[var(--color-border-default)] bg-[rgba(8,12,10,0.78)] backdrop-blur-md"
+                  draft={{
+                    token,
+                    displayedPriceDecimal: ask.toString(),
+                    currencySymbol: token.currency,
+                  }}
+                />
+              </div>
+            </>
+          ) : null}
         </div>
 
         <div className="flex flex-1 flex-col gap-3 p-4">

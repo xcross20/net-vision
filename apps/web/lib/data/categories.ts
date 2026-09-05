@@ -14,13 +14,20 @@ import {
   type VirtualCollectionSlug,
 } from '@net-vision/taxonomy';
 import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
-import type { CategoryMetrics, Token } from '@/lib/market';
+import type {
+  CategoryMetrics,
+  ListTokensPage,
+  Token,
+  TokenListingStatus,
+} from '@/lib/market';
 
 export type { CategoryMetrics } from '@/lib/market';
 
 export type ListCategoryTokensOptions = {
   /** Sub-filter facet values, e.g. `palindrome:digits-3`. */
   facets?: string[];
+  /** Listing status shown in the category UI. */
+  status?: TokenListingStatus;
   /** Page size. */
   limit?: number;
 };
@@ -105,15 +112,23 @@ export async function listCategories(): Promise<CategoryMetrics[]> {
   });
 }
 
+export async function listCategoryTokenPage(
+  slug: string,
+  options: ListCategoryTokensOptions = {},
+): Promise<ListTokensPage> {
+  return getMarketSource().listTokens({
+    category: slug,
+    facets: options.facets,
+    status: options.status,
+    limit: options.limit ?? 200,
+  });
+}
+
 export async function listCategoryTokens(
   slug: string,
   options: ListCategoryTokensOptions = {},
 ): Promise<Token[]> {
-  const page = await getMarketSource().listTokens({
-    category: slug,
-    facets: options.facets,
-    limit: options.limit ?? 60,
-  });
+  const page = await listCategoryTokenPage(slug, options);
   return page.tokens;
 }
 

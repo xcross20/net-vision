@@ -18,6 +18,8 @@ import type {
   Token,
 } from './types';
 
+export type TokenListingStatus = 'listed' | 'not-listed';
+
 export type ListTokensFilter = {
   category?: string;
   /**
@@ -25,10 +27,14 @@ export type ListTokensFilter = {
    * palindrome: `palindrome:digits-3`, `palindrome:digits-4`, etc.
    */
   facets?: string[];
+  /** Listing status shown in the category UI. */
+  status?: TokenListingStatus;
   /** When set, only include tokens currently listed. */
   listedOnly?: boolean;
-  /** Page size; sources may cap this. */
+  /** Number of results to return; sources may cap this. */
   limit?: number;
+  /** Number of matching results to skip. */
+  offset?: number;
 };
 
 export type ListTokensPage = {

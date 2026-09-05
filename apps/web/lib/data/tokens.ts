@@ -17,8 +17,10 @@ export async function getToken(tokenId: string): Promise<Token | null> {
 
 export async function listTokens(filter?: {
   category?: string;
+  status?: 'listed' | 'not-listed';
   limit?: number;
   listedOnly?: boolean;
+  offset?: number;
 }): Promise<Token[]> {
   const page = await getMarketSource().listTokens(filter);
   return page.tokens;

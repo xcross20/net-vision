@@ -8,6 +8,33 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   outputFileTracingRoot: path.resolve(__dirname, '..', '..'),
+  // Button Presser token art is delivered as SVG either through our
+  // own /api/media/token/[tokenId] route (server-generated) or via
+  // OpenSea's seadn.io mirror (read-only public CDN). The SVG bodies
+  // come from a closed set of trusted sources, so we can opt into
+  // Next's SVG image optimization here.
+  images: {
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'raw2.seadn.io',
+        pathname: '/robinhood/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'i.seadn.io',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'opensea.io',
+        pathname: '/**',
+      },
+    ],
+  },
   transpilePackages: [
     '@net-vision/taxonomy',
     '@net-vision/chain-config',

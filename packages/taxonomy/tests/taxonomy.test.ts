@@ -43,6 +43,19 @@ describe('classifyNumber', () => {
     expect(a.canonical).toBe('7');
   });
 
+  it('keeps the Presser value aligned with token 628', () => {
+    const result = classifyNumber('628');
+    expect(result.canonical).toBe('628');
+    expect(result.digitCount).toBe(3);
+    expect(result.traits).toContainEqual(
+      expect.objectContaining({
+        slug: 'digits-3',
+        family: 'digits',
+        label: '3 Digit',
+      }),
+    );
+  });
+
   it('rejects non-integer input', () => {
     expect(() => classifyNumber('1.5')).toThrow();
     expect(() => classifyNumber('abc')).toThrow();

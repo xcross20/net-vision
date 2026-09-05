@@ -5,4 +5,11 @@ export type {
   DataFreshness,
   Token,
 } from './types';
-export type { MarketSource, ListTokensFilter, ListTokensPage, Offer, Sale } from './source';
+export type {
+  MarketSource,
+  ListTokensFilter,
+  ListTokensPage,
+  TokenListingStatus,
+  Offer,
+  Sale,
+} from './source';
