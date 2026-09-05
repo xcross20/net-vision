@@ -1,8 +1,13 @@
 [build]
 builder = "NIXPACKS"
+# Override Nixpacks' auto-detected Next.js build. We wipe the
+# apps/web/.next directory first to defeat Railway's per-service
+# build cache so the homepage server bundle always reflects the
+# current source.
+buildCommand = "rm -rf apps/web/.next && cd apps/web && npm run build"
 
 [deploy]
-startCommand = "npm start"
+startCommand = "npm run start --workspace=apps/web"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
