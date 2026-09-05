@@ -38,10 +38,17 @@ export type Token = {
   lastSaleAt: number | null;
 };
 
+export type CategoryHighestSale = {
+  tokenId: string;
+  price: number;
+  occurredAt: number;
+};
+
 export type CategoryMetrics = {
   slug: string;
   name: string;
   family: string;
+  source: 'derived' | 'metadata' | 'curated' | 'game';
   description: string;
   /** Total deterministic member supply across the on-chain range. */
   memberSupply: number;
@@ -53,12 +60,25 @@ export type CategoryMetrics = {
   filteredMemberSupply: number;
   totalSupply: number;
   listedCount: number;
+  listedPercentage: number;
   /** Members whose listing state is LISTED or UNLISTED_VERIFIED. */
   verifiedCount: number;
   /** Members whose listing state is UNKNOWN or STALE. */
   unknownCount: number;
-  /** verifiedCount / memberSupply. */
+  /**
+   * For derived categories: verifiedCount / memberSupply.
+   * For metadata categories: min(membershipCoverage, marketCoverage).
+   */
   coveragePercent: number;
+  /**
+   * Share of expectedSupply with official metadata facets discovered.
+   * Derived categories report 1.
+   */
+  membershipCoverage: number;
+  /**
+   * Share of expectedSupply with LISTED or UNLISTED_VERIFIED market state.
+   */
+  marketCoverage: number;
   /** Partial coverage must never be presented as a final floor. */
   marketStatus: 'syncing' | 'live';
   owners: number;
@@ -66,14 +86,29 @@ export type CategoryMetrics = {
   floorPrice: number | null;
   /** Highest active ask in this category. null when nothing is listed. */
   ceilingPrice: number | null;
+  medianAsk: number | null;
   lastSalePrice: number | null;
   topOfferPrice: number | null;
+  offerCount: number;
   topSalePrice: number | null;
+  highestSale: CategoryHighestSale | null;
+  volume24h: number;
+  volume7d: number;
+  volume30d: number;
+  volumeAllTracked: number;
   /** Native-chain volume, denominated in ETH on Robinhood Chain. */
   volume24hNative: number;
   volume7dNative: number;
   sales24h: number;
   sales7d: number;
+  sales30d: number;
+  averageSale: number | null;
+  medianSale: number | null;
+  floorChange24h: number | null;
+  floorChange7d: number | null;
+  floorChange30d: number | null;
+  trendingScore: number;
+  trackedSince: number;
   /**
    * Per-digit-count sub-filter dimension. Only populated when the
    * category supports a sub-filter (currently `palindrome` for 2/3/4/5

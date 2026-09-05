@@ -16,8 +16,10 @@ Taxonomy may continue to `classifyNumber(tokenId)`. A separate `display_number` 
 
 - Token IDs 1–20
 - Boundaries: 9/10, 99/100, 999/1000, 9999/10000
-- Known examples: 966, 628, 870, 507, 756, 635
+- Known examples: 966, 628, 870, 507, 756, 635, 587, 700, 569, 830
 - 30 additional ids from a deterministic PRNG across 1..62095
+
+Queued for the next live probe (not in the 2026-09-05 fixture): 4999 / 5000, 19999 / 20000. Those Plate-range boundaries must not be used as membership.
 
 Every present sample matched. No identifier/Presser divergence.
 

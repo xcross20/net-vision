@@ -11,6 +11,15 @@
  * without changing classifier logic.
  */
 
+export * from './facets';
+import {
+  extractMetadataFacets,
+  mergeTokenFacets,
+  productFamilyForTraitFamily,
+  type NftMetadataInput,
+  type TokenFacet,
+} from './facets';
+
 export const CURRENT_TAXONOMY_VERSION = 1;
 
 export type TraitFamily =
@@ -18,7 +27,11 @@ export type TraitFamily =
   | 'structure'
   | 'sequence'
   | 'cultural'
-  | 'math';
+  | 'math'
+  | 'material'
+  | 'number'
+  | 'pattern'
+  | 'culture';
 
 export type NumberTrait = {
   slug: string;
@@ -406,26 +419,30 @@ function computeStructuralScore(traits: NumberTrait[]): number {
 }
 
 export const VIRTUAL_COLLECTION_CATALOG = [
-  { slug: 'digits-1', name: '1 Digit', family: 'digits' as const, description: 'Tokens numbered 1 through 9.' },
-  { slug: 'digits-2', name: '2 Digit', family: 'digits' as const, description: 'Tokens numbered 10 through 99.' },
-  { slug: 'digits-3', name: '3 Digit', family: 'digits' as const, description: 'Tokens numbered 100 through 999.' },
-  { slug: 'digits-4', name: '4 Digit', family: 'digits' as const, description: 'Tokens numbered 1,000 through 9,999.' },
-  { slug: 'digits-5', name: '5 Digit', family: 'digits' as const, description: 'Tokens numbered 10,000 through 99,999.' },
-  { slug: 'palindrome', name: 'Palindromes', family: 'structure' as const, description: 'Numbers that read the same forwards and backwards.' },
-  { slug: 'repdigit', name: 'Repeating Digits', family: 'structure' as const, description: 'Numbers made of one repeated digit (11, 222, 7777).' },
-  { slug: 'double', name: 'Doubles', family: 'structure' as const, description: 'Two identical adjacent digits.' },
-  { slug: 'triple', name: 'Triples', family: 'structure' as const, description: 'Three or more identical adjacent digits.' },
-  { slug: 'quad', name: 'Quads', family: 'structure' as const, description: 'Four or more identical adjacent digits.' },
-  { slug: 'ascending', name: 'Ascending Sequences', family: 'sequence' as const, description: 'Strictly ascending digit runs (1234, 6789).' },
-  { slug: 'descending', name: 'Descending Sequences', family: 'sequence' as const, description: 'Strictly descending digit runs (4321, 9876).' },
-  { slug: 'alternating', name: 'Alternating', family: 'sequence' as const, description: 'ABAB-style alternating patterns (6969, 1010).' },
-  { slug: 'bookend', name: 'Bookends', family: 'structure' as const, description: 'First and last digits match with a nontrivial interior.' },
-  { slug: 'round', name: 'Round Numbers', family: 'math' as const, description: 'Numbers with meaningful trailing zeros.' },
-  { slug: 'meme', name: 'Meme Numbers', family: 'cultural' as const, description: 'Curated culturally resonant numbers (69, 420, 1337).' },
-  { slug: 'lucky', name: 'Lucky Numbers', family: 'cultural' as const, description: 'Curated culturally lucky numbers.' },
-  { slug: 'year', name: 'Years', family: 'cultural' as const, description: 'Numbers in the configured year range.' },
-  { slug: 'binary-style', name: 'Binary Style', family: 'structure' as const, description: 'Numbers made up of only 0 and 1.' },
-  { slug: 'mirror-sequence', name: 'Mirror Sequences', family: 'sequence' as const, description: 'Palindromes with structured interior variation.' },
+  { slug: 'digits-1', name: '1 Digit', family: 'number' as const, source: 'derived' as const, description: 'Tokens numbered 1 through 9.' },
+  { slug: 'digits-2', name: '2 Digit', family: 'number' as const, source: 'derived' as const, description: 'Tokens numbered 10 through 99.' },
+  { slug: 'digits-3', name: '3 Digit', family: 'number' as const, source: 'derived' as const, description: 'Tokens numbered 100 through 999.' },
+  { slug: 'digits-4', name: '4 Digit', family: 'number' as const, source: 'derived' as const, description: 'Tokens numbered 1,000 through 9,999.' },
+  { slug: 'digits-5', name: '5 Digit', family: 'number' as const, source: 'derived' as const, description: 'Tokens numbered 10,000 through 99,999.' },
+  { slug: 'material-brass', name: 'Brass', family: 'material' as const, source: 'metadata' as const, expectedSupply: 999, description: 'Official Plate trait: Brass.' },
+  { slug: 'material-steel', name: 'Steel', family: 'material' as const, source: 'metadata' as const, expectedSupply: 4000, description: 'Official Plate trait: Steel.' },
+  { slug: 'material-anodised-aluminium', name: 'Anodised Aluminium', family: 'material' as const, source: 'metadata' as const, expectedSupply: 15000, description: 'Official Plate trait: Anodised aluminium.' },
+  { slug: 'material-printed-phenolic', name: 'Printed Phenolic', family: 'material' as const, source: 'metadata' as const, expectedSupply: 42094, description: 'Official Plate trait: Printed phenolic.' },
+  { slug: 'palindrome', name: 'Palindromes', family: 'pattern' as const, source: 'derived' as const, description: 'Numbers that read the same forwards and backwards.' },
+  { slug: 'repdigit', name: 'Repeating Digits', family: 'pattern' as const, source: 'derived' as const, description: 'Numbers made of one repeated digit (11, 222, 7777).' },
+  { slug: 'double', name: 'Doubles', family: 'pattern' as const, source: 'derived' as const, description: 'Two identical adjacent digits.' },
+  { slug: 'triple', name: 'Triples', family: 'pattern' as const, source: 'derived' as const, description: 'Three or more identical adjacent digits.' },
+  { slug: 'quad', name: 'Quads', family: 'pattern' as const, source: 'derived' as const, description: 'Four or more identical adjacent digits.' },
+  { slug: 'ascending', name: 'Ascending Sequences', family: 'pattern' as const, source: 'derived' as const, description: 'Strictly ascending digit runs (1234, 6789).' },
+  { slug: 'descending', name: 'Descending Sequences', family: 'pattern' as const, source: 'derived' as const, description: 'Strictly descending digit runs (4321, 9876).' },
+  { slug: 'alternating', name: 'Alternating', family: 'pattern' as const, source: 'derived' as const, description: 'ABAB-style alternating patterns (6969, 1010).' },
+  { slug: 'bookend', name: 'Bookends', family: 'pattern' as const, source: 'derived' as const, description: 'First and last digits match with a nontrivial interior.' },
+  { slug: 'round', name: 'Round Numbers', family: 'pattern' as const, source: 'derived' as const, description: 'Numbers with meaningful trailing zeros.' },
+  { slug: 'meme', name: 'Meme Numbers', family: 'culture' as const, source: 'curated' as const, description: 'Curated culturally resonant numbers (69, 420, 1337).' },
+  { slug: 'lucky', name: 'Lucky Numbers', family: 'culture' as const, source: 'curated' as const, description: 'Curated culturally lucky numbers.' },
+  { slug: 'year', name: 'Years', family: 'culture' as const, source: 'curated' as const, description: 'Numbers in the configured year range.' },
+  { slug: 'binary-style', name: 'Binary Style', family: 'pattern' as const, source: 'derived' as const, description: 'Numbers made up of only 0 and 1.' },
+  { slug: 'mirror-sequence', name: 'Mirror Sequences', family: 'pattern' as const, source: 'derived' as const, description: 'Palindromes with structured interior variation.' },
 ] as const;
 
 export type VirtualCollectionSlug = (typeof VIRTUAL_COLLECTION_CATALOG)[number]['slug'];
@@ -472,12 +489,56 @@ function assertInRange(n: number, range: SupplyRange): void {
  * surface category membership counts and by the palindrome filter to
  * sub-divide by digit count.
  */
+export function classifyDerivedFacets(displayNumber: string): TokenFacet[] {
+  const result = classifyNumber(displayNumber);
+  return result.traits
+    .filter((trait) => trait.family !== 'cultural')
+    .map((trait) => ({
+      tokenId: result.canonical,
+      family: productFamilyForTraitFamily(trait.family),
+      slug: trait.slug,
+      label: trait.label,
+      source: 'derived' as const,
+      sourceVersion: `taxonomy-${CURRENT_TAXONOMY_VERSION}`,
+      metadata: trait.metadata,
+    }));
+}
+
+export function getCuratedFacets(displayNumber: string): TokenFacet[] {
+  const result = classifyNumber(displayNumber);
+  return result.traits
+    .filter((trait) => trait.family === 'cultural')
+    .map((trait) => ({
+      tokenId: result.canonical,
+      family: 'culture' as const,
+      slug: trait.slug,
+      label: trait.label,
+      source: 'curated' as const,
+      sourceVersion: `taxonomy-${CURRENT_TAXONOMY_VERSION}`,
+      metadata: trait.metadata,
+    }));
+}
+
+export function facetsForToken(
+  displayNumber: string,
+  metadata?: NftMetadataInput | null,
+): TokenFacet[] {
+  return mergeTokenFacets([
+    classifyDerivedFacets(displayNumber),
+    getCuratedFacets(displayNumber),
+    extractMetadataFacets(displayNumber, metadata),
+  ]);
+}
+
 export function enumerateMembers(
   slug: string,
   range: SupplyRange = DEFAULT_SUPPLY_RANGE,
 ): MemberSet {
   const meta = getVirtualCollection(slug);
   if (!meta) {
+    return { slug, count: 0, members: [] };
+  }
+  if (meta.source === 'metadata') {
     return { slug, count: 0, members: [] };
   }
   const members: string[] = [];

@@ -23,7 +23,10 @@ import {
 import {
   classifyNumber,
   enumerateMembers,
+  extractMetadataFacets,
+  facetsForToken,
   isMember,
+  VIRTUAL_COLLECTION_CATALOG,
   type NumberTrait,
   type MemberSet,
 } from '@net-vision/taxonomy';
@@ -41,9 +44,40 @@ import {
   type CategoryTotals,
 } from './catalog';
 import { isMissingOpenSeaResource, isOpenSeaRateLimited } from './opensea-errors';
-import { allListingRecords, loadIndex } from '@/lib/index/store';
-import { startBackgroundIndexer } from '@/lib/index/worker';
-import type { ListingObservation } from './listing-state';
+import {
+  allAttributions,
+  allListingRecords,
+  allSales,
+  appendFloorSnapshot,
+  floorHistory as storedFloorHistory,
+  historyStartedAt,
+  ingestSales,
+  hydrateIndexFromPostgres,
+  listingRecord,
+  loadIndex,
+  persistNftMetadata,
+  saveIndex,
+  tokenFacets,
+  writeListing,
+} from '@/lib/index/store';
+import { PRIORITY_TOKEN_IDS, startBackgroundIndexer } from '@/lib/index/worker';
+import {
+  applyListedPercentage,
+  attributeSale,
+  computeCategoryMarketStats,
+  previewFloorSweep,
+  trendingComponentsFromStats,
+  trendingScore,
+  type FloorSnapshot,
+  type SweepPreview,
+  type SweepPreviewInput,
+  MS_DAY,
+} from './engine';
+import {
+  applyObservation,
+  categoryReadiness,
+  type ListingObservation,
+} from './listing-state';
 import { buildTokenImageUrl } from '@/lib/data/media';
 import type {
   CategoryMetrics,
@@ -57,6 +91,7 @@ import type {
   MarketSource,
   Offer,
   Sale,
+  SalesWindow,
 } from './source';
 import { DEFAULT_PAYMENT_CURRENCY } from './types';
 
@@ -231,18 +266,36 @@ class OpenSeaMarketSource implements MarketSource {
       maxTokenId: BUTTON_PRESSER_COLLECTION.maxTokenId,
     });
     this.hydrateFromIndex();
-    startBackgroundIndexer((tokenId) => this.lookupListingObservation(tokenId), (record) => {
-      this.catalog.hydrateListingRecord(record);
-      this.categories.clear();
-      this.tokenPages.clear();
-    });
+    void hydrateIndexFromPostgres()
+      .then((restored) => {
+        if (restored) this.hydrateFromIndex();
+      })
+      .catch(() => {
+        /* Postgres optional until DATABASE_URL + schema are live */
+      });
+    startBackgroundIndexer(
+      (tokenId) => this.lookupListingObservation(tokenId),
+      (record) => {
+        this.catalog.hydrateListingRecord(record);
+        this.categories.clear();
+        this.tokenPages.clear();
+      },
+      async (tokenId) => {
+        const nft = await this.fetchNFT(tokenId);
+        return nft !== null;
+      },
+    );
   }
 
   private hydrateFromIndex(): void {
-    loadIndex();
+    const snap = loadIndex();
     for (const record of allListingRecords()) {
       this.catalog.hydrateListingRecord(record);
     }
+    for (const [tokenId, facets] of Object.entries(snap.tokenFacets ?? {})) {
+      this.catalog.attachFacets(tokenId, facets);
+    }
+    this.catalog.ingestSales(snap.sales ?? []);
   }
 
   private async lookupListingObservation(tokenId: string): Promise<ListingObservation> {
@@ -336,6 +389,13 @@ class OpenSeaMarketSource implements MarketSource {
         tokenId,
       });
       this.nfts.set(tokenId, { value: nft, fetchedAt: Date.now() });
+      const facets = persistNftMetadata(tokenId, {
+        name: nft.name ?? null,
+        imageUrl: nft.display_image_url ?? nft.image_url ?? null,
+        ownerAddress: nftOwnerAddress(nft),
+        traits: nft.traits,
+      });
+      this.catalog.attachFacets(tokenId, facets);
       return nft;
     } catch (err) {
       if (!isMissingResource(err)) {
@@ -420,15 +480,32 @@ class OpenSeaMarketSource implements MarketSource {
     const stale = cached?.value ?? [];
     if (isFresh(cached)) return cached.value;
     if (this.isCoolingDown()) return stale;
-    // OpenSea's public orderbook window is a single page of 200. The
-    // `next` cursor currently loops the same page, so walking further
-    // duplicates listings (e.g. palindrome #35853 twenty times).
-    let page: { listings: Order[] };
+    // Prefer `/best` (price-ascending floors) and merge `/all` (recent asks).
+    // `/all` alone is not reliably price-sorted on Robinhood and was missing
+    // digit-range floors while returning high token ids at 1.25 USDG.
+    let bestPage: { listings: Order[] } = { listings: [] };
+    let allPage: { listings: Order[] } = { listings: [] };
     try {
-      page = await this.client.getCollectionListings({
-        slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-        limit: ORDERBOOK_PAGE_SIZE,
-      });
+      const [bestResult, allResult] = await Promise.allSettled([
+        this.client.getCollectionBestListings({
+          slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+          limit: ORDERBOOK_PAGE_SIZE,
+        }),
+        this.client.getCollectionListings({
+          slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+          limit: ORDERBOOK_PAGE_SIZE,
+        }),
+      ]);
+      if (bestResult.status === 'fulfilled') bestPage = bestResult.value;
+      else if (isOpenSeaRateLimited(bestResult.reason)) this.noteRateLimit();
+      if (allResult.status === 'fulfilled') allPage = allResult.value;
+      else if (isOpenSeaRateLimited(allResult.reason)) this.noteRateLimit();
+      if (bestResult.status === 'rejected' && allResult.status === 'rejected') {
+        console.error(
+          `OpenSea orderbook ingest failed: ${bestResult.reason instanceof Error ? bestResult.reason.message : String(bestResult.reason)}`,
+        );
+        return stale;
+      }
     } catch (err) {
       if (isOpenSeaRateLimited(err)) this.noteRateLimit();
       console.error(
@@ -437,7 +514,7 @@ class OpenSeaMarketSource implements MarketSource {
       return stale;
     }
     const unique = new Map<string, Order>();
-    for (const order of page.listings) {
+    for (const order of [...bestPage.listings, ...allPage.listings]) {
       const catalogListing = orderToCatalogListing(order);
       if (!catalogListing) continue;
       const existing = unique.get(catalogListing.tokenId);
@@ -451,14 +528,32 @@ class OpenSeaMarketSource implements MarketSource {
       }
     }
     const orders = [...unique.values()];
-    this.catalog.ingestListings(
-      orders
-        .map(orderToCatalogListing)
-        .filter((listing): listing is CatalogListing => listing !== null),
-    );
+    const catalogListings = orders
+      .map(orderToCatalogListing)
+      .filter((listing): listing is CatalogListing => listing !== null);
+    this.catalog.ingestListings(catalogListings);
+    // Persist orderbook asks into the durable index so a worker false
+    // "no-ask" (e.g. #966) cannot stick as UNLISTED_VERIFIED while OpenSea
+    // still shows the floor listing.
+    for (const listing of catalogListings) {
+      const next = applyObservation(listingRecord(listing.tokenId), {
+        kind: 'ask',
+        price: listing.price,
+        currency: listing.currency,
+        orderHash: listing.orderHash,
+        seller: listing.ownerAddress,
+        listedAt: listing.listedAt,
+      });
+      writeListing(next);
+      this.catalog.hydrateListingRecord(next);
+    }
+    saveIndex();
     this.collectionOrders.set(ORDERBOOK_PAGE_SIZE, { value: orders, fetchedAt: Date.now() });
     this.orderbookIngestedAt = Date.now();
     this.tokenPages.clear();
+    this.categories.clear();
+    // Re-check known floor examples even if the worker previously marked them unlisted.
+    void this.confirmVisibleListings([...PRIORITY_TOKEN_IDS], { force: true });
     return orders;
   }
 
@@ -475,6 +570,12 @@ class OpenSeaMarketSource implements MarketSource {
         .map(eventToCatalogSale)
         .filter((sale): sale is CatalogSale => sale !== null);
       this.catalog.ingestSales(sales);
+      const attributions = sales.flatMap((sale) => {
+        const stored = tokenFacets(sale.tokenId);
+        const facets = stored.length > 0 ? stored : facetsForToken(sale.tokenId);
+        return attributeSale(sale, facets);
+      });
+      ingestSales(sales, attributions);
       this.salesIngestedAt = Date.now();
     } catch (err) {
       console.error(
@@ -488,10 +589,18 @@ class OpenSeaMarketSource implements MarketSource {
    * Confirm only the tokens currently on screen. Never walk the full
    * supply: a collection-wide best-listing scan 429s OpenSea and takes
    * category pages down with it.
+   *
+   * Pass `force: true` to re-check already-scanned ids (priority floor
+   * tokens that may have been wrongly marked UNLISTED_VERIFIED).
    */
-  private async confirmVisibleListings(tokenIds: string[]): Promise<void> {
+  private async confirmVisibleListings(
+    tokenIds: string[],
+    options: { force?: boolean } = {},
+  ): Promise<void> {
     if (tokenIds.length === 0 || this.isCoolingDown()) return;
-    const pending = tokenIds.filter((tokenId) => !this.catalog.isScanned(tokenId));
+    const pending = options.force
+      ? tokenIds
+      : tokenIds.filter((tokenId) => !this.catalog.isScanned(tokenId));
     if (pending.length === 0) return;
 
     let stopped = false;
@@ -502,10 +611,31 @@ class OpenSeaMarketSource implements MarketSource {
           slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
           tokenId,
         });
-        this.catalog.confirmScan(tokenId, listing ? orderToCatalogListing(listing) : null);
+        const catalogListing = listing ? orderToCatalogListing(listing) : null;
+        if (catalogListing) {
+          this.catalog.confirmScan(tokenId, catalogListing);
+          const next = applyObservation(listingRecord(tokenId), {
+            kind: 'ask',
+            price: catalogListing.price,
+            currency: catalogListing.currency,
+            orderHash: catalogListing.orderHash,
+            seller: catalogListing.ownerAddress,
+            listedAt: catalogListing.listedAt,
+          });
+          writeListing(next);
+          this.catalog.hydrateListingRecord(next);
+        } else if (!options.force) {
+          // Force re-checks are ask-only. OpenSea's best-listing endpoint
+          // 404s on Robinhood for tokens that still appear in the collection
+          // orderbook (seen with floor #966 / #756) — never downgrade on that.
+          this.catalog.confirmScan(tokenId, null);
+          const next = applyObservation(listingRecord(tokenId), { kind: 'no-ask' });
+          writeListing(next);
+          this.catalog.hydrateListingRecord(next);
+        }
       } catch (err) {
         if (isMissingResource(err)) {
-          this.catalog.confirmScan(tokenId, null);
+          if (!options.force) this.catalog.confirmScan(tokenId, null);
           return;
         }
         if (isOpenSeaRateLimited(err)) {
@@ -522,6 +652,7 @@ class OpenSeaMarketSource implements MarketSource {
       confirm,
       new Promise<void>((resolve) => setTimeout(resolve, VISIBLE_CONFIRM_BUDGET_MS)),
     ]);
+    saveIndex();
   }
 
   private async fetchListingsPage(filter?: ListTokensFilter): Promise<ListTokensPage> {
@@ -558,22 +689,39 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   private async hydrateListedTokens(tokenIds: string[]): Promise<Token[]> {
-    const tokens = await mapWithConcurrency(tokenIds, NFT_METADATA_CONCURRENCY, async (tokenId) => {
+    // Build from the catalog first so the listings grid never depends on
+    // per-token NFT fetches (those 429 and used to blank the API).
+    const tokens = tokenIds.map((tokenId) => {
       const cached = this.tokens.get(tokenId);
       if (isFresh(cached) && cached.value.listingPrice !== null) return cached.value;
       const listing = this.catalog.listingFor(tokenId);
       if (!listing) return null;
       const listedToken = catalogListingToToken(listing, this.catalog.traitsFor(tokenId));
-      const nft = this.isCoolingDown() ? null : await this.fetchNFT(tokenId);
-      const token = nft ? mergeListedTokenWithNft(listedToken, nft) : listedToken;
       const lastSale = this.catalog.lastSaleFor(tokenId);
       const withSale = lastSale
-        ? { ...token, lastSalePrice: lastSale.price, lastSaleAt: lastSale.occurredAt }
-        : token;
+        ? { ...listedToken, lastSalePrice: lastSale.price, lastSaleAt: lastSale.occurredAt }
+        : listedToken;
       this.tokens.set(tokenId, { value: withSale, fetchedAt: Date.now() });
       return withSale;
     });
-    return tokens.filter((token): token is Token => token !== null);
+    const ready = tokens.filter((token): token is Token => token !== null);
+    // Best-effort image/name enrichment for the visible page only.
+    if (!this.isCoolingDown()) {
+      const missing = ready.filter((token) => !token.imageUrl).slice(0, 12);
+      await mapWithConcurrency(missing, NFT_METADATA_CONCURRENCY, async (token) => {
+        try {
+          const nft = await this.fetchNFT(token.tokenId);
+          if (!nft) return;
+          const merged = mergeListedTokenWithNft(token, nft);
+          this.tokens.set(token.tokenId, { value: merged, fetchedAt: Date.now() });
+          const idx = ready.findIndex((row) => row.tokenId === token.tokenId);
+          if (idx >= 0) ready[idx] = merged;
+        } catch {
+          /* keep catalog-only row */
+        }
+      });
+    }
+    return ready;
   }
 
   async getCollectionSnapshot(): Promise<CollectionSnapshot> {
@@ -631,12 +779,57 @@ class OpenSeaMarketSource implements MarketSource {
     return snapshot;
   }
 
-  async getCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
-    const cached = this.categories.get(slug);
-    if (isFresh(cached)) return cached.value;
-    await this.ensurePipeline();
+  private async composeCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
+    const meta = VIRTUAL_COLLECTION_CATALOG.find((entry) => entry.slug === slug);
+    if (!meta) return null;
     const snapshot = await this.getCollectionSnapshot();
     const totals = this.catalog.categoryTotals(slug);
+    const memberSupply =
+      meta.source === 'metadata' && meta.expectedSupply ? meta.expectedSupply : totals.memberSupply;
+    const listings = this.catalog
+      .listedIds(slug)
+      .map((tokenId) => this.catalog.listingFor(tokenId))
+      .filter((row): row is CatalogListing => row !== undefined);
+    const offers = await this.listRecentOffers(50).catch(() => [] as Offer[]);
+    const stats = applyListedPercentage(
+      computeCategoryMarketStats({
+        slug,
+        listings,
+        attributions: allAttributions(),
+        sales: allSales(),
+        offers,
+        floorHistory: storedFloorHistory(slug),
+        trackedSince: historyStartedAt(),
+      }),
+      memberSupply,
+    );
+    const discoveredMembers =
+      meta.source === 'metadata' ? this.catalog.memberIds(slug).length : memberSupply;
+    const readiness = categoryReadiness({
+      source: meta.source,
+      expectedSupply: memberSupply,
+      discoveredMembers,
+      verifiedMarketMembers: totals.verifiedCount,
+    });
+    if (readiness.marketStatus === 'live') {
+      appendFloorSnapshot(slug, {
+        at: Date.now(),
+        floor: stats.floorPrice,
+        listed: stats.listedCount,
+      });
+    }
+    const trend = trendingScore(
+      trendingComponentsFromStats({
+        volume24h: stats.volume24h,
+        volume7d: stats.volume7d,
+        sales24h: stats.sales24h,
+        sales7d: stats.sales7d,
+        floorChange24h: stats.floorChange24h,
+        offerCount: stats.offerCount,
+        listedCount: stats.listedCount,
+        memberSupply,
+      }),
+    );
     const subFilter =
       slug === 'palindrome'
         ? {
@@ -651,64 +844,79 @@ class OpenSeaMarketSource implements MarketSource {
             }),
           }
         : undefined;
-    const metrics: CategoryMetrics = {
+    const verifiedCount = totals.verifiedCount;
+    const unknownCount = Math.max(memberSupply - verifiedCount, 0);
+    const liveFloor = readiness.marketStatus === 'syncing' ? null : stats.floorPrice;
+    return {
       slug,
-      name: slug,
-      family: 'unknown',
-      description: '',
-      memberSupply: totals.memberSupply,
-      filteredMemberSupply: totals.memberSupply,
+      name: meta.name,
+      family: meta.family,
+      source: meta.source,
+      description: meta.description,
+      memberSupply,
+      filteredMemberSupply: memberSupply,
       totalSupply: snapshot.totalSupply,
       listedCount: totals.listedCount,
-      verifiedCount: totals.verifiedCount,
-      unknownCount: totals.unknownCount,
-      coveragePercent: totals.coveragePercent,
-      marketStatus: totals.marketStatus,
-      owners: totals.owners,
+      listedPercentage: stats.listedPercentage,
+      verifiedCount,
+      unknownCount,
+      coveragePercent: Math.min(readiness.membershipCoverage, readiness.marketCoverage),
+      membershipCoverage: readiness.membershipCoverage,
+      marketCoverage: readiness.marketCoverage,
+      marketStatus: readiness.marketStatus,
+      owners: stats.owners,
       currency: snapshot.currency,
-      floorPrice: totals.floorPrice,
-      ceilingPrice: totals.ceilingPrice,
-      lastSalePrice: totals.lastSalePrice,
-      topOfferPrice: null,
-      topSalePrice: totals.lastSalePrice,
+      floorPrice: liveFloor,
+      ceilingPrice: readiness.marketStatus === 'syncing' ? null : stats.highestAsk,
+      medianAsk: readiness.marketStatus === 'syncing' ? null : stats.medianAsk,
+      lastSalePrice: stats.highestSale?.price ?? totals.lastSalePrice,
+      topOfferPrice: stats.bestOffer,
+      offerCount: stats.offerCount,
+      topSalePrice: stats.highestSale?.price ?? null,
+      highestSale: stats.highestSale
+        ? {
+            tokenId: stats.highestSale.tokenId,
+            price: stats.highestSale.price,
+            occurredAt: stats.highestSale.occurredAt,
+          }
+        : null,
+      volume24h: stats.volume24h,
+      volume7d: stats.volume7d,
+      volume30d: stats.volume30d,
+      volumeAllTracked: stats.volumeAllTracked,
       volume24hNative: 0,
       volume7dNative: 0,
-      sales24h: 0,
-      sales7d: 0,
+      sales24h: stats.sales24h,
+      sales7d: stats.sales7d,
+      sales30d: stats.sales30d,
+      averageSale: stats.averageSale,
+      medianSale: stats.medianSale,
+      floorChange24h: stats.floorChange24h,
+      floorChange7d: stats.floorChange7d,
+      floorChange30d: stats.floorChange30d,
+      trendingScore: trend.score,
+      trackedSince: stats.trackedSince,
       subFilter,
     };
-    this.categories.set(slug, { value: metrics, fetchedAt: Date.now() });
+  }
+
+  async getCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
+    const cached = this.categories.get(slug);
+    if (isFresh(cached)) return cached.value;
+    await this.ensurePipeline();
+    const metrics = await this.composeCategoryMetrics(slug);
+    if (metrics) this.categories.set(slug, { value: metrics, fetchedAt: Date.now() });
     return metrics;
   }
 
   async listCategories(): Promise<CategoryMetrics[]> {
     await this.ensurePipeline();
-    const snapshot = await this.getCollectionSnapshot();
-    return this.catalog.allCategoryTotals().map((totals: CategoryTotals) => ({
-      slug: totals.slug,
-      name: totals.slug,
-      family: 'unknown',
-      description: '',
-      memberSupply: totals.memberSupply,
-      filteredMemberSupply: totals.memberSupply,
-      totalSupply: snapshot.totalSupply,
-      listedCount: totals.listedCount,
-      verifiedCount: totals.verifiedCount,
-      unknownCount: totals.unknownCount,
-      coveragePercent: totals.coveragePercent,
-      marketStatus: totals.marketStatus,
-      owners: totals.owners,
-      currency: snapshot.currency,
-      floorPrice: totals.floorPrice,
-      ceilingPrice: totals.ceilingPrice,
-      lastSalePrice: totals.lastSalePrice,
-      topOfferPrice: null,
-      topSalePrice: totals.lastSalePrice,
-      volume24hNative: 0,
-      volume7dNative: 0,
-      sales24h: 0,
-      sales7d: 0,
-    }));
+    const rows: CategoryMetrics[] = [];
+    for (const entry of VIRTUAL_COLLECTION_CATALOG) {
+      const metrics = await this.composeCategoryMetrics(entry.slug);
+      if (metrics) rows.push(metrics);
+    }
+    return rows;
   }
 
   async listRecentSales(limit = 20): Promise<Sale[]> {
@@ -816,6 +1024,107 @@ class OpenSeaMarketSource implements MarketSource {
     return offers;
   }
 
+  async listAccountTokens(address: string): Promise<Token[]> {
+    const chain = await this.ensureChain();
+    if (!chain) return [];
+    try {
+      const page = await this.client.getAccountNfts({
+        chain: chain.chain,
+        address,
+        collection: BUTTON_PRESSER_COLLECTION.openseaSlug,
+        limit: 50,
+      });
+      const owned = page.nfts.filter((nft) => {
+        const contract = nft.contract?.toLowerCase();
+        return !contract || contract === BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase();
+      });
+      const tokens: Token[] = [];
+      for (const nft of owned) {
+        const tokenId = String(nft.identifier);
+        if (!/^\d+$/.test(tokenId)) continue;
+        persistNftMetadata(tokenId, {
+          name: nft.name ?? null,
+          imageUrl: nft.display_image_url ?? nft.image_url ?? null,
+          ownerAddress: address.toLowerCase(),
+          traits: nft.traits,
+        });
+        const listing = this.catalog.listingFor(tokenId);
+        const token = nftToToken(tokenId, nft);
+        tokens.push(
+          listing
+            ? {
+                ...token,
+                listingPrice: listing.price,
+                currency: listing.currency,
+                listedAt: listing.listedAt,
+                ownerAddress: address.toLowerCase(),
+              }
+            : { ...token, ownerAddress: address.toLowerCase() },
+        );
+      }
+      return tokens;
+    } catch (err) {
+      console.error(
+        `OpenSea account NFTs failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return this.getAccountListings(address);
+    }
+  }
+
+  async listCategorySales(
+    slug: string,
+    options: { window?: SalesWindow; limit?: number } = {},
+  ): Promise<Sale[]> {
+    await this.ensurePipeline();
+    const now = Date.now();
+    const windowMs =
+      options.window === '24h'
+        ? MS_DAY
+        : options.window === '7d'
+          ? 7 * MS_DAY
+          : options.window === '30d'
+            ? 30 * MS_DAY
+            : null;
+    const attributedIds = new Set(
+      allAttributions()
+        .filter((row) => row.categorySlug === slug)
+        .map((row) => row.saleEventId),
+    );
+    const sales = allSales().filter((sale) => {
+      const id = `${sale.orderHash ? `sale:${sale.orderHash}:${sale.tokenId}` : `sale:${sale.tokenId}:${sale.occurredAt}:${sale.price}`}`;
+      if (!attributedIds.has(id) && !this.catalog.slugsFor(sale.tokenId).includes(slug)) {
+        return false;
+      }
+      if (windowMs !== null && sale.occurredAt * 1000 < now - windowMs) return false;
+      return true;
+    });
+    return sales.slice(0, options.limit ?? 50).map(catalogSaleToSale);
+  }
+
+  async listCategoryTopSales(slug: string, limit = 10): Promise<Sale[]> {
+    const sales = await this.listCategorySales(slug, { window: 'all', limit: 200 });
+    return [...sales].sort((a, b) => b.price - a.price).slice(0, limit);
+  }
+
+  async listCategoryOffers(slug: string, limit = 20): Promise<Offer[]> {
+    const offers = await this.listRecentOffers(50);
+    const members = new Set(this.catalog.memberIds(slug));
+    return offers.filter((offer) => members.has(offer.tokenId)).slice(0, limit);
+  }
+
+  async previewSweep(slug: string, input: SweepPreviewInput): Promise<SweepPreview> {
+    await this.ensurePipeline();
+    const listings = this.catalog
+      .listedIds(slug)
+      .map((tokenId) => this.catalog.listingFor(tokenId))
+      .filter((row): row is CatalogListing => row !== undefined);
+    return previewFloorSweep(listings, input);
+  }
+
+  async floorHistory(slug: string): Promise<FloorSnapshot[]> {
+    return storedFloorHistory(slug);
+  }
+
   async getFreshness(): Promise<DataFreshness> {
     if (!this.collectionCache) await this.getCollectionSnapshot();
     const refreshedAt = this.collectionCache?.fetchedAt ?? null;
@@ -887,17 +1196,15 @@ function mergeTraits(
   base: NumberTrait[],
   openSeaTraits: NonNullable<NftInfo['traits']>,
 ): NumberTrait[] {
-  const byTraitType = new Map<string, string>();
-  for (const trait of openSeaTraits) {
-    if (trait.trait_type && trait.value !== undefined) {
-      byTraitType.set(trait.trait_type.toLowerCase(), String(trait.value));
-    }
-  }
-  return base.map((trait) => {
-    const labelOverride = byTraitType.get(trait.label.toLowerCase());
-    if (!labelOverride) return trait;
-    return { ...trait, label: labelOverride };
-  });
+  const plate = extractMetadataFacets('_', { traits: openSeaTraits }).map((facet) => ({
+    slug: facet.slug,
+    family: 'material' as const,
+    label: facet.label,
+    metadata: facet.metadata,
+  }));
+  const seen = new Set(base.map((trait) => trait.slug));
+  const extras = plate.filter((trait) => !seen.has(trait.slug));
+  return [...base, ...extras];
 }
 
 function buildUnlistedCategoryToken(tokenId: string): Token {
@@ -1168,6 +1475,24 @@ class FailingMarketSource implements MarketSource {
     return [];
   }
   async getAccountOffers(): Promise<Offer[]> {
+    return [];
+  }
+  async listAccountTokens(): Promise<Token[]> {
+    return [];
+  }
+  async listCategorySales(): Promise<Sale[]> {
+    return [];
+  }
+  async listCategoryTopSales(): Promise<Sale[]> {
+    return [];
+  }
+  async listCategoryOffers(): Promise<Offer[]> {
+    return [];
+  }
+  async previewSweep() {
+    return { strategy: 'floor' as const, items: [], count: 0, total: 0, currency: 'USDG', truncated: false };
+  }
+  async floorHistory() {
     return [];
   }
   async getFreshness(): Promise<DataFreshness> {

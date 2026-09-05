@@ -298,6 +298,15 @@ export const NftResponseSchema = z
   })
   .passthrough();
 
+export const AccountNftsPageSchema = z
+  .object({
+    nfts: z.array(NftInfoSchema),
+    next: z.string().nullish(),
+  })
+  .passthrough();
+
+export type AccountNftsPage = z.infer<typeof AccountNftsPageSchema>;
+
 /* -------------------------------------------------------------------------- */
 /*  Collection stats                                                           */
 /* -------------------------------------------------------------------------- */
@@ -554,6 +563,25 @@ export class OpenSeaClient {
   }
 
   /**
+   * Cheapest active listings for a collection (price-ascending).
+   * OpenSea v2 `GET /api/v2/listings/collection/{slug}/best`.
+   * Prefer this over `/all` when hydrating floors — `/all` is not
+   * reliably price-sorted on Robinhood.
+   */
+  async getCollectionBestListings(input: {
+    slug: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<CollectionListingsPage> {
+    return this.request(
+      'GET',
+      `/api/v2/listings/collection/${encodeURIComponent(input.slug)}/best`,
+      CollectionListingsPageSchema,
+      { query: { cursor: input.cursor, limit: input.limit } },
+    );
+  }
+
+  /**
    * Page through collection-wide offers (bids on any token in the
    * collection). OpenSea v2 `GET /api/v2/offers/collection/{slug}/all`.
    */
@@ -671,6 +699,27 @@ export class OpenSeaClient {
     const path = `/api/v2/chain/${encodeURIComponent(input.chain)}/contract/${encodeURIComponent(input.contractAddress)}/nfts/${encodeURIComponent(input.tokenId)}`;
     const envelope = await this.request('GET', path, NftResponseSchema);
     return envelope.nft;
+  }
+
+  /**
+   * NFTs owned by a wallet on a chain.
+   * `GET /api/v2/chain/{chain}/account/{address}/nfts`.
+   */
+  async getAccountNfts(input: {
+    chain: string;
+    address: string;
+    limit?: number;
+    next?: string;
+    collection?: string;
+  }): Promise<AccountNftsPage> {
+    const path = `/api/v2/chain/${encodeURIComponent(input.chain)}/account/${encodeURIComponent(input.address)}/nfts`;
+    return this.request('GET', path, AccountNftsPageSchema, {
+      query: {
+        limit: input.limit,
+        next: input.next,
+        collection: input.collection,
+      },
+    });
   }
 
   /**

@@ -55,17 +55,32 @@ export function CategoryRow({
               ? payment(metrics.floorPrice, metrics.currency)
               : '—'}
         </span>
-        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-20 md:text-right">
-          {metrics.memberSupply.toLocaleString()}
+        <span
+          className={cn(
+            'hidden text-numeral text-sm md:inline-block md:w-20 md:text-right',
+            (metrics.floorChange24h ?? 0) > 0 && 'text-[var(--color-net-green)]',
+            (metrics.floorChange24h ?? 0) < 0 && 'text-[var(--color-danger)]',
+          )}
+        >
+          {metrics.marketStatus === 'syncing' ? '—' : pct(metrics.floorChange24h)}
         </span>
-        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-16 md:text-right">
-          {metrics.listedCount.toLocaleString()}
-        </span>
-        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-20 md:text-right">
-          {metrics.owners.toLocaleString()}
+        <span
+          className={cn(
+            'hidden text-numeral text-sm md:inline-block md:w-20 md:text-right',
+            (metrics.floorChange7d ?? 0) > 0 && 'text-[var(--color-net-green)]',
+            (metrics.floorChange7d ?? 0) < 0 && 'text-[var(--color-danger)]',
+          )}
+        >
+          {metrics.marketStatus === 'syncing' ? '—' : pct(metrics.floorChange7d)}
         </span>
         <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-24 md:text-right">
-          {compact(metrics.volume24hNative)} ETH
+          {metrics.marketStatus === 'syncing' ? '—' : compact(metrics.volume24h)}
+        </span>
+        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-20 md:text-right">
+          {metrics.sales24h.toLocaleString()}
+        </span>
+        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-20 md:text-right">
+          {metrics.listedCount.toLocaleString()}
         </span>
         <span
           className={cn(
@@ -96,9 +111,9 @@ export function CategoryRow({
           unit={metrics.marketStatus === 'syncing' ? undefined : metrics.currency}
           emphasis
         />
-        <Cell label="Members" value={metrics.memberSupply.toLocaleString()} />
         <Cell label="Listed" value={metrics.listedCount.toLocaleString()} />
-        <Cell label="Owners" value={metrics.owners.toLocaleString()} />
+        <Cell label="Sales" value={metrics.sales24h.toLocaleString()} />
+        <Cell label="Members" value={metrics.memberSupply.toLocaleString()} />
       </div>
       <div className="flex items-center justify-between text-[11px] text-[var(--color-text-tertiary)] md:hidden">
         <LiveIndicator
@@ -107,7 +122,7 @@ export function CategoryRow({
           label={metrics.marketStatus === 'syncing' ? 'Syncing' : 'Live'}
         />
         <span className="text-numeral">
-          Vol 24h {compact(metrics.volume24hNative)} ETH
+          Vol 24h {metrics.marketStatus === 'syncing' ? '—' : compact(metrics.volume24h)}
         </span>
         <ArrowRight size={12} weight="bold" />
       </div>

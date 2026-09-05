@@ -13,6 +13,7 @@ const NAV = [
   { href: '/market', label: 'Market' },
   { href: '/categories', label: 'Categories' },
   { href: '/activity', label: 'Activity' },
+  { href: '/portfolio', label: 'Portfolio' },
 ];
 
 /**

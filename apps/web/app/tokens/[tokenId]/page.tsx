@@ -43,7 +43,7 @@ export default async function TokenDetailPage({
   }
   const ask = token.listingPrice;
   const lastSale = token.lastSalePrice;
-  const traits = token.traits.filter((t) => t.family !== 'digits');
+  const traits = token.traits.filter((t) => t.family !== 'digits' && t.family !== 'number');
   const topCategory = traits[0];
 
   const explorerContract = `${CHAIN_DISPLAY.explorerUrl}/address/${token.contractAddress}`;

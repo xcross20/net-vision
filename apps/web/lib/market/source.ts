@@ -11,6 +11,7 @@
  * drop-in.
  */
 
+import type { SweepPreview, SweepPreviewInput, FloorSnapshot } from './engine';
 import type {
   CategoryMetrics,
   CollectionSnapshot,
@@ -87,6 +88,18 @@ export interface MarketSource {
   getAccountListings(address: string): Promise<Token[]>;
   /** Offers made by a wallet. */
   getAccountOffers(address: string): Promise<Offer[]>;
+  /** Owned NFTs for a wallet, listed and unlisted. */
+  listAccountTokens(address: string): Promise<Token[]>;
+  /** Sales attributed to a category, newest first. */
+  listCategorySales(slug: string, options?: { window?: SalesWindow; limit?: number }): Promise<Sale[]>;
+  /** Highest attributed sales for a category. */
+  listCategoryTopSales(slug: string, limit?: number): Promise<Sale[]>;
+  /** Item offers on currently listed members of a category. */
+  listCategoryOffers(slug: string, limit?: number): Promise<Offer[]>;
+  previewSweep(slug: string, input: SweepPreviewInput): Promise<SweepPreview>;
+  floorHistory(slug: string): Promise<FloorSnapshot[]>;
   /** Data freshness for the source. Used by the health endpoint and UI badges. */
   getFreshness(): Promise<DataFreshness>;
 }
+
+export type SalesWindow = '24h' | '7d' | '30d' | 'all';

@@ -23,7 +23,7 @@ export function AssetRow({ token }: { token: Token }) {
   const ask = token.listingPrice;
   const last = token.lastSalePrice;
   const [favorited, setFavorited] = useState(false);
-  const topCategory = token.traits.find((t) => t.family !== 'digits');
+  const topCategory = token.traits.find((t) => t.family !== 'digits' && t.family !== 'number');
   return (
     <motion.div
       whileHover={{ x: 1 }}
@@ -63,7 +63,7 @@ export function AssetRow({ token }: { token: Token }) {
           </span>
           <span className="truncate text-[11px] text-[var(--color-text-tertiary)]">
             {token.traits
-              .filter((t) => t.family !== 'digits')
+              .filter((t) => t.family !== 'digits' && t.family !== 'number')
               .slice(0, 3)
               .map((t) => t.label)
               .join(' · ') || 'Button Presser'}
