@@ -1,0 +1,24 @@
+{
+  "name": "@net-vision/market-index",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./listing-state": "./src/listing-state.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@net-vision/taxonomy": "*",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

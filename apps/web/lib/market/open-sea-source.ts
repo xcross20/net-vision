@@ -273,26 +273,30 @@ class OpenSeaMarketSource implements MarketSource {
       .catch(() => {
         /* Postgres optional until DATABASE_URL + schema are live */
       });
-    startBackgroundIndexer(
-      (tokenId) => this.lookupListingObservation(tokenId),
-      (record) => {
-        this.catalog.hydrateListingRecord(record);
-        this.categories.clear();
-        this.tokenPages.clear();
-      },
-      async (tokenId) => {
-        try {
-          const nft = await this.fetchNFT(tokenId);
-          return nft ? { kind: 'found' as const } : { kind: 'missing' as const };
-        } catch (err) {
-          if (isOpenSeaRateLimited(err)) throw err;
-          return {
-            kind: 'retry' as const,
-            reason: err instanceof Error ? err.message : String(err),
-          };
-        }
-      },
-    );
+    // Indexer V3: production indexing runs in apps/market-worker.
+    // Keep the in-web loop only when explicitly enabled (local/dev).
+    if (process.env.INDEXER_IN_WEB === 'true') {
+      startBackgroundIndexer(
+        (tokenId) => this.lookupListingObservation(tokenId),
+        (record) => {
+          this.catalog.hydrateListingRecord(record);
+          this.categories.clear();
+          this.tokenPages.clear();
+        },
+        async (tokenId) => {
+          try {
+            const nft = await this.fetchNFT(tokenId);
+            return nft ? { kind: 'found' as const } : { kind: 'missing' as const };
+          } catch (err) {
+            if (isOpenSeaRateLimited(err)) throw err;
+            return {
+              kind: 'retry' as const,
+              reason: err instanceof Error ? err.message : String(err),
+            };
+          }
+        },
+      );
+    }
   }
 
   private hydrateFromIndex(): void {

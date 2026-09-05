@@ -9,11 +9,14 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/web",
+    "dev:worker": "npm run dev --workspace=apps/market-worker",
     "build": "rm -rf apps/web/.next/server apps/web/.next/static apps/web/.next/standalone apps/web/.next/types && npm run build --workspace=apps/web",
     "start": "npm run start --workspace=apps/web",
+    "start:worker": "npm run start --workspace=apps/market-worker",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "spike:stream": "npm run spike:stream --workspace=apps/market-worker"
   },
   "engines": {
     "node": ">=20"

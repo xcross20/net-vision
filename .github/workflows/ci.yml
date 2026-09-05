@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: typecheck · test · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build web
+        run: npm run build
+        env:
+          # Build must not require live secrets.
+          NEXT_PUBLIC_TRADING_ENABLED: 'false'
+          INDEXER_V2_ENABLED: 'false'
+          INDEXER_IN_WEB: 'false'
+
+      - name: Guard — in-web indexer must be env-gated
+        run: |
+          # Fail if open-sea-source starts the indexer without INDEXER_IN_WEB check.
+          if ! grep -q "INDEXER_IN_WEB" apps/web/lib/market/open-sea-source.ts; then
+            echo "OpenSeaMarketSource must gate startBackgroundIndexer behind INDEXER_IN_WEB"
+            exit 1
+          fi
+          echo "ok"

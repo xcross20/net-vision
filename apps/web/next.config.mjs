@@ -38,6 +38,7 @@ const nextConfig = {
   transpilePackages: [
     '@net-vision/taxonomy',
     '@net-vision/chain-config',
+    '@net-vision/market-index',
     '@net-vision/opensea-client',
     '@net-vision/transaction-policy',
     '@net-vision/ui',
