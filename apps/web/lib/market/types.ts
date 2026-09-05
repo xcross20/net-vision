@@ -67,6 +67,7 @@ export type CategoryMetrics = {
   filteredMemberSupply: number;
   totalSupply: number;
   listedCount: number;
+  staleListedCount: number;
   listedPercentage: number;
   /** Members whose listing state is LISTED or UNLISTED_VERIFIED. */
   verifiedCount: number;
@@ -91,6 +92,7 @@ export type CategoryMetrics = {
   owners: number;
   currency: string;
   floorPrice: number | null;
+  lastKnownFloorPrice: number | null;
   /** Highest active ask in this category. null when nothing is listed. */
   ceilingPrice: number | null;
   medianAsk: number | null;

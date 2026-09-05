@@ -146,6 +146,20 @@ function msToDate(ms: number | null | undefined): Date | null {
   return new Date(ms);
 }
 
+export async function peekSnapshotRevisionFromPg(): Promise<number | null> {
+  const db = getPool();
+  if (!db) return null;
+  await ensureSchema();
+  const result = await db.query<{ revision: string | number | null }>(
+    `SELECT revision FROM index_blob WHERE id = $1`,
+    [BLOB_ID],
+  );
+  const raw = result.rows[0]?.revision;
+  if (raw == null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function loadSnapshotFromPg(): Promise<IndexSnapshot | null> {
   const db = getPool();
   if (!db) return null;

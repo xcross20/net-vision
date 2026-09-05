@@ -58,13 +58,16 @@ import {
   loadIndex,
   metadataCheckpoint,
   persistNftMetadata,
+  refreshIndexFromPostgres,
   saveIndex,
+  snapshotRevision,
   tokenFacets,
   workerCheckpoint,
   writeListing,
   writeWorkerCheckpoint,
 } from '@/lib/index/store';
 import { startMarketMaintenance } from '@/lib/index/maintenance';
+import { rehydrateCatalogFromIndex } from './rehydrate-catalog';
 import { PRIORITY_TOKEN_IDS, startBackgroundIndexer } from '@/lib/index/worker';
 import {
   applyListedPercentage,
@@ -313,15 +316,39 @@ class OpenSeaMarketSource implements MarketSource {
     startMarketMaintenance(this.client, (tokenId) => this.lookupListingObservation(tokenId));
   }
 
+  private catalogHydratedRevision: number | null = null;
+
   private hydrateFromIndex(): void {
-    const snap = loadIndex();
-    for (const record of allListingRecords()) {
-      this.catalog.hydrateListingRecord(record);
+    rehydrateCatalogFromIndex(this.catalog);
+    this.catalogHydratedRevision = snapshotRevision();
+  }
+
+  /**
+   * Pull worker Postgres into this process when the blob revision moved.
+   * Does not saveIndex — web must not fight the worker dual-write.
+   */
+  async syncMarketSnapshot(): Promise<boolean> {
+    let remote = snapshotRevision();
+    try {
+      const { peekSnapshotRevisionFromPg } = await import('@/lib/index/pg');
+      const peeked = await peekSnapshotRevisionFromPg();
+      if (peeked != null) remote = peeked;
+    } catch {
+      /* local snapshot is enough when PG is unset */
     }
-    for (const [tokenId, facets] of Object.entries(snap.tokenFacets ?? {})) {
-      this.catalog.attachFacets(tokenId, facets);
+    if (
+      this.catalogHydratedRevision != null &&
+      remote <= this.catalogHydratedRevision
+    ) {
+      return false;
     }
-    this.catalog.ingestSales(snap.sales ?? []);
+    if (remote > snapshotRevision()) {
+      await refreshIndexFromPostgres();
+    }
+    this.hydrateFromIndex();
+    this.categories.clear();
+    this.tokenPages.clear();
+    return true;
   }
 
   private async lookupListingObservation(tokenId: string): Promise<ListingObservation> {
@@ -519,6 +546,7 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   private async ensurePipeline(): Promise<void> {
+    await this.syncMarketSnapshot();
     this.catalog.classify();
     const chain = await this.ensureChain();
     if (!chain) return;
@@ -917,6 +945,7 @@ class OpenSeaMarketSource implements MarketSource {
       filteredMemberSupply: memberSupply,
       totalSupply: snapshot.totalSupply,
       listedCount: totals.listedCount,
+      staleListedCount: totals.staleListedCount,
       listedPercentage: stats.listedPercentage,
       verifiedCount,
       unknownCount,
@@ -927,6 +956,7 @@ class OpenSeaMarketSource implements MarketSource {
       owners: stats.owners,
       currency: snapshot.currency,
       floorPrice: liveFloor,
+      lastKnownFloorPrice: totals.lastKnownFloorPrice,
       ceilingPrice: readiness.marketStatus === 'syncing' ? null : stats.highestAsk,
       medianAsk: readiness.marketStatus === 'syncing' ? null : stats.medianAsk,
       lastSalePrice: stats.highestSale?.price ?? totals.lastSalePrice,
@@ -961,6 +991,7 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   async getCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
+    await this.syncMarketSnapshot();
     const cached = this.categories.get(slug);
     if (isFresh(cached)) return cached.value;
     await this.ensurePipeline();
