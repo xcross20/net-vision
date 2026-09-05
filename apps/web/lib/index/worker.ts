@@ -1,9 +1,9 @@
 /**
  * Background listing reconciliation + Plate metadata bootstrap.
  *
- * Never invoked from a request handler. Request paths may *start* the
- * worker (fire-and-forget) but they never await a token scan. Progress
- * is persisted so a process restart resumes the queue.
+ * Production: started by the standalone market-worker process on boot
+ * (ADR 0002). Embedded start inside the Next.js process is opt-in via
+ * INDEXER_EMBEDDED=true for local single-process debug only.
  *
  * Listing priority:
  *   1. Known OpenSea examples (966, 628, 870, 507, 756, 635)
@@ -13,7 +13,7 @@
  * Metadata bootstrap (separate cursor):
  *   1. 1..999 (Brass acceptance — official Plate supply)
  *   2. 1000..4999, 5000..19999, 20000..max
- * Skips tokens that already have metadataVerifiedAt.
+ * RETRY enqueues with backoff and advances the cursor (no head-of-line block).
  */
 import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import { facetsForToken } from '@net-vision/taxonomy';
@@ -24,11 +24,18 @@ import {
   type ListingRecord,
 } from '../market/listing-state';
 import {
+  countVerifiedMetadataInRange,
+  dueMetadataRetries,
+  enqueueMetadataRetry,
   listingRecord,
   loadIndex,
   metadataCheckpoint,
+  metadataRetryQueue,
+  persistMetadataMissing,
+  removeMetadataRetry,
   saveIndex,
   setTokenFacets,
+  touchWorkerHeartbeat,
   upsertToken,
   workerCheckpoint,
   writeListing,
@@ -39,6 +46,7 @@ import {
 export const PRIORITY_TOKEN_IDS = ['966', '628', '870', '507', '756', '635'] as const;
 const DIGITS_3_MIN = 100;
 const DIGITS_3_MAX = 999;
+export const BRASS_EXPECTED = 999;
 const BRASS_MAX = 999;
 const STEEL_MAX = 4999;
 const ANODISED_MAX = 19999;
@@ -47,13 +55,16 @@ const PACE_MS = 2_500;
 const METADATA_PACE_MS = 3_000;
 const RATE_LIMIT_SLEEP_MS = 5 * 60_000;
 const SAVE_EVERY = 10;
+const HEARTBEAT_MS = 15_000;
+export const METADATA_RETRY_BACKOFF_MS = [10_000, 30_000, 120_000, 600_000, 1_800_000] as const;
+const MAX_METADATA_RETRY_ATTEMPTS = METADATA_RETRY_BACKOFF_MS.length;
 
 export type BestListingLookup = (tokenId: string) => Promise<ListingObservation>;
 export type ListingSink = (record: ListingRecord) => void;
 
 /**
- * Tri-state metadata observation. Transport / rate-limit failures must be
- * `retry` so the bootstrap cursor does not advance over a hole.
+ * Tri-state metadata observation. Transport failures are `retry` —
+ * enqueued with backoff; the bootstrap cursor still advances.
  */
 export type MetadataObservation =
   | { kind: 'found' }
@@ -114,8 +125,10 @@ function classifyIntoIndex(tokenId: string): void {
     metadataVerifiedAt: previous?.metadataVerifiedAt ?? null,
     lastSeenAt: Date.now(),
   });
-  let metadata: { traits?: Array<{ trait_type?: string; value?: string | number }>; name?: string | null } | null =
-    null;
+  let metadata: {
+    traits?: Array<{ trait_type?: string; value?: string | number }>;
+    name?: string | null;
+  } | null = null;
   if (previous?.metadataJson) {
     try {
       metadata = JSON.parse(previous.metadataJson) as {
@@ -134,9 +147,30 @@ function hasVerifiedMetadata(tokenId: string): boolean {
   return Boolean(row?.metadataVerifiedAt && row?.metadataJson);
 }
 
+function brassPendingRetryCount(): number {
+  return metadataRetryQueue().filter((item) => {
+    const n = Number(item.tokenId);
+    return Number.isFinite(n) && n >= 1 && n <= BRASS_MAX;
+  }).length;
+}
+
+export function resolveMetadataPhase(
+  cursor: number,
+  queueLength: number,
+): MetadataCheckpointPhase {
+  const brassVerified = countVerifiedMetadataInRange(1, BRASS_MAX);
+  const brassPending = brassPendingRetryCount();
+  if (brassVerified < BRASS_EXPECTED || brassPending > 0) return 'brass-priority';
+  if (cursor >= queueLength && brassPending === 0) return 'done';
+  return 'full';
+}
+
+type MetadataCheckpointPhase = 'brass-priority' | 'full' | 'done';
+
 let running = false;
 let started = false;
 let metadataRunning = false;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 export function isIndexerRunning(): boolean {
   return running;
@@ -167,6 +201,7 @@ export async function reconcileOne(
   }
   const next = applyObservation(current, observation);
   writeListing(next);
+  writeWorkerCheckpoint({ lastSuccessAt: Date.now(), lastError: null });
   sink?.(next);
   return next;
 }
@@ -201,73 +236,162 @@ export async function runIndexerPass(
   return { processed, cursor, queueLength: queue.length };
 }
 
+async function observeMetadata(
+  tokenId: string,
+  fetchMetadata: MetadataFetch,
+): Promise<MetadataObservation> {
+  try {
+    return await fetchMetadata(tokenId);
+  } catch (err) {
+    if (isOpenSeaRateLimited(err)) {
+      writeMetadataCheckpoint({ last429At: Date.now(), lastError: '429' });
+      saveIndex();
+      throw err;
+    }
+    return {
+      kind: 'retry',
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function applyMetadataObservation(
+  tokenId: string,
+  observation: MetadataObservation,
+): 'settled' | 'retried' | 'exhausted' {
+  if (observation.kind === 'found') {
+    removeMetadataRetry(tokenId);
+    return 'settled';
+  }
+  if (observation.kind === 'missing') {
+    persistMetadataMissing(tokenId, 'not-found');
+    removeMetadataRetry(tokenId);
+    return 'settled';
+  }
+  const existing = metadataRetryQueue().find((item) => item.tokenId === tokenId);
+  const nextAttempt = (existing?.attemptCount ?? 0) + 1;
+  if (nextAttempt > MAX_METADATA_RETRY_ATTEMPTS) {
+    persistMetadataMissing(tokenId, `retry-exhausted:${observation.reason}`);
+    removeMetadataRetry(tokenId);
+    return 'exhausted';
+  }
+  enqueueMetadataRetry(tokenId, observation.reason, [...METADATA_RETRY_BACKOFF_MS]);
+  return 'retried';
+}
+
+/**
+ * One metadata bootstrap unit of work: drain one due retry if any,
+ * otherwise advance the forward cursor by one token.
+ * RETRY never blocks later token IDs.
+ */
 export async function runMetadataBootstrapPass(
   fetchMetadata: MetadataFetch,
   options: { maxTokens?: number; sleepMs?: number } = {},
-): Promise<{ processed: number; cursor: number; queueLength: number; missing: number }> {
+): Promise<{
+  processed: number;
+  cursor: number;
+  queueLength: number;
+  missing: number;
+  retriesQueued: number;
+}> {
   const queue = buildMetadataQueue();
   const checkpoint = metadataCheckpoint();
-  if (checkpoint.phase === 'done') {
-    return { processed: 0, cursor: checkpoint.cursor, queueLength: queue.length, missing: checkpoint.missingTotal };
+  if (checkpoint.phase === 'done' && metadataRetryQueue().length === 0) {
+    return {
+      processed: 0,
+      cursor: checkpoint.cursor,
+      queueLength: queue.length,
+      missing: checkpoint.missingTotal,
+      retriesQueued: 0,
+    };
   }
+
   let cursor = Math.min(Math.max(checkpoint.cursor, 0), queue.length);
-  const limit = options.maxTokens ?? queue.length - cursor;
+  const limit = options.maxTokens ?? 1;
   let processed = 0;
   let missing = 0;
-  for (let i = 0; i < limit && cursor < queue.length; i += 1) {
-    const tokenId = queue[cursor];
-    if (hasVerifiedMetadata(tokenId)) {
-      cursor += 1;
-      processed += 1;
-    } else {
-      let observation: MetadataObservation;
-      try {
-        observation = await fetchMetadata(tokenId);
-      } catch (err) {
-        if (isOpenSeaRateLimited(err)) {
-          writeMetadataCheckpoint({ last429At: Date.now(), lastError: '429', cursor });
-          saveIndex();
-          throw err;
+
+  for (let i = 0; i < limit; i += 1) {
+    const due = dueMetadataRetries();
+    if (due.length > 0) {
+      const item = due[0];
+      if (hasVerifiedMetadata(item.tokenId)) {
+        removeMetadataRetry(item.tokenId);
+        processed += 1;
+      } else {
+        const observation = await observeMetadata(item.tokenId, fetchMetadata);
+        const result = applyMetadataObservation(item.tokenId, observation);
+        if (result === 'settled' && observation.kind === 'missing') missing += 1;
+        if (result === 'exhausted') missing += 1;
+        if (result === 'settled' || result === 'exhausted') {
+          writeMetadataCheckpoint({ lastSuccessAt: Date.now(), lastError: null });
+        } else {
+          writeMetadataCheckpoint({ lastError: observation.kind === 'retry' ? observation.reason : null });
         }
-        observation = {
-          kind: 'retry',
-          reason: err instanceof Error ? err.message : String(err),
-        };
+        processed += 1;
       }
-
-      if (observation.kind === 'retry') {
-        writeMetadataCheckpoint({
-          cursor, // do not advance
-          lastError: observation.reason,
-        });
-        saveIndex();
-        throw new Error(`metadata-retry:${observation.reason}`);
+    } else if (cursor < queue.length) {
+      const tokenId = queue[cursor];
+      if (hasVerifiedMetadata(tokenId)) {
+        cursor += 1;
+        processed += 1;
+      } else {
+        const observation = await observeMetadata(tokenId, fetchMetadata);
+        const result = applyMetadataObservation(tokenId, observation);
+        if (result === 'settled' && observation.kind === 'missing') missing += 1;
+        if (result === 'exhausted') missing += 1;
+        if (result === 'settled' || result === 'exhausted') {
+          writeMetadataCheckpoint({ lastSuccessAt: Date.now(), lastError: null });
+        } else {
+          writeMetadataCheckpoint({
+            lastError: observation.kind === 'retry' ? observation.reason : null,
+          });
+        }
+        cursor += 1;
+        processed += 1;
       }
-
-      if (observation.kind === 'missing') missing += 1;
-      cursor += 1;
-      processed += 1;
+    } else {
+      break;
     }
-    const brassDone = cursor >= BRASS_MAX;
+
     writeMetadataCheckpoint({
       cursor,
       processedTotal: checkpoint.processedTotal + processed,
       missingTotal: checkpoint.missingTotal + missing,
-      phase: cursor >= queue.length ? 'done' : brassDone ? 'full' : 'brass-priority',
-      lastError: null,
+      phase: resolveMetadataPhase(cursor, queue.length),
     });
     if (processed % SAVE_EVERY === 0) saveIndex();
     if (options.sleepMs && options.sleepMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, options.sleepMs));
     }
   }
+
   saveIndex();
   return {
     processed,
     cursor,
     queueLength: queue.length,
     missing: checkpoint.missingTotal + missing,
+    retriesQueued: metadataRetryQueue().length,
   };
+}
+
+function startHeartbeat(): void {
+  const now = Date.now();
+  touchWorkerHeartbeat(now);
+  writeWorkerCheckpoint({
+    workerStartedAt: workerCheckpoint().workerStartedAt ?? now,
+    workerHeartbeatAt: now,
+  });
+  saveIndex();
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  heartbeatTimer = setInterval(() => {
+    touchWorkerHeartbeat();
+    saveIndex();
+  }, HEARTBEAT_MS);
+  if (typeof heartbeatTimer === 'object' && 'unref' in heartbeatTimer) {
+    heartbeatTimer.unref();
+  }
 }
 
 export function startBackgroundIndexer(
@@ -280,6 +404,8 @@ export function startBackgroundIndexer(
   if (process.env.VITEST) return;
   started = true;
   running = true;
+  startHeartbeat();
+
   const recentlyRateLimited = () => {
     const listing429 = workerCheckpoint().last429At;
     const meta429 = metadataCheckpoint().last429At;
@@ -324,11 +450,10 @@ export function startBackgroundIndexer(
           await new Promise((resolve) => setTimeout(resolve, 30_000));
         } else {
           const checkpoint = metadataCheckpoint();
-          if (checkpoint.phase === 'done') {
+          if (checkpoint.phase === 'done' && metadataRetryQueue().length === 0) {
             metadataRunning = false;
             return;
           }
-          // Stagger metadata behind listing ticks so they never fire in the same second.
           await new Promise((resolve) => setTimeout(resolve, METADATA_PACE_MS / 2));
           await runMetadataBootstrapPass(fetchMetadata, { maxTokens: 1, sleepMs: 0 });
           await new Promise((resolve) => setTimeout(resolve, METADATA_PACE_MS));
@@ -352,4 +477,8 @@ export function stopBackgroundIndexer(): void {
   running = false;
   started = false;
   metadataRunning = false;
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
 }

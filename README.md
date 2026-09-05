@@ -20,6 +20,7 @@ Open http://localhost:3000.
 ```
 apps/
   web/                Next.js 15 web application (App Router)
+  market-worker/      Always-on OpenSea indexer (Railway second service)
 packages/
   taxonomy/           Pure, deterministic numeric classifier
   chain-config/       Robinhood Chain + Button Presser contract allowlist
@@ -56,7 +57,20 @@ Trading remains feature-flagged off.
 
 ## Deployment
 
-This repo is configured for Railway. See `railway.toml`. The web app boots without secrets for the read-only slice; production deployment must supply `OPENSEA_API_KEY`, `ROBINHOOD_RPC_PRIMARY`, and `SESSION_SECRET`.
+This repo is configured for Railway. See `railway.toml` and `docs/deploy/RAILWAY_MARKET_WORKER.md`.
+
+**Two Node services are required for live market sync:**
+
+| Service | Command |
+| --- | --- |
+| Web | `npm run start --workspace=apps/web` |
+| Market worker | `npm run start --workspace=apps/market-worker` |
+
+Also attach Postgres (`DATABASE_URL`). Do **not** set `INDEXER_EMBEDDED=true` on the web service in production — the worker owns writes (ADR 0002).
+
+Operator health: `GET /api/v1/health/indexer` (`workerOnline` requires a heartbeat newer than 60s).
+
+Production must supply `OPENSEA_API_KEY`, `DATABASE_URL`, `ROBINHOOD_RPC_PRIMARY`, and `SESSION_SECRET`.
 
 Current deployment: https://web-production-38d29.up.railway.app
 

@@ -240,11 +240,9 @@ Until all eight are true, commerce features (Category Sweep, Value Sweep, alerts
 
 ## Storage decision
 
-**v1 engine: JSON snapshot on disk** (`INDEX_DB_PATH`, default `apps/web/data/market-index.json`).
+**Authoritative store (ADR 0002):** PostgreSQL when `DATABASE_URL` is set. JSON on disk (`INDEX_DB_PATH`, default `apps/web/data/market-index.json`) is a local/dev cache and dual-write companion only.
 
-Why not Postgres yet: Railway currently has no `DATABASE_URL`. Why not better-sqlite3: native compilation on Nixpacks has failed this repo before. 62k Button Presser rows is a few megabytes; the schema in this document is unchanged so a Postgres migration is a copy.
-
-Worker runtime (v1): same Node process as the web app, fire-and-forget, never awaited from a request handler. Single replica. Heartbeat in `worker_state` (the JSON `worker` object). A separate Railway service is the next step once coverage is live.
+**Worker runtime (ADR 0002):** standalone `apps/market-worker` Railway service. Starts on process boot — not on `OpenSeaMarketSource` construction. Web process must not embed the indexer in production (`INDEXER_EMBEDDED` unset/false). See `docs/data/SPEC_ALWAYS_ON_INDEXER.md` and `docs/deploy/RAILWAY_MARKET_WORKER.md`.
 
 ## Phase rollout
 

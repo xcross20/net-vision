@@ -273,12 +273,21 @@ class OpenSeaMarketSource implements MarketSource {
     });
     this.hydrateFromIndex();
     void hydrateIndexFromPostgres()
-      .then((restored) => {
-        if (restored) this.hydrateFromIndex();
+      .then((source) => {
+        if (source === 'postgres') this.hydrateFromIndex();
       })
       .catch(() => {
         /* Postgres optional until DATABASE_URL + schema are live */
       });
+    // Production indexing runs in apps/market-worker (ADR 0002).
+    // Embedded loops are local/debug only.
+    if (process.env.INDEXER_EMBEDDED === 'true') {
+      this.startIndexerLoops();
+    }
+  }
+
+  /** Start listing + metadata loops. Safe to call once per process. */
+  startIndexerLoops(): void {
     startBackgroundIndexer(
       (tokenId) => this.lookupListingObservation(tokenId),
       (record) => {
@@ -1484,6 +1493,23 @@ export function getMarketSource(): MarketSource {
     singletonError = err instanceof Error ? err.message : String(err);
     return failingSource(singletonError);
   }
+}
+
+/**
+ * Boot helper for the standalone market-worker process.
+ * Constructs the live source (if needed) and starts indexer loops
+ * without requiring INDEXER_EMBEDDED.
+ */
+export function startStandaloneMarketIndexer(): void {
+  const source = getMarketSource();
+  if (source instanceof OpenSeaMarketSource) {
+    source.startIndexerLoops();
+    return;
+  }
+  throw new Error(
+    singletonError ??
+      'Cannot start market indexer: OpenSea market source is unavailable',
+  );
 }
 
 class FailingMarketSource implements MarketSource {

@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "probe:identity": "node --experimental-strip-types --no-warnings scripts/probe-number-identity.ts",
     "probe:cursor": "node --experimental-strip-types --no-warnings scripts/opensea-cursor-probe.ts",
-    "index:import": "npx tsx scripts/import-market-index.ts"
+    "index:import": "npx tsx scripts/import-market-index.ts",
+    "start:worker": "npx tsx --tsconfig tsconfig.json scripts/run-market-worker.ts"
   },
   "dependencies": {
     "@net-vision/chain-config": "*",

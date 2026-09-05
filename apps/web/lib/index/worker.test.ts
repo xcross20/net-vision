@@ -123,21 +123,39 @@ describe('Plate metadata bootstrap', () => {
     expect(metadataCheckpoint().cursor).toBe(2);
   });
 
-  it('does not advance the cursor on retry / rate-limit observations', async () => {
-    await expect(
-      runMetadataBootstrapPass(async () => ({ kind: 'retry', reason: '429' }), { maxTokens: 1 }),
-    ).rejects.toThrow(/metadata-retry/);
-    expect(metadataCheckpoint().cursor).toBe(0);
-    expect(metadataCheckpoint().lastError).toBe('429');
+  it('enqueues retry and advances the cursor (no head-of-line block)', async () => {
+    const { metadataRetryQueue } = await import('./store');
+    const first = await runMetadataBootstrapPass(
+      async () => ({ kind: 'retry', reason: 'transient' }),
+      { maxTokens: 1 },
+    );
+    expect(first.cursor).toBe(1);
+    expect(metadataCheckpoint().lastError).toBe('transient');
+    expect(metadataRetryQueue()).toHaveLength(1);
+    expect(metadataRetryQueue()[0]?.tokenId).toBe('1');
+
+    const fetched: string[] = [];
+    await runMetadataBootstrapPass(
+      async (tokenId) => {
+        fetched.push(tokenId);
+        return { kind: 'found' };
+      },
+      { maxTokens: 1 },
+    );
+    // Forward cursor continues at 2 even while 1 is in the retry queue.
+    expect(fetched[0]).toBe('2');
+    expect(metadataCheckpoint().cursor).toBe(2);
+    expect(metadataRetryQueue()).toHaveLength(1);
   });
 
-  it('advances on confirmed missing, not on transport collapse', async () => {
+  it('advances on confirmed missing and marks the token settled', async () => {
     const result = await runMetadataBootstrapPass(
       async () => ({ kind: 'missing' }),
       { maxTokens: 2 },
     );
     expect(result.cursor).toBe(2);
     expect(result.missing).toBe(2);
+    expect(metadataCheckpoint().cursor).toBe(2);
   });
 });
 
