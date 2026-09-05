@@ -95,10 +95,17 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
   const last429 = Math.max(listing.last429At ?? 0, metadata.last429At ?? 0) || null;
   const lastError = metadata.lastError ?? listing.lastError;
 
+  // Process-local loop flags are only meaningful when the indexer is
+  // embedded in this process. On the web service they are always false
+  // after cutover — use heartbeat truth instead.
+  const embedded = process.env.INDEXER_EMBEDDED === 'true';
+  const listingRunning = embedded ? isIndexerRunning() : workerOnline;
+  const metadataRunning = embedded ? isMetadataBootstrapRunning() : workerOnline;
+
   return {
     workerOnline,
     listingWorker: {
-      running: isIndexerRunning(),
+      running: listingRunning,
       phase: listing.phase,
       cursor: listing.cursor,
       processedTotal: listing.processedTotal,
@@ -108,7 +115,7 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
       last429At: listing.last429At,
     },
     metadataWorker: {
-      running: isMetadataBootstrapRunning(),
+      running: metadataRunning,
       phase: metadata.phase,
       cursor: metadata.cursor,
       processedTotal: metadata.processedTotal,
@@ -140,6 +147,6 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
     workerStartedAt: listing.workerStartedAt,
     workerHeartbeatAt: heartbeatAt,
     heartbeatAgeMs,
-    embeddedIndexerAllowed: process.env.INDEXER_EMBEDDED === 'true',
+    embeddedIndexerAllowed: embedded,
   };
 }
