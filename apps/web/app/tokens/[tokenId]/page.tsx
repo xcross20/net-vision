@@ -1,15 +1,16 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { ArrowRight, ArrowUpRight } from '@phosphor-icons/react/dist/ssr';
-import { getToken, getRecentSales } from '@/lib/data/tokens';
+import { ArrowUpRight } from '@phosphor-icons/react/dist/ssr';
+import { getToken, getTokenOffers, getTokenSales } from '@/lib/data/tokens';
 import { getMarketSource } from '@/lib/market';
+import { BUTTON_PRESSER_COLLECTION, CHAIN_DISPLAY } from '@net-vision/chain-config';
+import { OfferActions } from '@/components/OfferActions';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { TokenCommercePanel } from '@/components/TokenCommercePanel';
 import { SalesOffersList, type SaleOrOfferEntry } from '@/components/ui/SalesOffersList';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { address, payment, relative } from '@/lib/format';
-import { ArrowR } from '@/components/icons';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +32,10 @@ export default async function TokenDetailPage({
   params: Promise<{ tokenId: string }>;
 }) {
   const { tokenId } = await params;
-  const [token, sales, freshness] = await Promise.all([
+  const [token, sales, offers, freshness] = await Promise.all([
     getToken(tokenId),
-    getRecentSales(8),
+    getTokenSales(tokenId, 12),
+    getTokenOffers(tokenId),
     getMarketSource().getFreshness(),
   ]);
   if (!token) {
@@ -44,6 +46,7 @@ export default async function TokenDetailPage({
   const traits = token.traits.filter((t) => t.family !== 'digits');
   const topCategory = traits[0];
 
+  const explorerContract = `${CHAIN_DISPLAY.explorerUrl}/address/${token.contractAddress}`;
   const saleEntries: SaleOrOfferEntry[] = sales
     .filter((s) => s.tokenId === token.tokenId)
     .map((s) => ({
@@ -171,6 +174,52 @@ export default async function TokenDetailPage({
         </div>
       </section>
 
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <article className="flex flex-col gap-4 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] p-5">
+          <h2 className="text-display text-xl text-[var(--color-text-primary)]">About</h2>
+          <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
+            {token.description?.trim() ||
+              `Presser #${token.tokenId} of ${BUTTON_PRESSER_COLLECTION.name}. The number is the token id.`}
+          </p>
+        </article>
+        <article className="flex flex-col gap-4 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] p-5">
+          <h2 className="text-display text-xl text-[var(--color-text-primary)]">Blockchain details</h2>
+          <dl className="flex flex-col gap-3">
+            <Field label="Contract Address">
+              <a
+                href={explorerContract}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-numeral text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              >
+                {address(token.contractAddress)}
+                <ArrowUpRight size={11} weight="bold" />
+              </a>
+            </Field>
+            <Field label="Token ID">
+              <span className="text-numeral text-xs text-[var(--color-text-secondary)]">
+                {token.tokenId}
+              </span>
+            </Field>
+            <Field label="Token Standard">
+              <span className="text-numeral text-xs text-[var(--color-text-secondary)]">
+                {BUTTON_PRESSER_COLLECTION.tokenStandard}
+              </span>
+            </Field>
+            <Field label="Chain">
+              <span className="text-numeral text-xs text-[var(--color-text-secondary)]">
+                {CHAIN_DISPLAY.name}
+              </span>
+            </Field>
+            <Field label="Metadata">
+              <span className="text-numeral text-xs text-[var(--color-text-secondary)]">
+                Fully onchain
+              </span>
+            </Field>
+          </dl>
+        </article>
+      </section>
+
       <section className="grid grid-cols-1 gap-12 lg:grid-cols-3">
         <div className="lg:col-span-1 flex flex-col gap-4">
           <span className="text-eyebrow-muted">All traits</span>
@@ -187,11 +236,11 @@ export default async function TokenDetailPage({
             ))}
           </div>
         </div>
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 flex flex-col gap-10">
           {saleEntries.length === 0 ? (
             <EmptyState
               title="No trade history for this token"
-              body="Trades will appear here once this specific token has cleared through the OpenSea orderbook."
+              body="Sales from OpenSea and trades that clear on Net Vision will land here."
               tone="muted"
             />
           ) : (
@@ -202,16 +251,19 @@ export default async function TokenDetailPage({
               empty=""
             />
           )}
-        </div>
-      </section>
-
-      <section className="flex flex-col gap-4">
-        <span className="text-eyebrow-muted">Contract</span>
-        <div className="flex flex-col gap-1 border-t border-[var(--color-border-subtle)] pt-4">
-          <span className="text-numeral text-xs text-[var(--color-text-secondary)]">{token.contractAddress}</span>
-          <span className="text-numeral text-[11px] text-[var(--color-text-tertiary)]">
-            Chain ID {token.chainId} · ERC-721
-          </span>
+          <div className="flex flex-col gap-4">
+            <div>
+              <span className="text-eyebrow-muted">Offers</span>
+              <h3 className="text-display text-xl text-[var(--color-text-primary)]">
+                Incoming offers
+              </h3>
+            </div>
+            <OfferActions
+              tokenId={token.tokenId}
+              ownerAddress={token.ownerAddress}
+              offers={offers}
+            />
+          </div>
         </div>
       </section>
     </div>

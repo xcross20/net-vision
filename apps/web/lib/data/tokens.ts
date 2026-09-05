@@ -48,3 +48,11 @@ export async function getRecentSales(limit = 20) {
 export async function getRecentOffers(limit = 20) {
   return getMarketSource().listRecentOffers(limit);
 }
+
+export async function getTokenSales(tokenId: string, limit = 20) {
+  return getMarketSource().listTokenSales(tokenId, limit);
+}
+
+export async function getTokenOffers(tokenId: string) {
+  return getMarketSource().getTokenOffers(tokenId);
+}

@@ -21,6 +21,8 @@ export type Token = {
   /** Live OpenSea image URL when available; falls back to the deterministic media proxy. */
   imageUrl: string;
   name: string | null;
+  /** On-chain / OpenSea description when the indexer has one. */
+  description?: string | null;
   /** Payment-token price. null = no active ask. */
   listingPrice: number | null;
   currency: string;
@@ -54,6 +56,8 @@ export type CategoryMetrics = {
   owners: number;
   currency: string;
   floorPrice: number | null;
+  /** Highest active ask in this category. null when nothing is listed. */
+  ceilingPrice: number | null;
   lastSalePrice: number | null;
   topOfferPrice: number | null;
   topSalePrice: number | null;

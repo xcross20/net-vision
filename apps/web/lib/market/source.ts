@@ -77,6 +77,8 @@ export interface MarketSource {
   listCategories(): Promise<CategoryMetrics[]>;
   /** Recent sales for the collection, newest first. */
   listRecentSales(limit?: number): Promise<Sale[]>;
+  /** Cleared sales for one token, newest first. */
+  listTokenSales(tokenId: string, limit?: number): Promise<Sale[]>;
   /** Recent offers for the collection, highest first. */
   listRecentOffers(limit?: number): Promise<Offer[]>;
   /** Active offers on a single token, highest first. */

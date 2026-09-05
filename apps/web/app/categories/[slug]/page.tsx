@@ -146,6 +146,7 @@ export default async function CategoryDetailPage({
             <span className="text-eyebrow-muted">Collection pulse</span>
             <div className="grid grid-cols-2 gap-x-8 gap-y-6 border-y border-[var(--color-border-subtle)] py-6 md:grid-cols-2">
               <Stat label="Floor" value={payment(metrics.floorPrice, metrics.currency)} emphasis />
+              <Stat label="High ask" value={payment(metrics.ceilingPrice, metrics.currency)} />
               <Stat
                 label={listingStatus === 'not-listed' ? 'Not listed' : 'Listed'}
                 value={tokenCountForView.toLocaleString()}

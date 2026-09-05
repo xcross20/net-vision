@@ -30,6 +30,8 @@ export type ListCategoryTokensOptions = {
   status?: TokenListingStatus;
   /** Page size. */
   limit?: number;
+  /** Number of matching results to skip. */
+  offset?: number;
 };
 
 /**
@@ -68,6 +70,7 @@ function fallbackCategoryMetrics(slug: string): CategoryMetrics | null {
     owners: 0,
     currency: 'USDG',
     floorPrice: null,
+    ceilingPrice: null,
     lastSalePrice: null,
     topOfferPrice: null,
     topSalePrice: null,
@@ -121,6 +124,7 @@ export async function listCategoryTokenPage(
     facets: options.facets,
     status: options.status,
     limit: options.limit ?? 200,
+    offset: options.offset ?? 0,
   });
 }
 

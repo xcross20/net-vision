@@ -15,6 +15,7 @@ export async function GET() {
       filteredMemberSupply: c.filteredMemberSupply,
       listedCount: c.listedCount,
       floorPrice: c.floorPrice,
+      ceilingPrice: c.ceilingPrice,
       currency: c.currency,
       lastSalePrice: c.lastSalePrice,
       topOfferPrice: c.topOfferPrice,

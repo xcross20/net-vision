@@ -459,3 +459,72 @@ describe('OpenSeaClient fulfillment endpoints', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('OpenSeaClient getBestListing', () => {
+  it('returns null on 404 so callers can treat the token as unlisted', async () => {
+    const client = new OpenSeaClient({
+      baseUrl: BASE_URL,
+      apiKey: 'test-key',
+      chain: 'robinhood',
+      fetchImpl: makeFetch([{ status: 404, body: { error: 'not found' } }]) as typeof fetch,
+    });
+    expect(await client.getBestListing({ slug: 'button-presser', tokenId: '628' })).toBeNull();
+  });
+});
+
+describe('OpenSeaClient events and nft offers', () => {
+  it('parses collection sale events', async () => {
+    const client = new OpenSeaClient({
+      baseUrl: BASE_URL,
+      apiKey: 'test-key',
+      chain: 'robinhood',
+      fetchImpl: makeFetch([
+        {
+          status: 200,
+          body: {
+            asset_events: [
+              {
+                event_type: 'sale',
+                event_timestamp: 1_800_000_000,
+                order_hash: '0xsale',
+                seller: '0x0000000000000000000000000000000000000aaa',
+                buyer: '0x0000000000000000000000000000000000000bbb',
+                payment: { quantity: '560000000', decimals: 6, symbol: 'USDG' },
+                nft: { identifier: '628', contract: '0xE5143de9D3CcBc31Ffb4e7Fc66d8320e0E2693D2' },
+              },
+            ],
+            next: null,
+          },
+        },
+      ]) as typeof fetch,
+    });
+    const page = await client.getCollectionEvents({
+      slug: 'button-presser',
+      eventType: 'sale',
+      limit: 20,
+    });
+    expect(page.asset_events?.[0]?.nft?.identifier).toBe('628');
+    expect(page.asset_events?.[0]?.payment?.symbol).toBe('USDG');
+  });
+
+  it('returns nft offers and treats 404 as empty', async () => {
+    const withOffers = new OpenSeaClient({
+      baseUrl: BASE_URL,
+      apiKey: 'test-key',
+      chain: 'robinhood',
+      fetchImpl: makeFetch([
+        { status: 200, body: { offers: [offerFixture({ order_hash: '0xoff' })] } },
+      ]) as typeof fetch,
+    });
+    const offers = await withOffers.getNftOffers({ slug: 'button-presser', tokenId: '25' });
+    expect(offers[0]?.order_hash).toBe('0xoff');
+
+    const missing = new OpenSeaClient({
+      baseUrl: BASE_URL,
+      apiKey: 'test-key',
+      chain: 'robinhood',
+      fetchImpl: makeFetch([{ status: 404, body: { error: 'not found' } }]) as typeof fetch,
+    });
+    expect(await missing.getNftOffers({ slug: 'button-presser', tokenId: '25' })).toEqual([]);
+  });
+});

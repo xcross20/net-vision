@@ -38,9 +38,10 @@ export async function GET(
   const tokenPage = await listCategoryTokenPage(slug, {
     facets,
     status: listingStatus,
-    limit: MAX_LIMIT,
+    limit,
+    offset,
   });
-  const page = tokenPage.tokens.slice(offset, offset + limit);
+  const page = tokenPage.tokens;
   return NextResponse.json({
     category: { slug, status: listingStatus },
     tokens: page.map((t) => ({

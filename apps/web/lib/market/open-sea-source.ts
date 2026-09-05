@@ -22,7 +22,6 @@ import {
 } from '@net-vision/chain-config';
 import {
   classifyNumber,
-  enumerateAllMembers,
   enumerateMembers,
   isMember,
   type NumberTrait,
@@ -30,12 +29,17 @@ import {
 } from '@net-vision/taxonomy';
 import {
   createOpenSeaClient,
+  type AssetEvent,
   type ChainInfo,
-  type CollectionStats,
   type NftInfo,
   type Order,
   OpenSeaResponseError,
 } from '@net-vision/opensea-client';
+import {
+  TokenCatalog,
+  type CatalogListing,
+  type CatalogSale,
+} from './catalog';
 import { buildTokenImageUrl } from '@/lib/data/media';
 import type {
   CategoryMetrics,
@@ -65,13 +69,11 @@ type CacheEntry<T> = {
 };
 
 const TTL_MS = 60_000;
-// The OpenSea orderbook has to be walked end-to-end so the deterministic
-// category counts reflect every active listing, not just the most
-// recent N. Twenty pages of fifty is a thousand listings — wide enough
-// for the Button Presser orderbook without unbounded cost.
-const MAX_LISTING_PAGE_COUNT = 20;
 const MAX_LISTING_PAGE_SIZE = 1000;
+const ORDERBOOK_PAGE_SIZE = 200;
 const NFT_METADATA_CONCURRENCY = 4;
+const SCAN_BATCH = 24;
+const SCAN_CONCURRENCY = 4;
 
 type TokenCacheEntry = CacheEntry<Token>;
 type NftCacheEntry = CacheEntry<NftInfo>;
@@ -112,9 +114,18 @@ function normalizeAddress(value: string | undefined | null): string | null {
 }
 
 function parseEpoch(value: unknown): number | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : value;
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 0) return null;
+    return value > 1e12 ? Math.floor(value / 1000) : value;
+  }
+  if (typeof value !== 'string') return null;
+  if (/^\d+$/.test(value)) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) return null;
+    return parsed > 1e12 ? Math.floor(parsed / 1000) : parsed;
+  }
+  const millis = Date.parse(value);
+  return Number.isFinite(millis) ? Math.floor(millis / 1000) : null;
 }
 
 function isPriceTuple(value: unknown): value is PriceTuple {
@@ -194,6 +205,12 @@ class OpenSeaMarketSource implements MarketSource {
   private readonly tokenPages: Map<string, TokensPageCacheEntry> = new Map();
   private readonly collectionOrders: Map<number, CacheEntry<Order[]>> = new Map();
   private readonly unlistedCategoryTokens: Map<string, CacheEntry<string[]>> = new Map();
+  private readonly catalog: TokenCatalog;
+  private orderbookIngestedAt = 0;
+  private salesIngestedAt = 0;
+  private scanQueue: string[] = [];
+  private scanRunning = false;
+  private scanBooted = false;
   private readonly sales: Map<string, SalesCacheEntry> = new Map();
   private readonly offers: Map<string, OffersCacheEntry> = new Map();
   private readonly tokenOffers: Map<string, OffersCacheEntry> = new Map();
@@ -206,6 +223,10 @@ class OpenSeaMarketSource implements MarketSource {
 
   constructor(client: OpenSeaClient) {
     this.client = client;
+    this.catalog = new TokenCatalog({
+      minTokenId: BUTTON_PRESSER_COLLECTION.minTokenId,
+      maxTokenId: BUTTON_PRESSER_COLLECTION.maxTokenId,
+    });
   }
 
   private membersFor(slug: string): MemberSet {
@@ -303,12 +324,24 @@ class OpenSeaMarketSource implements MarketSource {
         }),
     ]);
 
+    const catalogListing = listing ? orderToCatalogListing(listing) : null;
+    this.catalog.confirmScan(tokenId, catalogListing);
+
     if (!nft && !listing) return null;
     const listedToken = listing ? orderToListedToken(listing) : null;
     const token = nft ? nftToToken(tokenId, nft) : listedToken;
     let finalToken: Token | null = token;
     if (token && listedToken && nft) {
       finalToken = mergeListedTokenWithNft(listedToken, nft);
+    }
+    const lastSale = this.catalog.lastSaleFor(tokenId);
+    if (finalToken && lastSale) {
+      finalToken = {
+        ...finalToken,
+        lastSalePrice: lastSale.price,
+        lastSaleAt: lastSale.occurredAt,
+        currency: finalToken.currency || lastSale.currency,
+      };
     }
     if (finalToken) this.tokens.set(tokenId, { value: finalToken, fetchedAt: Date.now() });
     return finalToken;
@@ -318,38 +351,148 @@ class OpenSeaMarketSource implements MarketSource {
     const key = JSON.stringify(filter ?? {});
     const cached = this.tokenPages.get(key);
     if (isFresh(cached)) return cached.value;
-    const chain = await this.ensureChain();
-    const page: ListTokensPage = chain
-      ? await this.fetchListingsPage(filter)
-      : { tokens: [], total: 0 };
+    await this.ensurePipeline();
+    const page = await this.fetchListingsPage(filter);
     this.tokenPages.set(key, { value: page, fetchedAt: Date.now() });
     return page;
   }
 
-  private async fetchCollectionOrders(maxResults: number): Promise<Order[]> {
-    const cached = this.collectionOrders.get(maxResults);
-    if (isFresh(cached)) return cached.value;
-    const want = Math.min(Math.max(maxResults, 1), MAX_LISTING_PAGE_SIZE);
-    let cursor: string | undefined;
-    const orders: Order[] = [];
+  private async ensurePipeline(): Promise<void> {
+    this.catalog.classify();
+    const chain = await this.ensureChain();
+    if (!chain) return;
+    await Promise.all([this.ingestOrderbook(), this.ingestCollectionSales()]);
+    this.bootBackgroundScan();
+  }
 
-    for (let pageIndex = 0; pageIndex < MAX_LISTING_PAGE_COUNT && orders.length < want; pageIndex += 1) {
-      const page = await this.client.getCollectionListings({
+  private async ingestOrderbook(): Promise<Order[]> {
+    const cached = this.collectionOrders.get(ORDERBOOK_PAGE_SIZE);
+    if (isFresh(cached)) return cached.value;
+    // OpenSea's public orderbook window is a single page of 200. The
+    // `next` cursor currently loops the same page, so walking further
+    // duplicates listings (e.g. palindrome #35853 twenty times).
+    const page = await this.client.getCollectionListings({
+      slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+      limit: ORDERBOOK_PAGE_SIZE,
+    });
+    const unique = new Map<string, Order>();
+    for (const order of page.listings) {
+      const catalogListing = orderToCatalogListing(order);
+      if (!catalogListing) continue;
+      const existing = unique.get(catalogListing.tokenId);
+      if (!existing) {
+        unique.set(catalogListing.tokenId, order);
+        continue;
+      }
+      const existingPrice = orderToCatalogListing(existing);
+      if (existingPrice && catalogListing.price < existingPrice.price) {
+        unique.set(catalogListing.tokenId, order);
+      }
+    }
+    const orders = [...unique.values()];
+    this.catalog.ingestListings(
+      orders
+        .map(orderToCatalogListing)
+        .filter((listing): listing is CatalogListing => listing !== null),
+    );
+    this.collectionOrders.set(ORDERBOOK_PAGE_SIZE, { value: orders, fetchedAt: Date.now() });
+    this.orderbookIngestedAt = Date.now();
+    this.tokenPages.clear();
+    return orders;
+  }
+
+  private async ingestCollectionSales(): Promise<void> {
+    if (Date.now() - this.salesIngestedAt < TTL_MS) return;
+    try {
+      const page = await this.client.getCollectionEvents({
         slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-        cursor,
+        eventType: 'sale',
         limit: 50,
       });
-      for (const order of page.listings) {
-        if (!getTokenIdFromOrder(order)) continue;
-        orders.push(order);
-        if (orders.length >= want) break;
-      }
-      if (!page.next || page.listings.length === 0) break;
-      cursor = String(page.next);
+      const events = page.asset_events ?? page.events ?? [];
+      const sales = events
+        .map(eventToCatalogSale)
+        .filter((sale): sale is CatalogSale => sale !== null);
+      this.catalog.ingestSales(sales);
+      this.salesIngestedAt = Date.now();
+    } catch (err) {
+      console.error(
+        `OpenSea collection sales failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      this.salesIngestedAt = Date.now();
     }
+  }
 
-    this.collectionOrders.set(maxResults, { value: orders, fetchedAt: Date.now() });
-    return orders;
+  private bootBackgroundScan(): void {
+    if (this.scanBooted) return;
+    this.scanBooted = true;
+    const slugs = [...this.catalog.allCategoryTotals()].sort(
+      (a, b) => a.memberSupply - b.memberSupply,
+    );
+    const seen = new Set<string>();
+    const ordered: string[] = [];
+    for (const row of slugs) {
+      for (const tokenId of this.catalog.memberIds(row.slug)) {
+        if (seen.has(tokenId) || this.catalog.isScanned(tokenId)) continue;
+        seen.add(tokenId);
+        ordered.push(tokenId);
+      }
+    }
+    this.enqueueScan(ordered);
+    void this.pumpScan();
+  }
+
+  private prioritizeScan(slug: string, facets?: string[]): void {
+    this.enqueueScan(this.catalog.unscannedIds(slug, facets), true);
+    void this.pumpScan();
+  }
+
+  private enqueueScan(tokenIds: string[], front = false): void {
+    const unseen = tokenIds.filter((tokenId) => !this.catalog.isScanned(tokenId));
+    if (unseen.length === 0) return;
+    this.scanQueue = front ? [...unseen, ...this.scanQueue] : [...this.scanQueue, ...unseen];
+  }
+
+  private async pumpScan(): Promise<void> {
+    if (this.scanRunning) return;
+    this.scanRunning = true;
+    try {
+      while (this.scanQueue.length > 0) {
+        const batch: string[] = [];
+        while (batch.length < SCAN_BATCH && this.scanQueue.length > 0) {
+          const tokenId = this.scanQueue.shift();
+          if (!tokenId || this.catalog.isScanned(tokenId)) continue;
+          batch.push(tokenId);
+        }
+        if (batch.length === 0) continue;
+        await this.scanTokenIds(batch);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    } finally {
+      this.scanRunning = false;
+    }
+  }
+
+  private async scanTokenIds(tokenIds: string[]): Promise<void> {
+    await mapWithConcurrency(tokenIds, SCAN_CONCURRENCY, async (tokenId) => {
+      try {
+        const listing = await this.client.getBestListing({
+          slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+          tokenId,
+        });
+        this.catalog.confirmScan(tokenId, listing ? orderToCatalogListing(listing) : null);
+      } catch (err) {
+        if (isMissingResource(err)) {
+          this.catalog.confirmScan(tokenId, null);
+          return;
+        }
+        console.error(
+          `OpenSea best-listing scan failed for ${tokenId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    });
+    this.tokenPages.clear();
+    this.categories.clear();
   }
 
   private async fetchListingsPage(filter?: ListTokensFilter): Promise<ListTokensPage> {
@@ -358,47 +501,56 @@ class OpenSeaMarketSource implements MarketSource {
     }
     const want = Math.min(Math.max(filter?.limit ?? 60, 1), MAX_LISTING_PAGE_SIZE);
     const offset = Math.max(filter?.offset ?? 0, 0);
-    // Category and not-listed views must know every active order, even
-    // when the caller only needs the first page of rendered cards.
-    const collectCap =
-      filter?.category || filter?.status === 'not-listed'
-        ? MAX_LISTING_PAGE_SIZE
-        : want;
-    const orders = await this.fetchCollectionOrders(collectCap);
-    const listedTokens = await mapWithConcurrency(orders, NFT_METADATA_CONCURRENCY, async (order) => {
-      const listedToken = orderToListedToken(order);
-      if (!listedToken) return null;
-      const nft = await this.fetchNFT(listedToken.tokenId);
-      const token = nft ? mergeListedTokenWithNft(listedToken, nft) : listedToken;
-      this.tokens.set(token.tokenId, { value: token, fetchedAt: Date.now() });
-      return token;
-    });
-    const tokens = listedTokens.filter((token): token is Token => token !== null);
-    const filteredTokens = tokens.filter((token) => matchesCategoryFilter(token, filter));
 
-    if (filter?.status === 'not-listed' && filter.category) {
-      const listedTokenIds = new Set(filteredTokens.map((token) => token.tokenId));
-      const unlistedTokenIds = this.getUnlistedCategoryTokenIds(
-        filter.category,
-        filter.facets,
-        listedTokenIds,
-      );
+    if (filter?.category) {
+      this.prioritizeScan(filter.category, filter.facets);
+      if (filter.status === 'not-listed') {
+        const window = this.catalog
+          .notListedIds(filter.category, filter.facets)
+          .slice(offset, offset + want);
+        await this.scanTokenIds(window.filter((tokenId) => !this.catalog.isScanned(tokenId)));
+        const notListedIds = this.catalog.notListedIds(filter.category, filter.facets);
+        return {
+          tokens: notListedIds.slice(offset, offset + want).map(buildUnlistedCategoryToken),
+          total: notListedIds.length,
+        };
+      }
+      const listedIds = this.catalog.listedIds(filter.category, filter.facets);
       return {
-        tokens: unlistedTokenIds
-          .slice(offset, offset + want)
-          .map(buildUnlistedCategoryToken),
-        total: unlistedTokenIds.length,
+        tokens: await this.hydrateListedTokens(listedIds.slice(offset, offset + want)),
+        total: listedIds.length,
       };
     }
 
+    const listedIds = this.catalog.listedIds();
     return {
-      tokens: filteredTokens.slice(offset, offset + want),
-      total: filteredTokens.length,
+      tokens: await this.hydrateListedTokens(listedIds.slice(offset, offset + want)),
+      total: listedIds.length,
     };
+  }
+
+  private async hydrateListedTokens(tokenIds: string[]): Promise<Token[]> {
+    const tokens = await mapWithConcurrency(tokenIds, NFT_METADATA_CONCURRENCY, async (tokenId) => {
+      const cached = this.tokens.get(tokenId);
+      if (isFresh(cached) && cached.value.listingPrice !== null) return cached.value;
+      const listing = this.catalog.listingFor(tokenId);
+      if (!listing) return null;
+      const listedToken = catalogListingToToken(listing, this.catalog.traitsFor(tokenId));
+      const nft = await this.fetchNFT(tokenId);
+      const token = nft ? mergeListedTokenWithNft(listedToken, nft) : listedToken;
+      const lastSale = this.catalog.lastSaleFor(tokenId);
+      const withSale = lastSale
+        ? { ...token, lastSalePrice: lastSale.price, lastSaleAt: lastSale.occurredAt }
+        : token;
+      this.tokens.set(tokenId, { value: withSale, fetchedAt: Date.now() });
+      return withSale;
+    });
+    return tokens.filter((token): token is Token => token !== null);
   }
 
   async getCollectionSnapshot(): Promise<CollectionSnapshot> {
     if (isFresh(this.collectionCache)) return this.collectionCache.value;
+    await this.ensurePipeline();
     const chain = await this.ensureChain();
     const fallback: CollectionSnapshot = {
       name: BUTTON_PRESSER_COLLECTION.name,
@@ -424,17 +576,12 @@ class OpenSeaMarketSource implements MarketSource {
       return fallback;
     }
 
-    const [statsResult, listingsResult] = await Promise.allSettled([
+    const statsResult = await Promise.allSettled([
       this.client.getCollectionStats({ slug: BUTTON_PRESSER_COLLECTION.openseaSlug }),
-      this.fetchCollectionOrders(MAX_LISTING_PAGE_SIZE),
     ]);
-    const stats = statsResult.status === 'fulfilled' ? statsResult.value : undefined;
-    const listings = listingsResult.status === 'fulfilled' ? listingsResult.value : undefined;
+    const stats = statsResult[0]?.status === 'fulfilled' ? statsResult[0].value : undefined;
     if (!stats) {
-      console.error(`OpenSea collection stats failed: ${statsResult.status === 'rejected' ? String(statsResult.reason) : 'unknown error'}`);
-    }
-    if (!listings) {
-      console.error(`OpenSea collection listings failed: ${listingsResult.status === 'rejected' ? String(listingsResult.reason) : 'unknown error'}`);
+      console.error(`OpenSea collection stats failed: ${statsResult[0]?.status === 'rejected' ? String(statsResult[0].reason) : 'unknown error'}`);
     }
 
     const oneDay = stats?.intervals?.find((interval) => interval.interval === 'one_day');
@@ -443,7 +590,7 @@ class OpenSeaMarketSource implements MarketSource {
       ...fallback,
       totalSupply: stats?.total.total_supply ?? stats?.total.num_items ?? 0,
       owners: stats?.total.num_owners ?? 0,
-      listedCount: listings?.length ?? 0,
+      listedCount: this.catalog.listedCount,
       currency: stats?.total.floor_price_symbol ?? DEFAULT_PAYMENT_CURRENCY,
       floorPrice: stats?.total.floor_price ?? null,
       volume24hNative: oneDay?.volume ?? 0,
@@ -459,40 +606,40 @@ class OpenSeaMarketSource implements MarketSource {
   async getCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
     const cached = this.categories.get(slug);
     if (isFresh(cached)) return cached.value;
+    await this.ensurePipeline();
+    this.prioritizeScan(slug);
     const snapshot = await this.getCollectionSnapshot();
-    const tokens = await this.listTokens({ listedOnly: true, limit: MAX_LISTING_PAGE_SIZE });
-    const members = this.membersFor(slug);
-    const memberIdSet = new Set(members.members);
-    const memberTokens = tokens.tokens.filter((token) => memberIdSet.has(token.tokenId));
-    const listed = memberTokens.filter((token) => token.listingPrice !== null);
-    const floors = listed
-      .map((token) => token.listingPrice)
-      .filter((price): price is number => price !== null);
-    const floor = floors.length > 0 ? Math.min(...floors) : null;
-    const owners = new Set(
-      memberTokens
-        .map((token) => token.ownerAddress?.toLowerCase() ?? '')
-        .filter(Boolean),
-    ).size;
+    const totals = this.catalog.categoryTotals(slug);
     const subFilter =
-      slug === 'palindrome' && members.byDigitCount
-        ? buildPalindromeFacets(members, listed)
+      slug === 'palindrome'
+        ? {
+            facets: ([2, 3, 4, 5] as const).map((digits) => {
+              const facetTotals = this.catalog.categoryTotals('palindrome', [`digits-${digits}`]);
+              return {
+                value: `digits-${digits}`,
+                label: `${digits} Digit`,
+                memberCount: facetTotals.memberSupply,
+                listedCount: facetTotals.listedCount,
+              };
+            }),
+          }
         : undefined;
     const metrics: CategoryMetrics = {
       slug,
       name: slug,
       family: 'unknown',
       description: '',
-      memberSupply: members.count,
-      filteredMemberSupply: members.count,
+      memberSupply: totals.memberSupply,
+      filteredMemberSupply: totals.memberSupply,
       totalSupply: snapshot.totalSupply,
-      listedCount: listed.length,
-      owners,
+      listedCount: totals.listedCount,
+      owners: totals.owners,
       currency: snapshot.currency,
-      floorPrice: floor,
-      lastSalePrice: null,
+      floorPrice: totals.floorPrice,
+      ceilingPrice: totals.ceilingPrice,
+      lastSalePrice: totals.lastSalePrice,
       topOfferPrice: null,
-      topSalePrice: null,
+      topSalePrice: totals.lastSalePrice,
       volume24hNative: 0,
       volume7dNative: 0,
       sales24h: 0,
@@ -504,55 +651,62 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   async listCategories(): Promise<CategoryMetrics[]> {
+    await this.ensurePipeline();
     const snapshot = await this.getCollectionSnapshot();
-    const page = await this.listTokens({ listedOnly: true, limit: MAX_LISTING_PAGE_SIZE });
-    const bySlug = new Map<string, { count: number; floors: number[]; owners: Set<string> }>();
-    for (const token of page.tokens) {
-      for (const trait of token.traits) {
-        if (trait.family === 'digits' && !trait.slug.startsWith('digits-')) continue;
-        const entry = bySlug.get(trait.slug) ?? { count: 0, floors: [], owners: new Set() };
-        entry.count += 1;
-        if (token.listingPrice !== null) entry.floors.push(token.listingPrice);
-        if (token.ownerAddress) entry.owners.add(token.ownerAddress.toLowerCase());
-        bySlug.set(trait.slug, entry);
-      }
-    }
-    const supplyRange = {
-      minTokenId: BUTTON_PRESSER_COLLECTION.minTokenId,
-      maxTokenId: BUTTON_PRESSER_COLLECTION.maxTokenId,
-    };
-    const allMembers = new Map(
-      Object.entries(enumerateAllMembers(supplyRange)),
-    );
-    return [...allMembers.entries()]
-      .filter(([slug]) => bySlug.has(slug))
-      .map(([slug, members]) => {
-        const aggregate = bySlug.get(slug)!;
-        return {
-          slug,
-          name: slug,
-          family: 'unknown',
-          description: '',
-          memberSupply: members.count,
-          filteredMemberSupply: members.count,
-          totalSupply: snapshot.totalSupply,
-          listedCount: aggregate.count,
-          owners: aggregate.owners.size,
-          currency: snapshot.currency,
-          floorPrice: aggregate.floors.length > 0 ? Math.min(...aggregate.floors) : null,
-          lastSalePrice: null,
-          topOfferPrice: null,
-          topSalePrice: null,
-          volume24hNative: 0,
-          volume7dNative: 0,
-          sales24h: 0,
-          sales7d: 0,
-        };
-      });
+    return this.catalog.allCategoryTotals().map((totals) => ({
+      slug: totals.slug,
+      name: totals.slug,
+      family: 'unknown',
+      description: '',
+      memberSupply: totals.memberSupply,
+      filteredMemberSupply: totals.memberSupply,
+      totalSupply: snapshot.totalSupply,
+      listedCount: totals.listedCount,
+      owners: totals.owners,
+      currency: snapshot.currency,
+      floorPrice: totals.floorPrice,
+      ceilingPrice: totals.ceilingPrice,
+      lastSalePrice: totals.lastSalePrice,
+      topOfferPrice: null,
+      topSalePrice: totals.lastSalePrice,
+      volume24hNative: 0,
+      volume7dNative: 0,
+      sales24h: 0,
+      sales7d: 0,
+    }));
   }
 
-  async listRecentSales(_limit = 20): Promise<Sale[]> {
-    return [];
+  async listRecentSales(limit = 20): Promise<Sale[]> {
+    await this.ensurePipeline();
+    return this.catalog.recentSales(limit).map(catalogSaleToSale);
+  }
+
+  async listTokenSales(tokenId: string, limit = 20): Promise<Sale[]> {
+    await this.ensurePipeline();
+    const cached = this.catalog.salesFor(tokenId, limit);
+    if (cached.length > 0) return cached.map(catalogSaleToSale);
+    const chain = await this.ensureChain();
+    if (!chain) return [];
+    try {
+      const page = await this.client.getNftEvents({
+        chain: chain.chain,
+        contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
+        tokenId,
+        eventType: 'sale',
+        limit,
+      });
+      const events = page.asset_events ?? page.events ?? [];
+      const sales = events
+        .map(eventToCatalogSale)
+        .filter((sale): sale is CatalogSale => sale !== null);
+      this.catalog.ingestSales(sales);
+      return this.catalog.salesFor(tokenId, limit).map(catalogSaleToSale);
+    } catch (err) {
+      console.error(
+        `OpenSea token sales failed for ${tokenId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return [];
+    }
   }
 
   async listRecentOffers(limit = 20): Promise<Offer[]> {
@@ -579,17 +733,34 @@ class OpenSeaMarketSource implements MarketSource {
     if (isFresh(cached)) return cached.value;
     const chain = await this.ensureChain();
     if (!chain) return [];
-    const page = await this.client.getCollectionOffers({
-      slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-      limit: MAX_LISTING_PAGE_SIZE,
-    });
-    const offers = page.offers
-      .map(orderToOffer)
-      .filter((offer): offer is Offer => offer !== null)
-      .filter((offer) => offer.tokenId === tokenId)
-      .sort((a, b) => b.price - a.price);
-    this.tokenOffers.set(tokenId, { value: offers, fetchedAt: Date.now() });
-    return offers;
+    try {
+      const [pageOffers, best] = await Promise.all([
+        this.client.getNftOffers({
+          slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+          tokenId,
+          limit: 50,
+        }),
+        this.client.getBestNftOffer({
+          slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+          tokenId,
+        }),
+      ]);
+      const merged = new Map<string, Offer>();
+      for (const order of [...pageOffers, best]) {
+        if (!order) continue;
+        const offer = orderToOffer(order);
+        if (offer) merged.set(offer.orderHash, offer);
+      }
+      const offers = [...merged.values()].sort((a, b) => b.price - a.price);
+      this.tokenOffers.set(tokenId, { value: offers, fetchedAt: Date.now() });
+      return offers;
+    } catch (err) {
+      console.error(
+        `OpenSea token offers failed for ${tokenId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      this.tokenOffers.set(tokenId, { value: [], fetchedAt: Date.now() });
+      return [];
+    }
   }
 
   async getAccountListings(address: string): Promise<Token[]> {
@@ -648,6 +819,7 @@ function nftToToken(tokenId: string, nft: NftInfo): Token {
       nft.image_original_url ??
       buildTokenImageUrl(tokenId),
     name: nft.name ?? `#${tokenId}`,
+    description: nft.description ?? null,
     listingPrice: null,
     currency: DEFAULT_PAYMENT_CURRENCY,
     lastSalePrice: null,
@@ -709,6 +881,80 @@ function buildUnlistedCategoryToken(tokenId: string): Token {
     rarityRank: null,
     listedAt: null,
     lastSaleAt: null,
+  };
+}
+
+function catalogListingToToken(listing: CatalogListing, traits: NumberTrait[]): Token {
+  return {
+    tokenId: listing.tokenId,
+    contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
+    chainId: ROBINHOOD_CHAIN.id,
+    imageUrl: buildTokenImageUrl(listing.tokenId),
+    name: `#${listing.tokenId}`,
+    listingPrice: listing.price,
+    currency: listing.currency,
+    lastSalePrice: null,
+    ownerAddress: listing.ownerAddress,
+    traits,
+    rarityRank: null,
+    listedAt: listing.listedAt,
+    lastSaleAt: null,
+  };
+}
+
+function orderToCatalogListing(order: Order): CatalogListing | null {
+  const tokenId = getTokenIdFromOrder(order);
+  if (!tokenId) return null;
+  const { amount, currency } = getOrderPrice(order);
+  if (amount === null || !Number.isFinite(amount)) return null;
+  return {
+    tokenId,
+    price: amount,
+    currency: currency ?? DEFAULT_PAYMENT_CURRENCY,
+    listedAt: parseEpoch(order.order_created_at ?? order.protocol_data.parameters.startTime),
+    ownerAddress: normalizeAddress(order.protocol_data.parameters.offerer ?? null),
+    orderHash: order.order_hash,
+  };
+}
+
+function eventAddress(value: unknown): string | null {
+  if (typeof value === 'string') return normalizeAddress(value);
+  if (value && typeof value === 'object' && 'address' in value) {
+    return normalizeAddress((value as { address?: string }).address ?? null);
+  }
+  return null;
+}
+
+function eventToCatalogSale(event: AssetEvent): CatalogSale | null {
+  const tokenId = String(event.nft?.identifier ?? event.asset?.identifier ?? '');
+  if (!/^\d+$/.test(tokenId)) return null;
+  const quantity = event.payment?.quantity;
+  const decimals = event.payment?.decimals ?? 0;
+  if (quantity === undefined) return null;
+  const amount = Number(quantity) / 10 ** decimals;
+  if (!Number.isFinite(amount)) return null;
+  const occurredAt = parseEpoch(event.event_timestamp ?? event.closing_date);
+  if (occurredAt === null) return null;
+  return {
+    tokenId,
+    price: amount,
+    currency: event.payment?.symbol ?? event.payment?.currency ?? DEFAULT_PAYMENT_CURRENCY,
+    occurredAt,
+    orderHash: event.order_hash ?? null,
+    buyer: eventAddress(event.buyer) ?? normalizeAddress(event.to_address ?? null),
+    seller: eventAddress(event.seller) ?? normalizeAddress(event.from_address ?? null),
+  };
+}
+
+function catalogSaleToSale(sale: CatalogSale): Sale {
+  return {
+    tokenId: sale.tokenId,
+    price: sale.price,
+    currency: sale.currency,
+    occurredAt: sale.occurredAt,
+    orderHash: sale.orderHash,
+    buyer: sale.buyer,
+    seller: sale.seller,
   };
 }
 
@@ -872,6 +1118,9 @@ class FailingMarketSource implements MarketSource {
     return [];
   }
   async listRecentSales(): Promise<Sale[]> {
+    return [];
+  }
+  async listTokenSales(): Promise<Sale[]> {
     return [];
   }
   async listRecentOffers(): Promise<Offer[]> {

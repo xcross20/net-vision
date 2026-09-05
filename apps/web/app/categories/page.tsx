@@ -35,8 +35,8 @@ export default async function CategoriesPage() {
           Every algorithmic market
         </h1>
         <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
-          Categories are computed deterministically from each token&apos;s number. Floors,
-          listing counts, and owner counts come straight from the live OpenSea orderbook.
+          Every token id is classified first, then confirmed against OpenSea. Floors
+          and listing counts are the lowest and counted unique asks in that category.
         </p>
       </header>
 

@@ -142,6 +142,86 @@ export const BestListingSchema = OrderSchema.nullable();
 
 export const BestOfferSchema = OrderSchema.nullable();
 
+export const NftOffersPageSchema = z
+  .object({
+    offers: z.array(OrderSchema).optional(),
+    listings: z.array(OrderSchema).optional(),
+    next: z.string().nullish(),
+  })
+  .passthrough();
+
+export type NftOffersPage = z.infer<typeof NftOffersPageSchema>;
+
+/* -------------------------------------------------------------------------- */
+/*  Events                                                                     */
+/* -------------------------------------------------------------------------- */
+
+const EventPaymentSchema = z
+  .object({
+    quantity: z.union([z.string(), z.number()]).optional(),
+    decimals: z.number().int().min(0).max(36).optional(),
+    symbol: z.string().optional(),
+    token_address: z.string().optional(),
+    currency: z.string().optional(),
+  })
+  .passthrough();
+
+const EventNftSchema = z
+  .object({
+    identifier: z.union([z.string(), z.number()]).optional(),
+    contract: z.string().optional(),
+    collection: z.string().optional(),
+    name: z.string().optional(),
+    image_url: z.string().optional(),
+  })
+  .passthrough();
+
+const AddressLikeSchema = z.union([
+  z.string(),
+  z
+    .object({
+      address: z.string().optional(),
+    })
+    .passthrough(),
+]);
+
+export const AssetEventSchema = z
+  .object({
+    event_type: z.string().optional(),
+    event_timestamp: z.union([z.number(), z.string()]).optional(),
+    closing_date: z.union([z.number(), z.string()]).optional(),
+    order_hash: z.string().nullish(),
+    transaction: z
+      .union([
+        z.string(),
+        z
+          .object({
+            hash: z.string().optional(),
+          })
+          .passthrough(),
+      ])
+      .optional(),
+    seller: AddressLikeSchema.optional(),
+    buyer: AddressLikeSchema.optional(),
+    from_address: z.string().optional(),
+    to_address: z.string().optional(),
+    payment: EventPaymentSchema.optional(),
+    nft: EventNftSchema.optional(),
+    asset: EventNftSchema.optional(),
+  })
+  .passthrough();
+
+export const CollectionEventsPageSchema = z
+  .object({
+    asset_events: z.array(AssetEventSchema).optional(),
+    events: z.array(AssetEventSchema).optional(),
+    next: z.string().nullish(),
+  })
+  .passthrough();
+
+export type AssetEvent = z.infer<typeof AssetEventSchema>;
+export type CollectionEventsPage = z.infer<typeof CollectionEventsPageSchema>;
+
 export type CollectionListingsPage = z.infer<typeof CollectionListingsPageSchema>;
 export type CollectionOffersPage = z.infer<typeof CollectionOffersPageSchema>;
 
@@ -496,7 +576,12 @@ export class OpenSeaClient {
    */
   async getBestListing(input: { slug: string; tokenId: string }): Promise<Order | null> {
     const path = `/api/v2/listings/collection/${encodeURIComponent(input.slug)}/nfts/${encodeURIComponent(input.tokenId)}/best`;
-    return this.request('GET', path, BestListingSchema);
+    try {
+      return await this.request('GET', path, BestListingSchema);
+    } catch (err) {
+      if (err instanceof OpenSeaResponseError && err.status === 404) return null;
+      throw err;
+    }
   }
 
   /**
@@ -628,6 +713,81 @@ export class OpenSeaClient {
       { retry: false },
     );
     return { raw };
+  }
+
+  /**
+   * Best item offer for a specific NFT.
+   * `GET /api/v2/offers/collection/{slug}/nfts/{identifier}/best`.
+   */
+  async getBestNftOffer(input: { slug: string; tokenId: string }): Promise<Order | null> {
+    const path = `/api/v2/offers/collection/${encodeURIComponent(input.slug)}/nfts/${encodeURIComponent(input.tokenId)}/best`;
+    try {
+      return await this.request('GET', path, BestOfferSchema);
+    } catch (err) {
+      if (err instanceof OpenSeaResponseError && err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Active item offers for a specific NFT.
+   * `GET /api/v2/offers/collection/{slug}/nfts/{identifier}`.
+   */
+  async getNftOffers(input: { slug: string; tokenId: string; limit?: number }): Promise<Order[]> {
+    const path = `/api/v2/offers/collection/${encodeURIComponent(input.slug)}/nfts/${encodeURIComponent(input.tokenId)}`;
+    try {
+      const page = await this.request('GET', path, NftOffersPageSchema, {
+        query: { limit: input.limit },
+      });
+      return page.offers ?? page.listings ?? [];
+    } catch (err) {
+      if (err instanceof OpenSeaResponseError && err.status === 404) return [];
+      throw err;
+    }
+  }
+
+  /**
+   * Collection activity tape. OpenSea v2
+   * `GET /api/v2/events/collection/{slug}`.
+   */
+  async getCollectionEvents(input: {
+    slug: string;
+    eventType?: string;
+    limit?: number;
+    next?: string;
+  }): Promise<CollectionEventsPage> {
+    return this.request(
+      'GET',
+      `/api/v2/events/collection/${encodeURIComponent(input.slug)}`,
+      CollectionEventsPageSchema,
+      {
+        query: {
+          event_type: input.eventType,
+          limit: input.limit,
+          next: input.next,
+        },
+      },
+    );
+  }
+
+  /**
+   * Per-token activity tape. OpenSea v2
+   * `GET /api/v2/events/chain/{chain}/contract/{address}/nfts/{tokenId}`.
+   */
+  async getNftEvents(input: {
+    chain: string;
+    contractAddress: string;
+    tokenId: string;
+    eventType?: string;
+    limit?: number;
+  }): Promise<CollectionEventsPage> {
+    const path = `/api/v2/events/chain/${encodeURIComponent(input.chain)}/contract/${encodeURIComponent(input.contractAddress)}/nfts/${encodeURIComponent(input.tokenId)}`;
+    return this.request('GET', path, CollectionEventsPageSchema, {
+      query: {
+        event_type: input.eventType,
+        limit: input.limit,
+      },
+    });
   }
 }
 

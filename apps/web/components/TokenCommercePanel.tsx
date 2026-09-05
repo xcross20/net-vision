@@ -52,14 +52,6 @@ export function TokenCommercePanel({
         >
           Make offer
         </motion.button>
-        <motion.button
-          type="button"
-          className="nv-button nv-button-ghost nv-button-disabled"
-          disabled
-          whileTap={{ scale: 0.98 }}
-        >
-          Make offer
-        </motion.button>
         <AddToCartButton
           variant="primary"
           draft={{
