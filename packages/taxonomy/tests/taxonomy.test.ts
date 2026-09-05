@@ -141,6 +141,10 @@ describe('VIRTUAL_COLLECTION_CATALOG', () => {
       'year',
       'binary-style',
       'mirror-sequence',
+      'material-brass',
+      'material-steel',
+      'material-anodised-aluminium',
+      'material-printed-phenolic',
     ]) {
       expect(slugs).toContain(required);
     }

@@ -4,13 +4,12 @@ Commerce features stay off until market-state coverage is materially complete.
 
 ## Frozen
 
-- Category Sweep
 - Value Sweep
-- Listing alerts
 - Market radar
 - Category bids
-- Portfolio valuation
 - New-listings feed driven by incomplete orderbook samples
+
+Cheapest-N Category Sweep, watchlist, and Portfolio list actions are implemented but stay disabled or OpenSea-linked while `marketStatus === 'syncing'` / trading remains gated.
 
 `NEXT_PUBLIC_TRADING_ENABLED` remains `false`.
 
