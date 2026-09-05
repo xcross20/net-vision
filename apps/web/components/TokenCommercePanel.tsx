@@ -30,8 +30,8 @@ export function TokenCommercePanel({
   return (
     <div className="flex flex-col gap-5">
       <dl className="nv-panel-soft divide-y divide-[var(--nv-border)] p-4">
-        <Row label="Best ask" value={ask} emphasis />
-        <Row label="Last sale" value={lastSale} />
+        <Row label="Best ask" value={ask} currency={currency} emphasis />
+        <Row label="Last sale" value={lastSale} currency={currency} />
       </dl>
 
       <div className="flex flex-col gap-2">
@@ -106,10 +106,12 @@ export function TokenCommercePanel({
 function Row({
   label,
   value,
+  currency,
   emphasis = false,
 }: {
   label: string;
   value: number | null;
+  currency: string;
   emphasis?: boolean;
 }) {
   return (
@@ -122,7 +124,7 @@ function Row({
             : 'nv-mono text-sm text-[var(--nv-text-soft)]'
         }
       >
-        {value !== null && Number.isFinite(value) ? `${value} ETH` : '—'}
+        {value !== null && Number.isFinite(value) ? `${value} ${currency}` : '—'}
       </dd>
     </div>
   );

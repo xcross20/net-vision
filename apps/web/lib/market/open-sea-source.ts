@@ -18,6 +18,7 @@
 
 import {
   BUTTON_PRESSER_COLLECTION,
+  PAYMENT_TOKENS,
   ROBINHOOD_CHAIN,
 } from '@net-vision/chain-config';
 import {
@@ -1300,6 +1301,10 @@ function catalogListingToToken(
   storedImageUrl: string | null = null,
   storedName: string | null = null,
 ): Token {
+  const decimals = PAYMENT_TOKENS.USDG.decimals;
+  const raw = Number.isFinite(listing.price)
+    ? Math.round(listing.price * 10 ** decimals).toString()
+    : null;
   return {
     tokenId: listing.tokenId,
     contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
@@ -1308,6 +1313,11 @@ function catalogListingToToken(
     name: storedName ?? `#${listing.tokenId}`,
     listingPrice: listing.price,
     currency: listing.currency,
+    listingOrderHash: listing.orderHash,
+    listingPriceRaw: raw,
+    listingCurrencyAddress: PAYMENT_TOKENS.USDG.contractAddress,
+    listingCurrencyDecimals: decimals,
+    listingExpiresAt: null,
     lastSalePrice: null,
     ownerAddress: listing.ownerAddress,
     traits,

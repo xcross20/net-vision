@@ -26,6 +26,13 @@ export type Token = {
   /** Payment-token price. null = no active ask. */
   listingPrice: number | null;
   currency: string;
+  /** OpenSea order hash for the ask the UI is showing. */
+  listingOrderHash?: string | null;
+  /** Smallest-unit price string for the displayed ask (e.g. 6-dec USDG). */
+  listingPriceRaw?: string | null;
+  listingCurrencyAddress?: string | null;
+  listingCurrencyDecimals?: number | null;
+  listingExpiresAt?: number | null;
   /** Most recent recorded payment-token sale. null = no recorded sale. */
   lastSalePrice: number | null;
   ownerAddress: string | null;

@@ -46,6 +46,8 @@ type CartContextValue = {
   removeConfirmed: (tokenIds: ReadonlyArray<string>) => void;
   phase: CartPhase;
   setPhase: (phase: CartPhase) => void;
+  requestReview: () => void;
+  consumeReviewRequest: () => boolean;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -54,6 +56,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, initialCartState);
   const [isOpen, setIsOpen] = useState(false);
   const [phase, setPhase] = useState<CartPhase>({ kind: 'browsing' });
+  const reviewRequestedRef = useRef(false);
   const hydratedRef = useRef(false);
 
   useEffect(() => {
@@ -127,6 +130,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
+  const requestReview = useCallback(() => {
+    reviewRequestedRef.current = true;
+  }, []);
+  const consumeReviewRequest = useCallback(() => {
+    if (!reviewRequestedRef.current) return false;
+    reviewRequestedRef.current = false;
+    return true;
+  }, []);
 
   const value = useMemo<CartContextValue>(
     () => ({
@@ -143,8 +154,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
       removeConfirmed,
       phase,
       setPhase,
+      requestReview,
+      consumeReviewRequest,
     }),
-    [state.items, state.hydrated, isOpen, open, close, add, addMany, remove, clear, removeConfirmed, phase],
+    [
+      state.items,
+      state.hydrated,
+      isOpen,
+      open,
+      close,
+      add,
+      addMany,
+      remove,
+      clear,
+      removeConfirmed,
+      phase,
+      requestReview,
+      consumeReviewRequest,
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
@@ -176,8 +203,8 @@ function buildCartItem(
       displayName: draft.token.name ?? `#${tokenId}`,
       categories,
       sourceMarketplace: draft.sourceMarketplace ?? 'opensea',
-      displayedOrderHash: draft.displayedOrderHash ?? null,
-      displayedPriceRaw: draft.displayedPriceRaw ?? null,
+      displayedOrderHash: draft.displayedOrderHash ?? draft.token.listingOrderHash ?? null,
+      displayedPriceRaw: draft.displayedPriceRaw ?? draft.token.listingPriceRaw ?? null,
       displayedPriceDecimal: draft.displayedPriceDecimal ?? null,
       currencySymbol:
         draft.currencySymbol ??
