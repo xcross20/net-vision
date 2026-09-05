@@ -28,3 +28,8 @@ apps/web/data/
 # Playwright browsers
 /playwright-report/
 /test-results/
+backups/
+
+# Market index snapshots (local + Railway volume backups)
+backups/
+apps/web/data/

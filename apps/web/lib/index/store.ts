@@ -8,6 +8,9 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { facetsForToken, type TokenFacet } from '@net-vision/taxonomy';
+import type { CatalogSale } from '../market/catalog';
+import type { FloorSnapshot, SaleAttribution } from '../market/engine';
 import type { ListingRecord, ListingState } from '../market/listing-state';
 import { decayIfStale, emptyListingRecord } from '../market/listing-state';
 
@@ -17,6 +20,9 @@ export type TokenRow = {
   exists: boolean;
   name: string | null;
   imageUrl: string | null;
+  ownerAddress: string | null;
+  metadataJson: string | null;
+  metadataVerifiedAt: number | null;
   lastSeenAt: number;
 };
 
@@ -32,9 +38,14 @@ export type WorkerCheckpoint = {
 export type IndexSnapshot = {
   version: 1;
   taxonomyVersion: string;
+  historyStartedAt: number;
   tokens: Record<string, TokenRow>;
   listings: Record<string, ListingRecord>;
   categories: Record<string, string[]>;
+  tokenFacets: Record<string, TokenFacet[]>;
+  sales: CatalogSale[];
+  saleAttributions: SaleAttribution[];
+  floorHistory: Record<string, FloorSnapshot[]>;
   worker: WorkerCheckpoint;
 };
 
@@ -48,9 +59,14 @@ function emptySnapshot(): IndexSnapshot {
   return {
     version: 1,
     taxonomyVersion: '2026-09-05.v1',
+    historyStartedAt: Date.now(),
     tokens: {},
     listings: {},
     categories: {},
+    tokenFacets: {},
+    sales: [],
+    saleAttributions: [],
+    floorHistory: {},
     worker: {
       phase: 'bootstrap',
       cursor: 0,
@@ -59,6 +75,33 @@ function emptySnapshot(): IndexSnapshot {
       lastError: null,
       last429At: null,
     },
+  };
+}
+
+function coerceSnapshot(parsed: IndexSnapshot): IndexSnapshot {
+  const base = emptySnapshot();
+  return {
+    ...base,
+    ...parsed,
+    historyStartedAt: parsed.historyStartedAt || base.historyStartedAt,
+    tokenFacets: parsed.tokenFacets ?? {},
+    sales: parsed.sales ?? [],
+    saleAttributions: parsed.saleAttributions ?? [],
+    floorHistory: parsed.floorHistory ?? {},
+    tokens: Object.fromEntries(
+      Object.entries(parsed.tokens ?? {}).map(([id, row]) => [
+        id,
+        {
+          ...row,
+          ownerAddress: row.ownerAddress ?? null,
+          metadataJson: row.metadataJson ?? null,
+          metadataVerifiedAt: row.metadataVerifiedAt ?? null,
+        },
+      ]),
+    ),
+    listings: parsed.listings ?? {},
+    categories: parsed.categories ?? {},
+    worker: parsed.worker ?? base.worker,
   };
 }
 
@@ -77,7 +120,7 @@ export function loadIndex(): IndexSnapshot {
       memory = emptySnapshot();
       return memory;
     }
-    memory = parsed;
+    memory = coerceSnapshot(parsed);
     return memory;
   } catch {
     memory = emptySnapshot();
@@ -92,6 +135,32 @@ export function saveIndex(): void {
   const tmp = `${path}.tmp`;
   writeFileSync(tmp, JSON.stringify(memory));
   renameSync(tmp, path);
+  // Dual-write to Postgres when DATABASE_URL is set (fire-and-forget).
+  // Dynamic import keeps vitest / local runs free of a hard pg dependency path.
+  void import('./pg')
+    .then(({ scheduleSaveSnapshotToPg }) => scheduleSaveSnapshotToPg(memory!))
+    .catch(() => {
+      /* pg optional at boot */
+    });
+}
+
+/**
+ * If the on-disk snapshot is empty but Postgres has a blob, restore it.
+ * Call once at process boot (before the worker starts).
+ */
+export async function hydrateIndexFromPostgres(): Promise<boolean> {
+  const snap = loadIndex();
+  if (Object.keys(snap.tokens).length > 0) return false;
+  try {
+    const { loadSnapshotFromPg } = await import('./pg');
+    const fromPg = await loadSnapshotFromPg();
+    if (!fromPg || Object.keys(fromPg.tokens ?? {}).length === 0) return false;
+    memory = coerceSnapshot(fromPg);
+    saveIndex();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function resetIndexForTests(snapshot?: IndexSnapshot): void {
@@ -100,7 +169,14 @@ export function resetIndexForTests(snapshot?: IndexSnapshot): void {
 
 export function upsertToken(row: TokenRow): void {
   const snap = loadIndex();
-  snap.tokens[row.tokenId] = row;
+  const previous = snap.tokens[row.tokenId];
+  snap.tokens[row.tokenId] = {
+    ...previous,
+    ...row,
+    ownerAddress: row.ownerAddress ?? previous?.ownerAddress ?? null,
+    metadataJson: row.metadataJson ?? previous?.metadataJson ?? null,
+    metadataVerifiedAt: row.metadataVerifiedAt ?? previous?.metadataVerifiedAt ?? null,
+  };
 }
 
 export function setTokenCategories(tokenId: string, slugs: string[]): void {
@@ -148,4 +224,94 @@ export function writeWorkerCheckpoint(patch: Partial<WorkerCheckpoint>): void {
 
 export function taxonomyMemberships(slug: string): string[] {
   return loadIndex().categories[slug] ?? [];
+}
+
+export function setTokenFacets(tokenId: string, facets: TokenFacet[]): void {
+  const snap = loadIndex();
+  snap.tokenFacets[tokenId] = facets;
+  setTokenCategories(tokenId, [...new Set(facets.map((facet) => facet.slug))]);
+}
+
+export function tokenFacets(tokenId: string): TokenFacet[] {
+  return loadIndex().tokenFacets[tokenId] ?? [];
+}
+
+export function persistNftMetadata(
+  tokenId: string,
+  nft: {
+    name?: string | null;
+    imageUrl?: string | null;
+    ownerAddress?: string | null;
+    traits?: Array<{ trait_type?: string; value?: string | number }>;
+  },
+): TokenFacet[] {
+  upsertToken({
+    tokenId,
+    displayNumber: tokenId,
+    exists: true,
+    name: nft.name ?? null,
+    imageUrl: nft.imageUrl ?? null,
+    ownerAddress: nft.ownerAddress ?? null,
+    metadataJson: JSON.stringify({ traits: nft.traits ?? [], name: nft.name ?? null }),
+    metadataVerifiedAt: Date.now(),
+    lastSeenAt: Date.now(),
+  });
+  const facets = facetsForToken(tokenId, { traits: nft.traits, name: nft.name });
+  setTokenFacets(tokenId, facets);
+  return facets;
+}
+
+export function historyStartedAt(): number {
+  return loadIndex().historyStartedAt;
+}
+
+const MAX_SALES = 2000;
+const MAX_FLOOR_POINTS = 400;
+
+export function ingestSales(sales: CatalogSale[], attributions: SaleAttribution[]): void {
+  const snap = loadIndex();
+  const existing = new Set(
+    snap.sales.map((row) => `${row.orderHash ?? ''}:${row.tokenId}:${row.occurredAt}:${row.price}`),
+  );
+  for (const sale of sales) {
+    const key = `${sale.orderHash ?? ''}:${sale.tokenId}:${sale.occurredAt}:${sale.price}`;
+    if (existing.has(key)) continue;
+    existing.add(key);
+    snap.sales.push(sale);
+  }
+  const attrKeys = new Set(
+    snap.saleAttributions.map((row) => `${row.saleEventId}:${row.categorySlug}`),
+  );
+  for (const row of attributions) {
+    const key = `${row.saleEventId}:${row.categorySlug}`;
+    if (attrKeys.has(key)) continue;
+    attrKeys.add(key);
+    snap.saleAttributions.push(row);
+  }
+  snap.sales.sort((a, b) => b.occurredAt - a.occurredAt);
+  if (snap.sales.length > MAX_SALES) snap.sales.length = MAX_SALES;
+}
+
+export function allSales(): CatalogSale[] {
+  return loadIndex().sales;
+}
+
+export function allAttributions(): SaleAttribution[] {
+  return loadIndex().saleAttributions;
+}
+
+export function appendFloorSnapshot(slug: string, snapshot: FloorSnapshot): void {
+  const snap = loadIndex();
+  const series = snap.floorHistory[slug] ?? [];
+  const last = series[series.length - 1];
+  if (last && snapshot.at - last.at < 60 * 60 * 1000 && last.floor === snapshot.floor) {
+    return;
+  }
+  series.push(snapshot);
+  if (series.length > MAX_FLOOR_POINTS) series.splice(0, series.length - MAX_FLOOR_POINTS);
+  snap.floorHistory[slug] = series;
+}
+
+export function floorHistory(slug: string): FloorSnapshot[] {
+  return loadIndex().floorHistory[slug] ?? [];
 }

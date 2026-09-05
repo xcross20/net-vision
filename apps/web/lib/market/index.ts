@@ -12,4 +12,6 @@ export type {
   TokenListingStatus,
   Offer,
   Sale,
+  SalesWindow,
 } from './source';
+export type { SweepPreview, SweepPreviewInput, FloorSnapshot } from './engine';

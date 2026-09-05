@@ -27,10 +27,29 @@ describe('listing state machine', () => {
     expect(next.price).toBe(540);
   });
 
-  it('moves to UNLISTED_VERIFIED on a no-ask observation', () => {
+  it('moves to UNLISTED_VERIFIED on a no-ask observation from UNKNOWN', () => {
     const next = applyObservation(emptyListingRecord('967'), { kind: 'no-ask' });
     expect(next.state).toBe('UNLISTED_VERIFIED');
     expect(next.price).toBeNull();
+  });
+
+  it('does not drop a LISTED floor on a single flaky no-ask', () => {
+    const listed = applyObservation(emptyListingRecord('966'), {
+      kind: 'ask',
+      price: 650,
+      currency: 'USDG',
+      orderHash: '0xfloor',
+      seller: null,
+      listedAt: 1,
+    });
+    const once = applyObservation(listed, { kind: 'no-ask' });
+    expect(once.state).toBe('STALE');
+    expect(once.price).toBe(650);
+    const twice = applyObservation(once, { kind: 'no-ask' });
+    expect(twice.state).toBe('STALE');
+    const thrice = applyObservation(twice, { kind: 'no-ask' });
+    expect(thrice.state).toBe('UNLISTED_VERIFIED');
+    expect(thrice.price).toBeNull();
   });
 
   it('does not invent an unlisted state from a transport error', () => {

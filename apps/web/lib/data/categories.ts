@@ -58,30 +58,49 @@ function fallbackCategoryMetrics(slug: string): CategoryMetrics | null {
           })),
         }
       : undefined;
+  const memberSupply =
+    meta.source === 'metadata' && meta.expectedSupply ? meta.expectedSupply : members.count;
   return {
     slug,
     name: meta.name,
     family: meta.family,
+    source: meta.source,
     description: meta.description,
-    memberSupply: members.count,
-    filteredMemberSupply: members.count,
+    memberSupply,
+    filteredMemberSupply: memberSupply,
     totalSupply: BUTTON_PRESSER_COLLECTION.maxTokenId,
     listedCount: 0,
+    listedPercentage: 0,
     verifiedCount: 0,
-    unknownCount: members.count,
+    unknownCount: memberSupply,
     coveragePercent: 0,
     marketStatus: 'syncing',
     owners: 0,
     currency: 'USDG',
     floorPrice: null,
     ceilingPrice: null,
+    medianAsk: null,
     lastSalePrice: null,
     topOfferPrice: null,
+    offerCount: 0,
     topSalePrice: null,
+    highestSale: null,
+    volume24h: 0,
+    volume7d: 0,
+    volume30d: 0,
+    volumeAllTracked: 0,
     volume24hNative: 0,
     volume7dNative: 0,
     sales24h: 0,
     sales7d: 0,
+    sales30d: 0,
+    averageSale: null,
+    medianSale: null,
+    floorChange24h: null,
+    floorChange7d: null,
+    floorChange30d: null,
+    trendingScore: 0,
+    trackedSince: Date.now(),
     subFilter,
   };
 }
@@ -95,6 +114,7 @@ export async function getCategoryMetrics(slug: string): Promise<CategoryMetrics 
     ...live,
     name: meta.name,
     family: meta.family,
+    source: meta.source,
     description: meta.description,
   };
 }
@@ -114,6 +134,7 @@ export async function listCategories(): Promise<CategoryMetrics[]> {
       ...c,
       name: meta?.name ?? c.name,
       family: meta?.family ?? c.family,
+      source: meta?.source ?? c.source,
       description: meta?.description ?? c.description,
     };
   });

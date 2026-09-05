@@ -12,7 +12,9 @@ export type ListingState = (typeof LISTING_STATES)[number];
 
 export const UNLISTED_TTL_MS = 24 * 60 * 60 * 1000;
 export const LISTED_TTL_MS = 6 * 60 * 60 * 1000;
-export const UNLISTED_404_THRESHOLD = 1;
+/** Require multiple consecutive no-ask observations before UNLISTED_VERIFIED.
+ * OpenSea best-listing on Robinhood intermittently 404s live asks. */
+export const UNLISTED_404_THRESHOLD = 3;
 
 export type ListingRecord = {
   tokenId: string;
@@ -73,15 +75,31 @@ export function applyObservation(
     };
   }
   const consecutive404s = current.consecutive404s + 1;
-  const verified = consecutive404s >= UNLISTED_404_THRESHOLD;
+  // A single no-ask is enough from UNKNOWN. From LISTED/STALE, require
+  // several consecutive misses — OpenSea best-listing on Robinhood 404s
+  // live asks (floor tokens like #966 / #756) more often than it should.
+  if (current.state === 'LISTED' || current.state === 'STALE') {
+    const verified = consecutive404s >= UNLISTED_404_THRESHOLD;
+    return {
+      ...current,
+      state: verified ? 'UNLISTED_VERIFIED' : 'STALE',
+      price: verified ? null : current.price,
+      currency: verified ? null : current.currency,
+      orderHash: verified ? null : current.orderHash,
+      seller: verified ? null : current.seller,
+      listedAt: verified ? null : current.listedAt,
+      lastVerifiedAt: now,
+      consecutive404s,
+    };
+  }
   return {
     ...current,
-    state: verified ? 'UNLISTED_VERIFIED' : current.state === 'LISTED' ? 'STALE' : current.state,
-    price: verified ? null : current.price,
-    currency: verified ? null : current.currency,
-    orderHash: verified ? null : current.orderHash,
-    seller: verified ? null : current.seller,
-    listedAt: verified ? null : current.listedAt,
+    state: 'UNLISTED_VERIFIED',
+    price: null,
+    currency: null,
+    orderHash: null,
+    seller: null,
+    listedAt: null,
     lastVerifiedAt: now,
     consecutive404s,
   };

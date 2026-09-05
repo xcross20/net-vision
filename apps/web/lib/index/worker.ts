@@ -11,7 +11,7 @@
  *   3. remaining classified members
  */
 import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
-import { classifyNumber } from '@net-vision/taxonomy';
+import { facetsForToken } from '@net-vision/taxonomy';
 import { isOpenSeaRateLimited } from '../market/opensea-errors';
 import {
   applyObservation,
@@ -22,7 +22,7 @@ import {
   listingRecord,
   loadIndex,
   saveIndex,
-  setTokenCategories,
+  setTokenFacets,
   upsertToken,
   workerCheckpoint,
   writeListing,
@@ -61,16 +61,31 @@ function buildQueue(): string[] {
 }
 
 function classifyIntoIndex(tokenId: string): void {
+  const previous = loadIndex().tokens[tokenId];
   upsertToken({
     tokenId,
     displayNumber: tokenId,
-    exists: true,
-    name: null,
-    imageUrl: null,
+    exists: previous?.exists ?? true,
+    name: previous?.name ?? null,
+    imageUrl: previous?.imageUrl ?? null,
+    ownerAddress: previous?.ownerAddress ?? null,
+    metadataJson: previous?.metadataJson ?? null,
+    metadataVerifiedAt: previous?.metadataVerifiedAt ?? null,
     lastSeenAt: Date.now(),
   });
-  const slugs = classifyNumber(tokenId).traits.map((trait) => trait.slug);
-  setTokenCategories(tokenId, slugs);
+  let metadata: { traits?: Array<{ trait_type?: string; value?: string | number }>; name?: string | null } | null =
+    null;
+  if (previous?.metadataJson) {
+    try {
+      metadata = JSON.parse(previous.metadataJson) as {
+        traits?: Array<{ trait_type?: string; value?: string | number }>;
+        name?: string | null;
+      };
+    } catch {
+      metadata = null;
+    }
+  }
+  setTokenFacets(tokenId, facetsForToken(tokenId, metadata));
 }
 
 let running = false;

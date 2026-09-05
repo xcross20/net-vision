@@ -1,0 +1,39 @@
+import type { CategoryMetrics } from './types';
+
+export function categoryResponse(metrics: CategoryMetrics) {
+  return {
+    slug: metrics.slug,
+    name: metrics.name,
+    family: metrics.family,
+    source: metrics.source,
+    members: metrics.memberSupply,
+    verifiedMarketMembers: metrics.verifiedCount,
+    coveragePercent: metrics.coveragePercent,
+    marketStatus: metrics.marketStatus,
+    trackedSince: metrics.trackedSince,
+    description: metrics.description,
+    market: {
+      floor: metrics.marketStatus === 'syncing' ? null : metrics.floorPrice,
+      listed: metrics.listedCount,
+      listedPercentage: metrics.listedPercentage,
+      owners: metrics.owners,
+      bestOffer: metrics.topOfferPrice,
+      offerCount: metrics.offerCount,
+      volume24h: metrics.volume24h,
+      volume7d: metrics.volume7d,
+      volume30d: metrics.volume30d,
+      volumeAllTracked: metrics.volumeAllTracked,
+      sales24h: metrics.sales24h,
+      sales7d: metrics.sales7d,
+      sales30d: metrics.sales30d,
+      averageSale: metrics.averageSale,
+      medianSale: metrics.medianSale,
+      highestSale: metrics.highestSale,
+      floorChange24h: metrics.floorChange24h,
+      floorChange7d: metrics.floorChange7d,
+      floorChange30d: metrics.floorChange30d,
+      trendingScore: metrics.trendingScore,
+      currency: metrics.currency,
+    },
+  };
+}

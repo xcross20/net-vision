@@ -17,6 +17,7 @@ import {
   classifyNumber,
   VIRTUAL_COLLECTION_CATALOG,
   type NumberTrait,
+  type TokenFacet,
 } from '@net-vision/taxonomy';
 import {
   applyObservation,
@@ -148,6 +149,19 @@ export class TokenCatalog {
     this.classified = true;
   }
 
+  attachFacets(tokenId: string, facets: TokenFacet[]): void {
+    this.classify();
+    const existing = new Set(this.slugsByToken.get(tokenId) ?? []);
+    for (const facet of facets) {
+      if (existing.has(facet.slug)) continue;
+      existing.add(facet.slug);
+      const members = this.tokensBySlug.get(facet.slug) ?? [];
+      members.push(tokenId);
+      this.tokensBySlug.set(facet.slug, members);
+    }
+    this.slugsByToken.set(tokenId, [...existing]);
+  }
+
   traitsFor(tokenId: string): NumberTrait[] {
     this.classify();
     return this.traitsByToken.get(tokenId) ?? classifyNumber(tokenId).traits;
@@ -193,7 +207,9 @@ export class TokenCatalog {
 
   hydrateListingRecord(record: ListingRecord): void {
     this.market.set(record.tokenId, record);
-    if (record.state === 'LISTED' && record.price != null) {
+    // Keep last-known asks visible while STALE so a single flaky OpenSea
+    // 404 cannot blank the floor from the category grid.
+    if ((record.state === 'LISTED' || record.state === 'STALE') && record.price != null) {
       this.listings.set(record.tokenId, {
         tokenId: record.tokenId,
         price: record.price,
@@ -262,11 +278,20 @@ export class TokenCatalog {
     return this.listingState(tokenId) !== 'UNKNOWN';
   }
 
+  /**
+   * Listed token ids, cheapest first. Uses the listings map (same source
+   * as categoryTotals.listedCount) so the grid count matches the metric.
+   */
   listedIds(slug?: string, facets?: string[]): string[] {
-    if (!slug) {
-      return [...this.listings.keys()].sort((a, b) => Number(a) - Number(b));
-    }
-    return this.memberIds(slug, facets).filter((tokenId) => this.listingState(tokenId) === 'LISTED');
+    const ids = !slug
+      ? [...this.listings.keys()]
+      : this.memberIds(slug, facets).filter((tokenId) => this.listings.has(tokenId));
+    return ids.sort((a, b) => {
+      const priceA = this.listings.get(a)?.price ?? Number.POSITIVE_INFINITY;
+      const priceB = this.listings.get(b)?.price ?? Number.POSITIVE_INFINITY;
+      if (priceA !== priceB) return priceA - priceB;
+      return Number(a) - Number(b);
+    });
   }
 
   unlistedVerifiedIds(slug: string, facets?: string[]): string[] {

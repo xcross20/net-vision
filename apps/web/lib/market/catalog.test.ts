@@ -51,6 +51,26 @@ describe('isInSupplyRange', () => {
   });
 });
 
+describe('TokenCatalog material facets', () => {
+  it('does not treat 777 as Brass until Plate metadata is attached', () => {
+    const catalog = new TokenCatalog(RANGE);
+    catalog.classify();
+    expect(catalog.memberIds('material-brass')).not.toContain('777');
+    catalog.attachFacets('777', [
+      {
+        tokenId: '777',
+        family: 'material',
+        slug: 'material-brass',
+        label: 'Brass',
+        source: 'metadata',
+        sourceVersion: 'opensea-plate-v1',
+      },
+    ]);
+    expect(catalog.memberIds('material-brass')).toContain('777');
+    expect(catalog.memberIds('digits-3')).toContain('777');
+  });
+});
+
 describe('TokenCatalog', () => {
   it('tags 628 as a 3-digit token and 121 as a palindrome', () => {
     const catalog = new TokenCatalog(RANGE);
@@ -91,6 +111,19 @@ describe('TokenCatalog', () => {
     expect(catalog.categoryTotals('digits-1').floorPrice).toBeNull();
   });
 
+  it('lists category ids cheapest-first so the grid matches the floor metric', () => {
+    const catalog = new TokenCatalog(RANGE);
+    catalog.ingestListings([
+      listing('628', 560),
+      listing('121', 12),
+      listing('966', 650),
+    ]);
+    expect(catalog.listedIds('digits-3')).toEqual(['121', '628', '966']);
+    expect(catalog.listedIds('digits-3').length).toBe(
+      catalog.categoryTotals('digits-3').listedCount,
+    );
+  });
+
   it('keeps an unscanned token unknown, not unlisted', () => {
     const catalog = new TokenCatalog(RANGE);
     catalog.classify();
@@ -103,11 +136,14 @@ describe('TokenCatalog', () => {
     expect(catalog.listedIds('digits-3')).toContain('628');
   });
 
-  it('deletes a listing when a later scan returns no ask', () => {
+  it('keeps a listing stale through one no-ask, then unlists after repeated misses', () => {
     const catalog = new TokenCatalog(RANGE);
     catalog.ingestListings([listing('628', 560)]);
     catalog.confirmScan('628', null);
     expect(catalog.isListed('628')).toBe(false);
+    expect(catalog.listingState('628')).toBe('STALE');
+    catalog.confirmScan('628', null);
+    catalog.confirmScan('628', null);
     expect(catalog.isConfirmedUnlisted('628')).toBe(true);
     expect(catalog.listingState('628')).toBe('UNLISTED_VERIFIED');
     expect(catalog.categoryTotals('digits-3').listedCount).toBe(0);
