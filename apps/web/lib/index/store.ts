@@ -12,6 +12,7 @@ import type { CatalogSale } from '../market/catalog';
 import type { FloorSnapshot, SaleAttribution } from '../market/engine';
 import type { ListingRecord, ListingState } from '../market/listing-state';
 import { decayIfStale, emptyListingRecord } from '../market/listing-state';
+import type { MarketEvent } from './market-event';
 
 export type TokenRow = {
   tokenId: string;
@@ -58,6 +59,19 @@ export type MetadataRetryItem = {
   enqueuedAt: number;
 };
 
+export type MaintenanceState = {
+  streamConnected: boolean;
+  streamLastEventAt: number | null;
+  streamEventsTotal: number;
+  restLastEventAt: number | null;
+  restEventsTotal: number;
+  restLastPollAt: number | null;
+  lastError: string | null;
+  seenEventIds: string[];
+  eventTimestamps: number[];
+  mode: 'stream+rest' | 'rest';
+};
+
 export type IndexSnapshot = {
   version: 1;
   taxonomyVersion: string;
@@ -74,6 +88,7 @@ export type IndexSnapshot = {
   worker: WorkerCheckpoint;
   metadataWorker: MetadataCheckpoint;
   metadataRetryQueue: MetadataRetryItem[];
+  maintenance: MaintenanceState;
   /** Last hydrate outcome — operator diagnostics only. */
   restoredFrom: 'postgres' | 'json' | 'empty' | null;
 };
@@ -119,6 +134,18 @@ function emptySnapshot(): IndexSnapshot {
       lastSuccessAt: null,
     },
     metadataRetryQueue: [],
+    maintenance: {
+      streamConnected: false,
+      streamLastEventAt: null,
+      streamEventsTotal: 0,
+      restLastEventAt: null,
+      restEventsTotal: 0,
+      restLastPollAt: null,
+      lastError: null,
+      seenEventIds: [],
+      eventTimestamps: [],
+      mode: 'rest',
+    },
     restoredFrom: null,
   };
 }
@@ -154,6 +181,16 @@ function coerceSnapshot(parsed: IndexSnapshot): IndexSnapshot {
     metadataRetryQueue: Array.isArray(parsed.metadataRetryQueue)
       ? parsed.metadataRetryQueue
       : [],
+    maintenance: {
+      ...base.maintenance,
+      ...(parsed.maintenance ?? {}),
+      seenEventIds: Array.isArray(parsed.maintenance?.seenEventIds)
+        ? parsed.maintenance.seenEventIds
+        : [],
+      eventTimestamps: Array.isArray(parsed.maintenance?.eventTimestamps)
+        ? parsed.maintenance.eventTimestamps
+        : [],
+    },
     restoredFrom: parsed.restoredFrom ?? null,
   };
 }
@@ -513,4 +550,42 @@ export function appendFloorSnapshot(slug: string, snapshot: FloorSnapshot): void
 
 export function floorHistory(slug: string): FloorSnapshot[] {
   return loadIndex().floorHistory[slug] ?? [];
+}
+
+const MAX_SEEN_EVENTS = 4000;
+const MAX_EVENT_TIMESTAMPS = 2000;
+
+export function maintenanceState(): MaintenanceState {
+  return loadIndex().maintenance;
+}
+
+export function patchMaintenance(patch: Partial<MaintenanceState>): void {
+  const snap = loadIndex();
+  snap.maintenance = { ...snap.maintenance, ...patch };
+}
+
+export function wasMarketEventSeen(id: string): boolean {
+  return loadIndex().maintenance.seenEventIds.includes(id);
+}
+
+export function rememberMarketEvent(event: Pick<MarketEvent, 'id' | 'source' | 'occurredAt'>, now = Date.now()): void {
+  const snap = loadIndex();
+  const m = snap.maintenance;
+  if (!m.seenEventIds.includes(event.id)) {
+    m.seenEventIds.push(event.id);
+    if (m.seenEventIds.length > MAX_SEEN_EVENTS) {
+      m.seenEventIds.splice(0, m.seenEventIds.length - MAX_SEEN_EVENTS);
+    }
+  }
+  m.eventTimestamps.push(now);
+  if (m.eventTimestamps.length > MAX_EVENT_TIMESTAMPS) {
+    m.eventTimestamps.splice(0, m.eventTimestamps.length - MAX_EVENT_TIMESTAMPS);
+  }
+  if (event.source === 'stream') {
+    m.streamEventsTotal += 1;
+    m.streamLastEventAt = now;
+  } else {
+    m.restEventsTotal += 1;
+    m.restLastEventAt = now;
+  }
 }

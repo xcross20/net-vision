@@ -819,6 +819,8 @@ export class OpenSeaClient {
     eventType?: string;
     limit?: number;
     next?: string;
+    /** Unix seconds — only events after this timestamp. */
+    after?: number;
   }): Promise<CollectionEventsPage> {
     return this.request(
       'GET',
@@ -829,6 +831,7 @@ export class OpenSeaClient {
           event_type: input.eventType,
           limit: input.limit,
           next: input.next,
+          after: input.after,
         },
       },
     );
