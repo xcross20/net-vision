@@ -1,17 +1,8 @@
-/**
- * /market: the Button Presser marketplace.
- *
- * Primary commerce surface. Lives at /market so customer-facing links
- * match the vocabulary ("Market", "Browse the market") used in
- * navigation and marketing.
- */
+import Link from 'next/link';
+import { LiveIndicator } from '@/components/ui/LiveIndicator';
+import { MarketView } from '@/components/ui/MarketView';
 import { listTokens } from '@/lib/data/tokens';
-import { TokenCard } from '@/components/TokenCard';
-import { TokenRow } from '@/components/TokenRow';
-import { DataFreshnessBadge } from '@/components/DataFreshnessBadge';
 import { getMarketSource } from '@/lib/market';
-import type { Token } from '@/lib/market';
-import { FilterIcon } from '@/components/icons';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -20,51 +11,48 @@ export const metadata = {
 };
 
 export default async function MarketPage() {
-  const tokens = await listTokens({ listedOnly: true, limit: 60 });
-  const freshness = await getMarketSource().getFreshness();
+  const [tokens, freshness] = await Promise.all([
+    listTokens({ listedOnly: true, limit: 60 }),
+    getMarketSource().getFreshness(),
+  ]);
+
+  const listedCount = tokens.length;
 
   return (
-    <div className="flex flex-col gap-8">
-      <header className="flex flex-col gap-3">
+    <div className="flex flex-col gap-10">
+      <header className="flex flex-col gap-4">
         <div className="flex items-center gap-3">
-          <span className="nv-eyebrow">Market</span>
-          <DataFreshnessBadge freshness={freshness} />
+          <span className="text-eyebrow">Market</span>
+          <LiveIndicator
+            tone={freshness.fresh ? 'green' : 'amber'}
+            size={6}
+            label={freshness.fresh ? 'Live' : 'Warming'}
+          />
         </div>
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <h1 className="nv-display text-3xl md:text-5xl">Every active listing</h1>
-          <span className="nv-label inline-flex items-center gap-1.5">
-            <FilterIcon size={12} weight="bold" />
-            {tokens.length} live
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <h1 className="text-display text-[clamp(2.25rem,5vw,3.5rem)] text-[var(--color-text-primary)]">
+            Every active listing
+          </h1>
+          <span className="text-eyebrow-muted">
+            {listedCount.toLocaleString()} live
           </span>
         </div>
-        <p className="nv-body">
-          {tokens.length === 0
-            ? 'Live listings are unavailable while the OpenSea indexer warms up.'
+        <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
+          {listedCount === 0
+            ? 'Live listings are warming up. The OpenSea indexer will surface active asks as soon as the collection finishes syncing.'
             : 'Active asks on Button Presser, ordered by the live OpenSea orderbook. Connect a wallet to buy or make an offer.'}
         </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href="/categories" className="nv-button nv-button-ghost">
+            Filter by category
+          </Link>
+          <Link href="/activity" className="text-sm text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]">
+            Recent activity →
+          </Link>
+        </div>
       </header>
 
-      {tokens.length > 0 ? (
-        <>
-          <div className="hidden grid-cols-12 gap-4 border-y border-[var(--nv-border)] px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--nv-muted)] md:grid">
-            <div className="col-span-1">Token</div>
-            <div className="col-span-4">Image</div>
-            <div className="col-span-3">Traits</div>
-            <div className="col-span-2 text-right">Price</div>
-            <div className="col-span-2 text-right">Owner</div>
-          </div>
-          <div className="hidden flex-col md:flex">
-            {tokens.map((t: Token) => (
-              <TokenRow key={t.tokenId} token={t} />
-            ))}
-          </div>
-          <div className="nv-grid-tokens md:hidden">
-            {tokens.map((t: Token) => (
-              <TokenCard key={t.tokenId} token={t} />
-            ))}
-          </div>
-        </>
-      ) : null}
+      <MarketView tokens={tokens} categories={[]} />
     </div>
   );
 }

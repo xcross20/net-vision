@@ -1,15 +1,20 @@
 import Link from 'next/link';
-import { ArrowR } from '@/components/icons';
+import { ArrowRight } from '@phosphor-icons/react/dist/ssr';
 
 export default function NotFound() {
   return (
-    <div className="nv-panel-soft flex flex-col items-start gap-3 p-8">
-      <span className="nv-eyebrow">404</span>
-      <h1 className="nv-display text-3xl md:text-4xl">Not found</h1>
-      <p className="nv-body">That page is not part of Net Vision.</p>
-      <Link href="/" className="nv-link inline-flex items-center gap-1 text-sm">
+    <div className="flex min-h-[60vh] flex-col items-start justify-center gap-5 py-16">
+      <span className="text-eyebrow">404</span>
+      <h1 className="text-display text-[clamp(2.5rem,5vw,4rem)] text-[var(--color-text-primary)]">
+        Nothing at this address.
+      </h1>
+      <p className="text-body max-w-[52ch] text-[var(--color-text-secondary)]">
+        That page is not part of Net Vision. Return to the homepage to keep exploring the
+        Button Presser market.
+      </p>
+      <Link href="/" className="nv-button">
         Return home
-        <ArrowR size={12} weight="bold" />
+        <ArrowRight size={14} weight="bold" />
       </Link>
     </div>
   );
