@@ -1,11 +1,45 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 40;
+const RATE_LIMIT_PREFIXES = ['/api/trade', '/api/v1/account', '/api/categories', '/api/v1/tokens'];
+
+const hits = new Map<string, { count: number; resetAt: number }>();
+
+function clientKey(request: NextRequest): string {
+  return (
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    'unknown'
+  );
+}
+
+function rateLimited(request: NextRequest): boolean {
+  const path = request.nextUrl.pathname;
+  if (!RATE_LIMIT_PREFIXES.some((p) => path.startsWith(p))) return false;
+  const key = `${clientKey(request)}:${RATE_LIMIT_PREFIXES.find((p) => path.startsWith(p))}`;
+  const now = Date.now();
+  const row = hits.get(key);
+  if (!row || now >= row.resetAt) {
+    hits.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+  row.count += 1;
+  return row.count > RATE_LIMIT_MAX;
+}
+
 /**
  * Site-wide security headers for a wallet-facing app.
  * XSS / clickjacking protections are financial controls here.
  */
-export function middleware(_request: NextRequest) {
+export function middleware(request: NextRequest) {
+  if (rateLimited(request)) {
+    return new NextResponse(JSON.stringify({ error: 'rate_limited' }), {
+      status: 429,
+      headers: { 'content-type': 'application/json', 'retry-after': '60' },
+    });
+  }
   const response = NextResponse.next();
 
   const csp = [
