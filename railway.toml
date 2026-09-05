@@ -1,10 +1,11 @@
 [build]
 builder = "NIXPACKS"
-# Override Nixpacks' auto-detected Next.js build. We wipe the
-# apps/web/.next directory first to defeat Railway's per-service
-# build cache so the homepage server bundle always reflects the
-# current source.
-buildCommand = "rm -rf apps/web/.next && cd apps/web && npm run build"
+# Override Nixpacks' auto-detected Next.js build. We wipe the compiled
+# output before each build to defeat stale build artefacts. We leave
+# apps/web/.next/cache alone because Railway mounts a build cache there
+# (bind mount makes it "device busy"), and cache contents never affect
+# the compiled server bundle.
+buildCommand = "rm -rf apps/web/.next/server apps/web/.next/static apps/web/.next/standalone apps/web/.next/types && cd apps/web && npm run build"
 
 [deploy]
 startCommand = "npm run start --workspace=apps/web"

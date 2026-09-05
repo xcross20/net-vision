@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/web",
-    "build": "rm -rf apps/web/.next && npm run build --workspace=apps/web",
+    "build": "rm -rf apps/web/.next/server apps/web/.next/static apps/web/.next/standalone apps/web/.next/types && npm run build --workspace=apps/web",
     "start": "npm run start --workspace=apps/web",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
