@@ -1,10 +1,26 @@
 # Net Vision
 
-Net Vision is a specialized Button Presser marketplace and analytics terminal on Robinhood Chain. It is not a general NFT marketplace clone. It is a numeric market terminal with virtual collections, deterministic classification, and non-custodial trade preparation.
+Specialized Button Presser marketplace and analytics terminal on Robinhood Chain. Numeric markets, official Plate materials, non-custodial buy preparation.
 
-This repository currently ships the **Categories read-only vertical slice**: a deterministic numeric taxonomy, a strict OpenSea read gateway, a transaction-policy package with adversarial coverage, and a compact `/categories` directory plus category detail page.
+## Current MVP
 
-Trading UI is intentionally disabled until the transaction-policy adversarial suite passes and live OpenSea endpoint validation is complete.
+```text
+✅ realtime Stream + REST catch-up indexer
+✅ Postgres authority + worker heartbeat
+✅ Button category markets (Brass / Steel / digits / patterns)
+✅ material metadata bootstrap
+✅ live sales + read-only offers
+✅ portfolio
+✅ cart with listing snapshot + receipt wait
+✅ hardened /api/trade/buy/prepare
+🟡 Stream health + hot cancel recovery
+🟡 production app security (headers + rate limits; SIWE still open)
+🟡 data acceptance suite
+🔒 sweep / accept offer / native listing  (flags off)
+🔒 visual rebuild  (after this gate)
+```
+
+Trading is fail-closed (`TRADING_ENABLED` unset/false). Sweep and accept-offer stay independently disabled.
 
 ## Quick start
 
@@ -19,59 +35,36 @@ Open http://localhost:3000.
 
 ```
 apps/
-  web/                Next.js 15 web application (App Router)
+  web/                Next.js 15 (UI + operator health)
   market-worker/      Always-on OpenSea indexer (Railway second service)
 packages/
-  taxonomy/           Pure, deterministic numeric classifier
-  chain-config/       Robinhood Chain + Button Presser contract allowlist
-  opensea-client/     OpenSea v2 read gateway with Zod schemas
-  transaction-policy/ Pre-signature trade validation (server-side)
-  ui/                 Shared Tailwind tokens and primitives
-docs/
-  adr/                Architecture decision records
-  security/           Transaction invariants and threat model
-  integrations/       OpenSea endpoint notes
-  product/            Legacy Vision interaction reference
-  marketplaces/       Native orderbook, OpenSea aggregation, cross-listing
-  ui/                 UI specs (categories, mobile commerce)
-  test-plan.md        Definition of Done mapping
+  taxonomy/           Deterministic numeric classifier
+  chain-config/       Robinhood Chain + Button Presser allowlist
+  opensea-client/     OpenSea v2 read gateway
+  transaction-policy/ Pre-signature trade validation
+  ui/                 Shared tokens
 ```
 
-## Status
+## Safety
 
-- PR 1 (scaffold, env validation, chain config): done
-- PR 2 (taxonomy engine): done
-- PR 3 (OpenSea read client, persistence layer skeleton): in progress
-- PR 4 (virtual collection analytics, floors): pending live data
-- PR 5 (homepage, categories, explore, token detail): categories slice live, rest pending
-
-Trading remains feature-flagged off.
-
-## Safety guarantees
-
-1. No seed phrase or private key is ever requested or stored.
-2. The OpenSea API key is server-only. It never crosses into the browser.
-3. The Net Vision server never signs a transaction as the user.
-4. Live trading is disabled until the transaction-policy adversarial suite passes.
-5. The Button Presser contract `0xE5143de9D3CcBc31Ffb4e7Fc66d8320e0E2693D2` is the only allowlisted NFT contract.
+1. No seed phrase or private key is requested or stored.
+2. OpenSea API key is server-only.
+3. The server never signs as the user.
+4. Live trading is disabled until you explicitly enable it.
+5. The only allowlisted NFT is Button Presser `0xE5143de9D3CcBc31Ffb4e7Fc66d8320e0E2693D2`.
 
 ## Deployment
 
-This repo is configured for Railway. See `railway.toml` and `docs/deploy/RAILWAY_MARKET_WORKER.md`.
-
-**Two Node services are required for live market sync:**
+Two Node services + Postgres. See `docs/deploy/RAILWAY_MARKET_WORKER.md`.
 
 | Service | Command |
 | --- | --- |
 | Web | `npm run start --workspace=apps/web` |
 | Market worker | `npm run start --workspace=apps/market-worker` |
 
-Also attach Postgres (`DATABASE_URL`). Do **not** set `INDEXER_EMBEDDED=true` on the web service in production — the worker owns writes (ADR 0002).
+Do **not** set `INDEXER_EMBEDDED=true` on web in production.
 
-Operator health: `GET /api/v1/health/indexer` (`workerOnline` requires a heartbeat newer than 60s).
+Operator health: `GET /api/v1/health/indexer`  
+Dashboard: `/admin/reconcile`
 
-Production must supply `OPENSEA_API_KEY`, `DATABASE_URL`, `ROBINHOOD_RPC_PRIMARY`, and `SESSION_SECRET`.
-
-Current deployment: https://web-production-38d29.up.railway.app
-
-Project: https://railway.com/project/df70d7dc-8293-4b29-979f-a89591fd9df3
+Production: https://web-production-38d29.up.railway.app

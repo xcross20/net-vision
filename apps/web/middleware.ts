@@ -33,7 +33,18 @@ function rateLimited(request: NextRequest): boolean {
  * Site-wide security headers for a wallet-facing app.
  * XSS / clickjacking protections are financial controls here.
  */
+const MAX_BODY_BYTES = 64 * 1024;
+
 export function middleware(request: NextRequest) {
+  if (['POST', 'PUT', 'PATCH'].includes(request.method)) {
+    const length = Number(request.headers.get('content-length') ?? 0);
+    if (Number.isFinite(length) && length > MAX_BODY_BYTES) {
+      return new NextResponse(JSON.stringify({ error: 'payload_too_large' }), {
+        status: 413,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+  }
   if (rateLimited(request)) {
     return new NextResponse(JSON.stringify({ error: 'rate_limited' }), {
       status: 429,
