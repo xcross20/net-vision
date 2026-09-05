@@ -1,10 +1,9 @@
 /**
- * File-backed market index. Schema matches docs/data/MARKET_INDEXER_V2.md
- * so a later Postgres migration is a copy, not a redesign.
+ * Market index store. Schema matches docs/data/MARKET_INDEXER_V2.md.
  *
- * Storage engine (v1): JSON snapshot on disk. 62k Button Presser rows is
- * a few megabytes. No native addon, so Railway/Nixpacks cannot fail the
- * build on better-sqlite3 compilation. INDEX_DB_PATH overrides the path.
+ * When DATABASE_URL is set, Postgres is authoritative (see hydrateIndexFromPostgres).
+ * JSON on disk is a local/dev cache and dual-write companion — not the worker
+ * source of truth in production (ADR 0002).
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -33,6 +32,9 @@ export type WorkerCheckpoint = {
   lastTickAt: number;
   lastError: string | null;
   last429At: number | null;
+  workerStartedAt: number | null;
+  workerHeartbeatAt: number | null;
+  lastSuccessAt: number | null;
 };
 
 /** Resumable Plate/NFT metadata bootstrap (separate from listing scan). */
@@ -44,6 +46,16 @@ export type MetadataCheckpoint = {
   lastTickAt: number;
   lastError: string | null;
   last429At: number | null;
+  lastSuccessAt: number | null;
+};
+
+/** Failed metadata fetches awaiting exponential backoff (non-blocking). */
+export type MetadataRetryItem = {
+  tokenId: string;
+  attemptCount: number;
+  nextAttemptAt: number;
+  lastError: string;
+  enqueuedAt: number;
 };
 
 export type IndexSnapshot = {
@@ -61,6 +73,9 @@ export type IndexSnapshot = {
   floorHistory: Record<string, FloorSnapshot[]>;
   worker: WorkerCheckpoint;
   metadataWorker: MetadataCheckpoint;
+  metadataRetryQueue: MetadataRetryItem[];
+  /** Last hydrate outcome — operator diagnostics only. */
+  restoredFrom: 'postgres' | 'json' | 'empty' | null;
 };
 
 const DEFAULT_PATH = resolve(process.cwd(), 'data', 'market-index.json');
@@ -89,6 +104,9 @@ function emptySnapshot(): IndexSnapshot {
       lastTickAt: 0,
       lastError: null,
       last429At: null,
+      workerStartedAt: null,
+      workerHeartbeatAt: null,
+      lastSuccessAt: null,
     },
     metadataWorker: {
       phase: 'brass-priority',
@@ -98,12 +116,17 @@ function emptySnapshot(): IndexSnapshot {
       lastTickAt: 0,
       lastError: null,
       last429At: null,
+      lastSuccessAt: null,
     },
+    metadataRetryQueue: [],
+    restoredFrom: null,
   };
 }
 
 function coerceSnapshot(parsed: IndexSnapshot): IndexSnapshot {
   const base = emptySnapshot();
+  const worker = { ...base.worker, ...(parsed.worker ?? {}) };
+  const metadataWorker = { ...base.metadataWorker, ...(parsed.metadataWorker ?? {}) };
   return {
     ...base,
     ...parsed,
@@ -126,9 +149,24 @@ function coerceSnapshot(parsed: IndexSnapshot): IndexSnapshot {
     ),
     listings: parsed.listings ?? {},
     categories: parsed.categories ?? {},
-    worker: parsed.worker ?? base.worker,
-    metadataWorker: parsed.metadataWorker ?? base.metadataWorker,
+    worker,
+    metadataWorker,
+    metadataRetryQueue: Array.isArray(parsed.metadataRetryQueue)
+      ? parsed.metadataRetryQueue
+      : [],
+    restoredFrom: parsed.restoredFrom ?? null,
   };
+}
+
+function snapshotHasProgress(snap: IndexSnapshot): boolean {
+  return (
+    Object.keys(snap.tokens ?? {}).length > 0 ||
+    (snap.worker?.processedTotal ?? 0) > 0 ||
+    (snap.worker?.cursor ?? 0) > 0 ||
+    (snap.metadataWorker?.processedTotal ?? 0) > 0 ||
+    (snap.metadataWorker?.cursor ?? 0) > 0 ||
+    (snap.metadataRetryQueue?.length ?? 0) > 0
+  );
 }
 
 let memory: IndexSnapshot | null = null;
@@ -175,23 +213,37 @@ export function saveIndex(): void {
     });
 }
 
+export type HydrateSource = 'postgres' | 'json' | 'empty';
+
 /**
- * If the on-disk snapshot is empty but Postgres has a blob, restore it.
- * Call once at process boot (before the worker starts).
+ * Restore authoritative state before the worker starts.
+ * When DATABASE_URL is set and Postgres has progress, Postgres wins
+ * even if a local JSON file exists (Railway disks are ephemeral).
  */
-export async function hydrateIndexFromPostgres(): Promise<boolean> {
-  const snap = loadIndex();
-  if (Object.keys(snap.tokens).length > 0) return false;
+export async function hydrateIndexFromPostgres(): Promise<HydrateSource> {
+  const local = loadIndex();
   try {
-    const { loadSnapshotFromPg } = await import('./pg');
-    const fromPg = await loadSnapshotFromPg();
-    if (!fromPg || Object.keys(fromPg.tokens ?? {}).length === 0) return false;
-    memory = coerceSnapshot(fromPg);
-    saveIndex();
-    return true;
+    const { databaseUrl, loadSnapshotFromPg } = await import('./pg');
+    if (databaseUrl()) {
+      const fromPg = await loadSnapshotFromPg();
+      if (fromPg && snapshotHasProgress(fromPg)) {
+        memory = coerceSnapshot({ ...fromPg, restoredFrom: 'postgres' });
+        saveIndex();
+        return 'postgres';
+      }
+    }
   } catch {
-    return false;
+    /* fall through to local */
   }
+  if (snapshotHasProgress(local)) {
+    local.restoredFrom = 'json';
+    memory = local;
+    return 'json';
+  }
+  const empty = loadIndex();
+  empty.restoredFrom = 'empty';
+  memory = empty;
+  return 'empty';
 }
 
 export function resetIndexForTests(snapshot?: IndexSnapshot): void {
@@ -253,6 +305,16 @@ export function writeWorkerCheckpoint(patch: Partial<WorkerCheckpoint>): void {
   snap.worker = { ...snap.worker, ...patch, lastTickAt: Date.now() };
 }
 
+export function touchWorkerHeartbeat(now = Date.now()): void {
+  const snap = loadIndex();
+  snap.worker = {
+    ...snap.worker,
+    workerHeartbeatAt: now,
+    workerStartedAt: snap.worker.workerStartedAt ?? now,
+    lastTickAt: now,
+  };
+}
+
 export function metadataCheckpoint(): MetadataCheckpoint {
   return loadIndex().metadataWorker;
 }
@@ -260,6 +322,77 @@ export function metadataCheckpoint(): MetadataCheckpoint {
 export function writeMetadataCheckpoint(patch: Partial<MetadataCheckpoint>): void {
   const snap = loadIndex();
   snap.metadataWorker = { ...snap.metadataWorker, ...patch, lastTickAt: Date.now() };
+}
+
+export function metadataRetryQueue(): MetadataRetryItem[] {
+  return loadIndex().metadataRetryQueue ?? [];
+}
+
+export function enqueueMetadataRetry(
+  tokenId: string,
+  reason: string,
+  backoffMs: number[],
+  now = Date.now(),
+): MetadataRetryItem {
+  const snap = loadIndex();
+  const queue = snap.metadataRetryQueue ?? [];
+  const existing = queue.find((item) => item.tokenId === tokenId);
+  const attemptCount = (existing?.attemptCount ?? 0) + 1;
+  const delay =
+    backoffMs[Math.min(attemptCount - 1, backoffMs.length - 1)] ??
+    backoffMs[backoffMs.length - 1] ??
+    60_000;
+  const item: MetadataRetryItem = {
+    tokenId,
+    attemptCount,
+    nextAttemptAt: now + delay,
+    lastError: reason,
+    enqueuedAt: existing?.enqueuedAt ?? now,
+  };
+  snap.metadataRetryQueue = [...queue.filter((row) => row.tokenId !== tokenId), item];
+  return item;
+}
+
+export function removeMetadataRetry(tokenId: string): void {
+  const snap = loadIndex();
+  snap.metadataRetryQueue = (snap.metadataRetryQueue ?? []).filter(
+    (item) => item.tokenId !== tokenId,
+  );
+}
+
+export function dueMetadataRetries(now = Date.now()): MetadataRetryItem[] {
+  return (loadIndex().metadataRetryQueue ?? [])
+    .filter((item) => item.nextAttemptAt <= now)
+    .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt);
+}
+
+export function restoredFrom(): IndexSnapshot['restoredFrom'] {
+  return loadIndex().restoredFrom;
+}
+
+/** Brass gate: tokens 1..expected with metadataVerifiedAt set. */
+export function countVerifiedMetadataInRange(fromId: number, toId: number): number {
+  const tokens = loadIndex().tokens;
+  let count = 0;
+  for (let n = fromId; n <= toId; n += 1) {
+    const row = tokens[String(n)];
+    if (row?.metadataVerifiedAt) count += 1;
+  }
+  return count;
+}
+
+export function persistMetadataMissing(tokenId: string, reason: string): void {
+  upsertToken({
+    tokenId,
+    displayNumber: tokenId,
+    exists: false,
+    name: null,
+    imageUrl: null,
+    ownerAddress: null,
+    metadataJson: JSON.stringify({ missing: true, reason }),
+    metadataVerifiedAt: Date.now(),
+    lastSeenAt: Date.now(),
+  });
 }
 
 export function snapshotRevision(): number {

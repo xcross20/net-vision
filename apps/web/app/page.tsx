@@ -21,14 +21,41 @@ import type { CategoryMetrics } from '@/lib/market';
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  const [snapshot, tokens, categories, freshness, sales, offers] = await Promise.all([
-    getCollectionSnapshot(),
-    listTokens({ listedOnly: true, limit: 8 }),
-    listCategories(),
-    getMarketSource().getFreshness(),
-    getRecentSales(8),
-    getRecentOffers(8),
+  const [snapshotRaw, tokens, categories, freshness, sales, offers] = await Promise.all([
+    getCollectionSnapshot().catch(() => null),
+    listTokens({ listedOnly: true, limit: 8 }).catch(() => []),
+    listCategories().catch(() => []),
+    getMarketSource()
+      .getFreshness()
+      .catch(() => ({
+        fresh: false,
+        refreshedAt: null as number | null,
+        source: 'opensea' as const,
+        resolvedChainSlug: null as string | null,
+      })),
+    getRecentSales(8).catch(() => []),
+    // Offers are best-effort — never take down the homepage on OpenSea 429.
+    getRecentOffers(8).catch(() => []),
   ]);
+  const snapshot = snapshotRaw ?? {
+    name: 'Button Presser',
+    slug: 'button-presser',
+    contractAddress: '0xE5143de9D3CcBc31Ffb4e7Fc66d8320e0E2693D2',
+    chainId: 1311,
+    openseaChainSlug: '',
+    totalSupply: 0,
+    owners: 0,
+    listedCount: 0,
+    currency: 'USDG',
+    floorPrice: null,
+    volume24hNative: 0,
+    volume7dNative: 0,
+    sales24h: 0,
+    sales7d: 0,
+    topSalePrice: null,
+    topOfferPrice: null,
+    refreshedAt: 0,
+  };
 
   const featuredCategories = [...categories]
     .sort((a, b) => b.trendingScore - a.trendingScore)

@@ -42,8 +42,10 @@ const DIGITS_3_MAX = 999;
 const BRASS_MAX = 999;
 const STEEL_MAX = 4999;
 const ANODISED_MAX = 19999;
-const PACE_MS = 500;
-const METADATA_PACE_MS = 400;
+/** Slow enough to leave headroom for page-path OpenSea calls. */
+const PACE_MS = 2_500;
+const METADATA_PACE_MS = 3_000;
+const RATE_LIMIT_SLEEP_MS = 5 * 60_000;
 const SAVE_EVERY = 10;
 
 export type BestListingLookup = (tokenId: string) => Promise<ListingObservation>;
@@ -278,21 +280,34 @@ export function startBackgroundIndexer(
   if (process.env.VITEST) return;
   started = true;
   running = true;
+  const recentlyRateLimited = () => {
+    const listing429 = workerCheckpoint().last429At;
+    const meta429 = metadataCheckpoint().last429At;
+    const latest = Math.max(listing429 ?? 0, meta429 ?? 0);
+    return latest > 0 && Date.now() - latest < RATE_LIMIT_SLEEP_MS;
+  };
+
   const listingLoop = async () => {
     try {
-      await runIndexerPass(lookup, { maxTokens: 1, sink, sleepMs: 0 });
-      const checkpoint = workerCheckpoint();
-      const queue = buildQueue();
-      if (checkpoint.cursor >= queue.length) {
-        writeWorkerCheckpoint({ phase: 'hot-refresh', cursor: 0 });
-        saveIndex();
-        await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+      if (recentlyRateLimited()) {
+        await new Promise((resolve) => setTimeout(resolve, 30_000));
       } else {
-        await new Promise((resolve) => setTimeout(resolve, PACE_MS));
+        await runIndexerPass(lookup, { maxTokens: 1, sink, sleepMs: 0 });
+        const checkpoint = workerCheckpoint();
+        const queue = buildQueue();
+        if (checkpoint.cursor >= queue.length) {
+          writeWorkerCheckpoint({ phase: 'hot-refresh', cursor: 0 });
+          saveIndex();
+          await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, PACE_MS));
+        }
       }
     } catch (err) {
       if (isOpenSeaRateLimited(err)) {
-        await new Promise((resolve) => setTimeout(resolve, 60_000));
+        writeWorkerCheckpoint({ last429At: Date.now(), lastError: '429' });
+        saveIndex();
+        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_SLEEP_MS));
       } else {
         await new Promise((resolve) => setTimeout(resolve, PACE_MS * 4));
       }
@@ -305,16 +320,24 @@ export function startBackgroundIndexer(
     metadataRunning = true;
     const metadataLoop = async () => {
       try {
-        const checkpoint = metadataCheckpoint();
-        if (checkpoint.phase === 'done') {
-          metadataRunning = false;
-          return;
+        if (recentlyRateLimited()) {
+          await new Promise((resolve) => setTimeout(resolve, 30_000));
+        } else {
+          const checkpoint = metadataCheckpoint();
+          if (checkpoint.phase === 'done') {
+            metadataRunning = false;
+            return;
+          }
+          // Stagger metadata behind listing ticks so they never fire in the same second.
+          await new Promise((resolve) => setTimeout(resolve, METADATA_PACE_MS / 2));
+          await runMetadataBootstrapPass(fetchMetadata, { maxTokens: 1, sleepMs: 0 });
+          await new Promise((resolve) => setTimeout(resolve, METADATA_PACE_MS));
         }
-        await runMetadataBootstrapPass(fetchMetadata, { maxTokens: 1, sleepMs: 0 });
-        await new Promise((resolve) => setTimeout(resolve, METADATA_PACE_MS));
       } catch (err) {
         if (isOpenSeaRateLimited(err)) {
-          await new Promise((resolve) => setTimeout(resolve, 60_000));
+          writeMetadataCheckpoint({ last429At: Date.now(), lastError: '429' });
+          saveIndex();
+          await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_SLEEP_MS));
         } else {
           await new Promise((resolve) => setTimeout(resolve, METADATA_PACE_MS * 4));
         }

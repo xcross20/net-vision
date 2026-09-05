@@ -55,10 +55,13 @@ import {
   hydrateIndexFromPostgres,
   listingRecord,
   loadIndex,
+  metadataCheckpoint,
   persistNftMetadata,
   saveIndex,
   tokenFacets,
+  workerCheckpoint,
   writeListing,
+  writeWorkerCheckpoint,
 } from '@/lib/index/store';
 import { PRIORITY_TOKEN_IDS, startBackgroundIndexer } from '@/lib/index/worker';
 import {
@@ -108,11 +111,14 @@ type CacheEntry<T> = {
 };
 
 const TTL_MS = 60_000;
+/** Orderbook / offers: longer TTL so page traffic does not thrash OpenSea. */
+const ORDERBOOK_TTL_MS = 5 * 60_000;
 const MAX_LISTING_PAGE_SIZE = 1000;
-const ORDERBOOK_PAGE_SIZE = 200;
-const NFT_METADATA_CONCURRENCY = 4;
-const VISIBLE_CONFIRM_CONCURRENCY = 4;
-const RATE_LIMIT_COOLDOWN_MS = 60_000;
+const ORDERBOOK_PAGE_SIZE = 50;
+const NFT_METADATA_CONCURRENCY = 2;
+const VISIBLE_CONFIRM_CONCURRENCY = 2;
+/** After a 429, freeze outbound OpenSea calls for 5 minutes. */
+const RATE_LIMIT_COOLDOWN_MS = 5 * 60_000;
 const VISIBLE_CONFIRM_BUDGET_MS = 1_500;
 
 type TokenCacheEntry = CacheEntry<Token>;
@@ -474,52 +480,65 @@ class OpenSeaMarketSource implements MarketSource {
     return page;
   }
 
+  private orderbookInflight: Promise<Order[]> | null = null;
+
   private isCoolingDown(): boolean {
-    return Date.now() < this.rateLimitedUntil;
+    if (Date.now() < this.rateLimitedUntil) return true;
+    // Share cooldown with the background indexer via persisted checkpoints.
+    try {
+      const listing429 = workerCheckpoint().last429At;
+      const meta429 = metadataCheckpoint().last429At;
+      const latest = Math.max(listing429 ?? 0, meta429 ?? 0);
+      if (latest > 0 && Date.now() - latest < RATE_LIMIT_COOLDOWN_MS) return true;
+    } catch {
+      /* index may be empty at boot */
+    }
+    return false;
   }
 
   private noteRateLimit(): void {
     this.rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+    try {
+      writeWorkerCheckpoint({ last429At: Date.now(), lastError: '429' });
+      saveIndex();
+    } catch {
+      /* best-effort persist */
+    }
   }
 
   private async ensurePipeline(): Promise<void> {
     this.catalog.classify();
     const chain = await this.ensureChain();
     if (!chain) return;
-    await Promise.all([this.ingestOrderbook(), this.ingestCollectionSales()]);
+    if (this.isCoolingDown()) return;
+    // Serial: never fan out best+all+sales on the same tick.
+    await this.ingestOrderbook();
+    if (!this.isCoolingDown()) await this.ingestCollectionSales();
   }
 
   private async ingestOrderbook(): Promise<Order[]> {
     const cached = this.collectionOrders.get(ORDERBOOK_PAGE_SIZE);
     const stale = cached?.value ?? [];
-    if (isFresh(cached)) return cached.value;
+    if (cached && Date.now() - cached.fetchedAt < ORDERBOOK_TTL_MS) return cached.value;
     if (this.isCoolingDown()) return stale;
-    // Prefer `/best` (price-ascending floors) and merge `/all` (recent asks).
-    // `/all` alone is not reliably price-sorted on Robinhood and was missing
-    // digit-range floors while returning high token ids at 1.25 USDG.
+    // Single-flight: concurrent page renders must not stampede OpenSea.
+    if (this.orderbookInflight) return this.orderbookInflight;
+
+    this.orderbookInflight = this.ingestOrderbookOnce(stale).finally(() => {
+      this.orderbookInflight = null;
+    });
+    return this.orderbookInflight;
+  }
+
+  private async ingestOrderbookOnce(stale: Order[]): Promise<Order[]> {
+    // Only `/best` on the request path — one call, price-sorted floors.
+    // Full `/all` reconciliation belongs to the background worker later.
     let bestPage: { listings: Order[] } = { listings: [] };
-    let allPage: { listings: Order[] } = { listings: [] };
     try {
-      const [bestResult, allResult] = await Promise.allSettled([
-        this.client.getCollectionBestListings({
-          slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-          limit: ORDERBOOK_PAGE_SIZE,
-        }),
-        this.client.getCollectionListings({
-          slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-          limit: ORDERBOOK_PAGE_SIZE,
-        }),
-      ]);
-      if (bestResult.status === 'fulfilled') bestPage = bestResult.value;
-      else if (isOpenSeaRateLimited(bestResult.reason)) this.noteRateLimit();
-      if (allResult.status === 'fulfilled') allPage = allResult.value;
-      else if (isOpenSeaRateLimited(allResult.reason)) this.noteRateLimit();
-      if (bestResult.status === 'rejected' && allResult.status === 'rejected') {
-        console.error(
-          `OpenSea orderbook ingest failed: ${bestResult.reason instanceof Error ? bestResult.reason.message : String(bestResult.reason)}`,
-        );
-        return stale;
-      }
+      bestPage = await this.client.getCollectionBestListings({
+        slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+        limit: ORDERBOOK_PAGE_SIZE,
+      });
     } catch (err) {
       if (isOpenSeaRateLimited(err)) this.noteRateLimit();
       console.error(
@@ -528,7 +547,7 @@ class OpenSeaMarketSource implements MarketSource {
       return stale;
     }
     const unique = new Map<string, Order>();
-    for (const order of [...bestPage.listings, ...allPage.listings]) {
+    for (const order of bestPage.listings) {
       const catalogListing = orderToCatalogListing(order);
       if (!catalogListing) continue;
       const existing = unique.get(catalogListing.tokenId);
@@ -566,18 +585,19 @@ class OpenSeaMarketSource implements MarketSource {
     this.orderbookIngestedAt = Date.now();
     this.tokenPages.clear();
     this.categories.clear();
-    // Re-check known floor examples even if the worker previously marked them unlisted.
-    void this.confirmVisibleListings([...PRIORITY_TOKEN_IDS], { force: true });
+    // Do NOT force-confirm priority tokens here — that was 6 extra best-listing
+    // calls after every orderbook refresh and amplified 429 storms.
     return orders;
   }
 
   private async ingestCollectionSales(): Promise<void> {
-    if (Date.now() - this.salesIngestedAt < TTL_MS) return;
+    if (Date.now() - this.salesIngestedAt < ORDERBOOK_TTL_MS) return;
+    if (this.isCoolingDown()) return;
     try {
       const page = await this.client.getCollectionEvents({
         slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
         eventType: 'sale',
-        limit: 50,
+        limit: 25,
       });
       const events = page.asset_events ?? page.events ?? [];
       const sales = events
@@ -592,6 +612,7 @@ class OpenSeaMarketSource implements MarketSource {
       ingestSales(sales, attributions);
       this.salesIngestedAt = Date.now();
     } catch (err) {
+      if (isOpenSeaRateLimited(err)) this.noteRateLimit();
       console.error(
         `OpenSea collection sales failed: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -982,20 +1003,29 @@ class OpenSeaMarketSource implements MarketSource {
   async listRecentOffers(limit = 20): Promise<Offer[]> {
     const cacheKey = `collection:${limit}`;
     const cached = this.offers.get(cacheKey);
-    if (isFresh(cached)) return cached.value;
+    if (cached && Date.now() - cached.fetchedAt < ORDERBOOK_TTL_MS) return cached.value;
+    if (this.isCoolingDown()) return cached?.value ?? [];
     const chain = await this.ensureChain();
-    if (!chain) return [];
-    const page = await this.client.getCollectionOffers({
-      slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-      limit: Math.min(Math.max(limit, 1), MAX_LISTING_PAGE_SIZE),
-    });
-    const offers = page.offers
-      .map(orderToOffer)
-      .filter((offer): offer is Offer => offer !== null)
-      .sort((a, b) => b.price - a.price)
-      .slice(0, limit);
-    this.offers.set(cacheKey, { value: offers, fetchedAt: Date.now() });
-    return offers;
+    if (!chain) return cached?.value ?? [];
+    try {
+      const page = await this.client.getCollectionOffers({
+        slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+        limit: Math.min(Math.max(limit, 1), 50),
+      });
+      const offers = page.offers
+        .map(orderToOffer)
+        .filter((offer): offer is Offer => offer !== null)
+        .sort((a, b) => b.price - a.price)
+        .slice(0, limit);
+      this.offers.set(cacheKey, { value: offers, fetchedAt: Date.now() });
+      return offers;
+    } catch (err) {
+      if (isOpenSeaRateLimited(err)) this.noteRateLimit();
+      console.error(
+        `OpenSea collection offers failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return cached?.value ?? [];
+    }
   }
 
   async getTokenOffers(tokenId: string): Promise<Offer[]> {
