@@ -288,9 +288,6 @@ class OpenSeaMarketSource implements MarketSource {
         slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
         cursor,
         limit: 50,
-      }).catch((err: unknown) => {
-        console.error(`[open-sea-source] getCollectionListings failed: ${err instanceof Error ? err.message : String(err)}`);
-        return { listings: [], next: null };
       });
       for (const order of page.listings) {
         if (!getTokenIdFromOrder(order)) continue;
@@ -352,9 +349,6 @@ class OpenSeaMarketSource implements MarketSource {
     ]);
     const stats = statsResult.status === 'fulfilled' ? statsResult.value : undefined;
     const listings = listingsResult.status === 'fulfilled' ? listingsResult.value : undefined;
-    console.log(
-      `[open-sea-source] snapshot stats=${stats ? 'ok' : statsResult.status} listings=${listings ? `${listings.listings.length}` : listingsResult.status}`,
-    );
     if (!stats) {
       console.error(`OpenSea collection stats failed: ${statsResult.status === 'rejected' ? String(statsResult.reason) : 'unknown error'}`);
     }
