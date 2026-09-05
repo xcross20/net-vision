@@ -10,3 +10,18 @@
 export function buildTokenImageUrl(tokenId: string): string {
   return `/api/media/token/${encodeURIComponent(tokenId)}`;
 }
+
+/** True when the URL is our local SVG placeholder, not OpenSea art. */
+export function isProxyImageUrl(url: string | null | undefined): boolean {
+  if (!url) return true;
+  return url.startsWith('/api/media/token/');
+}
+
+/** Prefer a stored OpenSea CDN URL; otherwise the deterministic proxy. */
+export function resolveTokenImageUrl(
+  tokenId: string,
+  storedImageUrl: string | null | undefined,
+): string {
+  if (storedImageUrl && /^https?:\/\//i.test(storedImageUrl)) return storedImageUrl;
+  return buildTokenImageUrl(tokenId);
+}

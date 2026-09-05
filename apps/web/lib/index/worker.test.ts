@@ -85,11 +85,11 @@ describe('Plate metadata bootstrap', () => {
         fetched.push(tokenId);
         persistNftMetadata(tokenId, {
           name: `Button #${tokenId}`,
-          imageUrl: null,
+          imageUrl: `https://raw2.seadn.io/example/${tokenId}.svg`,
           ownerAddress: null,
           traits: [{ trait_type: 'Plate', value: 'Brass' }],
         });
-        return true;
+        return { kind: 'found' };
       },
       { maxTokens: 3 },
     );
@@ -98,7 +98,10 @@ describe('Plate metadata bootstrap', () => {
     expect(metadataCheckpoint().cursor).toBe(3);
     expect(metadataCheckpoint().phase).toBe('brass-priority');
 
-    const second = await runMetadataBootstrapPass(async () => true, { maxTokens: 2 });
+    const second = await runMetadataBootstrapPass(
+      async () => ({ kind: 'found' }),
+      { maxTokens: 2 },
+    );
     expect(second.cursor).toBe(5);
   });
 
@@ -111,7 +114,7 @@ describe('Plate metadata bootstrap', () => {
     await runMetadataBootstrapPass(
       async (tokenId) => {
         fetched.push(tokenId);
-        return true;
+        return { kind: 'found' };
       },
       { maxTokens: 2 },
     );
@@ -119,5 +122,23 @@ describe('Plate metadata bootstrap', () => {
     expect(fetched[0]).toBe('2');
     expect(metadataCheckpoint().cursor).toBe(2);
   });
+
+  it('does not advance the cursor on retry / rate-limit observations', async () => {
+    await expect(
+      runMetadataBootstrapPass(async () => ({ kind: 'retry', reason: '429' }), { maxTokens: 1 }),
+    ).rejects.toThrow(/metadata-retry/);
+    expect(metadataCheckpoint().cursor).toBe(0);
+    expect(metadataCheckpoint().lastError).toBe('429');
+  });
+
+  it('advances on confirmed missing, not on transport collapse', async () => {
+    const result = await runMetadataBootstrapPass(
+      async () => ({ kind: 'missing' }),
+      { maxTokens: 2 },
+    );
+    expect(result.cursor).toBe(2);
+    expect(result.missing).toBe(2);
+  });
 });
+
 

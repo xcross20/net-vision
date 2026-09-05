@@ -78,7 +78,7 @@ import {
   categoryReadiness,
   type ListingObservation,
 } from './listing-state';
-import { buildTokenImageUrl } from '@/lib/data/media';
+import { buildTokenImageUrl, isProxyImageUrl, resolveTokenImageUrl } from '@/lib/data/media';
 import type {
   CategoryMetrics,
   CollectionSnapshot,
@@ -281,8 +281,16 @@ class OpenSeaMarketSource implements MarketSource {
         this.tokenPages.clear();
       },
       async (tokenId) => {
-        const nft = await this.fetchNFT(tokenId);
-        return nft !== null;
+        try {
+          const nft = await this.fetchNFT(tokenId);
+          return nft ? { kind: 'found' as const } : { kind: 'missing' as const };
+        } catch (err) {
+          if (isOpenSeaRateLimited(err)) throw err;
+          return {
+            kind: 'retry' as const,
+            reason: err instanceof Error ? err.message : String(err),
+          };
+        }
       },
     );
   }
@@ -381,7 +389,10 @@ class OpenSeaMarketSource implements MarketSource {
     const cached = this.nfts.get(tokenId);
     if (isFresh(cached)) return cached.value;
     const chain = await this.ensureChain();
-    if (!chain) return null;
+    if (!chain) {
+      // Chain discovery failure is transient — callers that need retry must see it.
+      throw new Error('opensea-chain-unresolved');
+    }
     try {
       const nft = await this.client.getNFT({
         chain: chain.chain,
@@ -398,10 +409,13 @@ class OpenSeaMarketSource implements MarketSource {
       this.catalog.attachFacets(tokenId, facets);
       return nft;
     } catch (err) {
-      if (!isMissingResource(err)) {
-        console.error(`OpenSea NFT lookup failed for ${tokenId}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-      return null;
+      // Propagate rate limits / transport errors so metadata bootstrap can RETRY.
+      if (isOpenSeaRateLimited(err)) throw err;
+      if (isMissingResource(err)) return null;
+      console.error(
+        `OpenSea NFT lookup failed for ${tokenId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw err;
     }
   }
 
@@ -689,14 +703,27 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   private async hydrateListedTokens(tokenIds: string[]): Promise<Token[]> {
-    // Build from the catalog first so the listings grid never depends on
-    // per-token NFT fetches (those 429 and used to blank the API).
+    // Build from the catalog + persisted metadata first so the grid never
+    // blanks on OpenSea 429s. Prefer stored seadn.io URLs over the SVG proxy.
+    const snap = loadIndex();
     const tokens = tokenIds.map((tokenId) => {
       const cached = this.tokens.get(tokenId);
-      if (isFresh(cached) && cached.value.listingPrice !== null) return cached.value;
+      if (
+        isFresh(cached) &&
+        cached.value.listingPrice !== null &&
+        !isProxyImageUrl(cached.value.imageUrl)
+      ) {
+        return cached.value;
+      }
       const listing = this.catalog.listingFor(tokenId);
       if (!listing) return null;
-      const listedToken = catalogListingToToken(listing, this.catalog.traitsFor(tokenId));
+      const stored = snap.tokens[tokenId];
+      const listedToken = catalogListingToToken(
+        listing,
+        this.catalog.traitsFor(tokenId),
+        stored?.imageUrl ?? null,
+        stored?.name ?? null,
+      );
       const lastSale = this.catalog.lastSaleFor(tokenId);
       const withSale = lastSale
         ? { ...listedToken, lastSalePrice: lastSale.price, lastSaleAt: lastSale.occurredAt }
@@ -705,9 +732,9 @@ class OpenSeaMarketSource implements MarketSource {
       return withSale;
     });
     const ready = tokens.filter((token): token is Token => token !== null);
-    // Best-effort image/name enrichment for the visible page only.
+    // Enrich any still-proxied images for the visible page.
     if (!this.isCoolingDown()) {
-      const missing = ready.filter((token) => !token.imageUrl).slice(0, 12);
+      const missing = ready.filter((token) => isProxyImageUrl(token.imageUrl));
       await mapWithConcurrency(missing, NFT_METADATA_CONCURRENCY, async (token) => {
         try {
           const nft = await this.fetchNFT(token.tokenId);
@@ -1226,13 +1253,18 @@ function buildUnlistedCategoryToken(tokenId: string): Token {
   };
 }
 
-function catalogListingToToken(listing: CatalogListing, traits: NumberTrait[]): Token {
+function catalogListingToToken(
+  listing: CatalogListing,
+  traits: NumberTrait[],
+  storedImageUrl: string | null = null,
+  storedName: string | null = null,
+): Token {
   return {
     tokenId: listing.tokenId,
     contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
     chainId: ROBINHOOD_CHAIN.id,
-    imageUrl: buildTokenImageUrl(listing.tokenId),
-    name: `#${listing.tokenId}`,
+    imageUrl: resolveTokenImageUrl(listing.tokenId, storedImageUrl),
+    name: storedName ?? `#${listing.tokenId}`,
     listingPrice: listing.price,
     currency: listing.currency,
     lastSalePrice: null,
