@@ -24,7 +24,7 @@ export function AssetCard({
   priority?: boolean;
 }) {
   const [favorited, setFavorited] = useState(false);
-  const ask = token.listingPriceEth ? Number.parseFloat(token.listingPriceEth) : null;
+  const ask = token.listingPrice;
   const topTraits = token.traits
     .filter((t) => t.family !== 'digits')
     .slice(0, 2);
@@ -95,7 +95,7 @@ export function AssetCard({
                   : topTraits.map((t) => t.label).join(' / ')}
               </span>
             </div>
-            <Price ethValue={ask} size="md" align="right" />
+            <Price value={ask} currency={token.currency} size="md" align="right" />
           </div>
           <div className="mt-auto flex items-center justify-between text-[11px] text-[var(--color-text-tertiary)]">
             <span className="inline-flex items-center gap-1">

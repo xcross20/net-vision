@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Sparkle } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { CategoryMetrics } from '@/lib/market';
-import { compact, pct } from '@/lib/format';
+import { compact, payment, pct } from '@/lib/format';
 import { LiveIndicator } from './LiveIndicator';
 
 /**
@@ -20,7 +20,7 @@ export function CategoryCard({
   /** Pre-computed fractional 7-day floor move. Positive = up. */
   movement?: number | null;
 }) {
-  const floor = metrics.floorPriceEth;
+  const floor = metrics.floorPrice;
   const movementLabel =
     movement !== undefined && movement !== null ? pct(movement) : null;
   const movementTone =
@@ -62,7 +62,7 @@ export function CategoryCard({
         <div className="flex flex-col gap-1">
           <span className="text-eyebrow-muted">Floor</span>
           <span className="text-numeral text-2xl font-semibold tracking-tight text-[var(--color-text-primary)]">
-            {floor !== null ? `${floor.toFixed(2)} ETH` : '—'}
+            {floor !== null ? payment(floor, metrics.currency) : '—'}
           </span>
         </div>
 

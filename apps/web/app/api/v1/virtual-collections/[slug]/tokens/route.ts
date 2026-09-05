@@ -13,12 +13,13 @@ export async function GET(
   const tokens = (await listCategoryTokens(slug)).slice(0, limit);
   return NextResponse.json({
     category: { slug },
-    tokens: tokens.map((t: { tokenId: string; ownerAddress: string | null; imageUrl: string; listingPriceEth: string | null; lastSalePriceEth: string | null; traits: { slug: string }[] }) => ({
+    tokens: tokens.map((t) => ({
       tokenId: t.tokenId,
       ownerAddress: t.ownerAddress,
       imageUrl: t.imageUrl,
-      listingPriceEth: t.listingPriceEth,
-      lastSalePriceEth: t.lastSalePriceEth,
+      listingPrice: t.listingPrice,
+      currency: t.currency,
+      lastSalePrice: t.lastSalePrice,
       traits: t.traits.map((tr) => tr.slug),
     })),
     total: tokens.length,

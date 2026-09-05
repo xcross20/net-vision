@@ -1,25 +1,28 @@
 /**
  * Display formatters for the Net Vision market UI.
  *
- * `eth()` keeps the project's existing convention (`{value} ETH`) for
- * grid/list rows. `usd()` formats a USDG-style display price. `compact`
- * collapses large counts (`62,093`, `1.2M`). `pct` formats a signed
- * fractional move with one decimal and an explicit sign.
+ * Prices use the payment currency supplied by the market source. The
+ * native-chain volume shown elsewhere is formatted separately as ETH.
  */
 
-export function eth(value: number | null | undefined, fallback = '\u2014'): string {
+export function payment(
+  value: number | null | undefined,
+  currency = 'USDG',
+  fallback = '\u2014',
+): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return fallback;
-  if (value === 0) return '0 ETH';
-  if (value < 0.001) return `${value.toExponential(2)} ETH`;
-  if (value < 1) return `${value.toFixed(4)} ETH`;
-  return `${value.toFixed(3)} ETH`;
+  if (value === 0) return `0 ${currency}`;
+  if (Math.abs(value) < 0.001) return `${value.toExponential(2)} ${currency}`;
+  if (Math.abs(value) < 1) return `${value.toFixed(4)} ${currency}`;
+  return `${value.toFixed(3)} ${currency}`;
+}
+
+export function eth(value: number | null | undefined, fallback = '\u2014'): string {
+  return payment(value, 'ETH', fallback);
 }
 
 export function usd(value: number | null | undefined, currency = 'USDG', fallback = '\u2014'): string {
-  if (value === null || value === undefined || !Number.isFinite(value)) return fallback;
-  if (value === 0) return `0 ${currency}`;
-  if (value < 1) return `${value.toFixed(2)} ${currency}`;
-  return `${value.toFixed(2)} ${currency}`;
+  return payment(value, currency, fallback);
 }
 
 export function compact(value: number | null | undefined, fallback = '\u2014'): string {
@@ -33,7 +36,7 @@ export function compact(value: number | null | undefined, fallback = '\u2014'): 
 
 export function pct(value: number | null | undefined, fallback = '\u2014'): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return fallback;
-  const sign = value > 0 ? '+' : value < 0 ? '' : '';
+  const sign = value > 0 ? '+' : '';
   return `${sign}${(value * 100).toFixed(1)}%`;
 }
 

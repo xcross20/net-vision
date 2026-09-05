@@ -8,7 +8,7 @@ import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { TokenCommercePanel } from '@/components/TokenCommercePanel';
 import { SalesOffersList, type SaleOrOfferEntry } from '@/components/ui/SalesOffersList';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { address, eth, relative } from '@/lib/format';
+import { address, payment, relative } from '@/lib/format';
 import { ArrowR } from '@/components/icons';
 
 export const dynamic = 'force-dynamic';
@@ -39,18 +39,22 @@ export default async function TokenDetailPage({
   if (!token) {
     notFound();
   }
-  const ask = token.listingPriceEth ? Number.parseFloat(token.listingPriceEth) : null;
-  const lastSale = token.lastSalePriceEth ? Number.parseFloat(token.listingPriceEth ?? token.lastSalePriceEth) : null;
+  const ask = token.listingPrice;
+  const lastSale = token.lastSalePrice;
   const traits = token.traits.filter((t) => t.family !== 'digits');
   const topCategory = traits[0];
 
   const saleEntries: SaleOrOfferEntry[] = sales
     .filter((s) => s.tokenId === token.tokenId)
     .map((s) => ({
-      ...s,
       kind: 'sale' as const,
-      price: s.priceEth,
+      tokenId: s.tokenId,
+      price: s.price,
+      currency: s.currency,
       occurredAt: s.occurredAt,
+      orderHash: s.orderHash,
+      buyer: s.buyer,
+      seller: s.seller,
     }));
 
   return (
@@ -120,12 +124,12 @@ export default async function TokenDetailPage({
           <dl className="flex flex-col gap-3 border-y border-[var(--color-border-subtle)] py-4">
             <Field label="Best ask">
               <span className="text-numeral text-base font-semibold tracking-tight text-[var(--color-net-green)]">
-                {eth(ask)}
+                {payment(ask, token.currency)}
               </span>
             </Field>
             <Field label="Last sale">
               <span className="text-numeral text-base tracking-tight text-[var(--color-text-primary)]">
-                {eth(lastSale)}
+                {payment(lastSale, token.currency)}
               </span>
             </Field>
             <Field label="Owner">

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ArrowUpRight } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
-import { eth } from '@/lib/format';
+import { payment } from '@/lib/format';
 import { MarketplaceBadge } from './MarketplaceBadge';
 import { LiveIndicator } from './LiveIndicator';
 import type { Token } from '@/lib/market';
@@ -60,7 +60,7 @@ function LayeredCard({
   index: number;
   total: number;
 }) {
-  const ask = token.listingPriceEth ? Number.parseFloat(token.listingPriceEth) : null;
+  const ask = token.listingPrice;
   // Stagger the depth using translateY + scale so each card feels a layer
   // apart. The middle card is the focal point.
   const depth =
@@ -123,7 +123,7 @@ function LayeredCard({
           </div>
           <div className="flex items-center gap-2">
             <span className="text-numeral text-[13px] font-semibold tracking-tight text-[var(--color-text-primary)]">
-              {eth(ask, '—')}
+              {payment(ask, token.currency, '—')}
             </span>
             <ArrowUpRight
               size={12}

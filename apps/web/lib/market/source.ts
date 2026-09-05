@@ -7,7 +7,7 @@
  * fetches and caches on demand; a future Postgres/Redis implementation
  * can drop in without changing consumers.
  *
- * All methods return promises so a Postgres or Redis implementation is a
+ * All methods return promises so a Postgres/Redis implementation is a
  * drop-in.
  */
 
@@ -33,7 +33,8 @@ export type ListTokensPage = {
 
 export type Sale = {
   tokenId: string;
-  priceEth: string;
+  price: number;
+  currency: string;
   /** epoch seconds. */
   occurredAt: number;
   /** OpenSea order hash for the sale, when available. */
@@ -44,7 +45,8 @@ export type Sale = {
 
 export type Offer = {
   tokenId: string;
-  priceEth: string;
+  price: number;
+  currency: string;
   /** epoch seconds; null when the offer has no expiry. */
   expiresAt: number | null;
   orderHash: string;
@@ -64,7 +66,7 @@ export interface MarketSource {
   listCategories(): Promise<CategoryMetrics[]>;
   /** Recent sales for the collection, newest first. */
   listRecentSales(limit?: number): Promise<Sale[]>;
-  /** Recent offers for the collection, newest first. */
+  /** Recent offers for the collection, highest first. */
   listRecentOffers(limit?: number): Promise<Offer[]>;
   /** Active offers on a single token, highest first. */
   getTokenOffers(tokenId: string): Promise<Offer[]>;

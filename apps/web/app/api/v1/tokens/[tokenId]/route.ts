@@ -16,8 +16,11 @@ export async function GET(
     tokenId: token.tokenId,
     ownerAddress: token.ownerAddress,
     imageUrl: token.imageUrl,
-    listingPriceEth: token.listingPriceEth,
-    lastSalePriceEth: token.lastSalePriceEth,
+    listingPrice: token.listingPrice,
+    currency: token.currency,
+    lastSalePrice: token.lastSalePrice,
+    listedAt: token.listedAt,
+    lastSaleAt: token.lastSaleAt,
     traits: token.traits.map((t) => ({
       slug: t.slug,
       family: t.family,

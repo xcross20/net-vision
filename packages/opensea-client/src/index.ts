@@ -9,6 +9,12 @@
  * Every response is validated against a Zod schema. Unknown fields are
  * tolerated so upstream additions don't break us, but missing required
  * security-sensitive fields cause a hard failure.
+ *
+ * SCHEMA SHAPE: This file models the actual OpenSea v2 response. Earlier
+ * revisions invented a flat shape that doesn't match the real API; every
+ * response was silently dropped by the `safeParse` filter in the source.
+ * If OpenSea ever changes the wire format, update the schemas here and
+ * add a fixture to tests/opensea-client.test.ts before touching callers.
  */
 
 import { z } from 'zod';
@@ -19,33 +25,104 @@ const OPTIONAL_HEX_ADDRESS = z
   .regex(HEX_ADDRESS, 'expected 0x-prefixed 20-byte hex address')
   .optional();
 
+/* -------------------------------------------------------------------------- */
+/*  Price envelope                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * OpenSea represents prices as a `{ currency, decimals, value }` tuple
+ * where `value` is a decimal-string of the smallest unit (wei for ETH,
+ * 6-decimal subunits for USDG). Listings nest this under `price.current`;
+ * offers keep it flat at `price`.
+ */
+const PriceTupleSchema = z
+  .object({
+    currency: z.string().min(1),
+    decimals: z.number().int().min(0).max(36),
+    value: z.union([z.string(), z.number()]),
+  })
+  .passthrough();
+
+/**
+ * The actual response is one of two shapes:
+ *   - listings: { price: { current: <tuple> } }
+ *   - offers:   { price: <tuple> }
+ * We accept either.
+ */
+const PriceEnvelopeSchema = z
+  .object({
+    current: PriceTupleSchema.optional(),
+  })
+  .passthrough()
+  .refine(
+    (p) =>
+      PriceTupleSchema.safeParse(p).success ||
+      PriceTupleSchema.safeParse((p as { current?: unknown }).current).success,
+    'price envelope must contain either a tuple at price or a tuple at price.current',
+  );
+
+/* -------------------------------------------------------------------------- */
+/*  Order (listings + offers share this shape)                                */
+/* -------------------------------------------------------------------------- */
+
 export const OrderSchema = z
   .object({
     order_hash: z.string().min(1),
     chain: z.string().min(1),
-    protocol: z.string().min(1),
-    protocol_address: z.string().regex(HEX_ADDRESS),
-    side: z.enum(['ask', 'bid']),
-    maker: z.string().regex(HEX_ADDRESS),
-    taker: OPTIONAL_HEX_ADDRESS,
-    currency: z.string().regex(HEX_ADDRESS),
-    currency_symbol: z.string().min(1).optional(),
-    price: z
+    protocol_data: z
       .object({
-        current: z.union([z.string(), z.number()]),
-        decimals: z.number().int().min(0).max(36),
-        currency: z.string().optional(),
+        parameters: z
+          .object({
+            offerer: z.string().regex(HEX_ADDRESS).optional(),
+            startTime: z.union([z.string(), z.number()]).optional(),
+            endTime: z.union([z.string(), z.number()]).optional(),
+            consideration: z
+              .array(
+                z
+                  .object({
+                    itemType: z.number().int(),
+                    identifierOrCriteria: z.union([z.string(), z.number()]).optional(),
+                    token: z.string().regex(HEX_ADDRESS).optional(),
+                    startAmount: z.union([z.string(), z.number()]).optional(),
+                    endAmount: z.union([z.string(), z.number()]).optional(),
+                  })
+                  .passthrough(),
+              )
+              .optional(),
+          })
+          .passthrough(),
       })
       .passthrough(),
-    quantity: z.union([z.string(), z.number()]),
-    valid_from: z.union([z.string(), z.number()]).optional(),
-    valid_until: z.union([z.string(), z.number()]).optional(),
-    nft_contract: z.string().regex(HEX_ADDRESS).optional(),
-    token_id: z.union([z.string(), z.number()]).optional(),
+    protocol_address: z.string().regex(HEX_ADDRESS),
+    /**
+     * The NFT being traded. For listings, this is the listed asset; for
+     * collection-level offer endpoints the OpenSea API still surfaces a
+     * single `asset` block per order in the response.
+     */
+    asset: z
+      .object({
+        identifier: z.union([z.string(), z.number()]),
+        contract: z.string().regex(HEX_ADDRESS),
+      })
+      .passthrough()
+      .optional(),
+    remaining_quantity: z.number().int().nonnegative().optional(),
+    order_created_at: z.union([z.string(), z.number()]).optional(),
+    price: PriceEnvelopeSchema,
+    /**
+     * `type` discriminates listings (`basic`) from offers; kept as a free
+     * string so OpenSea can add new order kinds without breaking us.
+     */
+    type: z.string().optional(),
+    status: z.string().optional(),
   })
   .passthrough();
 
 export type Order = z.infer<typeof OrderSchema>;
+
+/* -------------------------------------------------------------------------- */
+/*  Pages                                                                      */
+/* -------------------------------------------------------------------------- */
 
 export const CollectionListingsPageSchema = z
   .object({
@@ -54,9 +131,140 @@ export const CollectionListingsPageSchema = z
   })
   .passthrough();
 
+export const CollectionOffersPageSchema = z
+  .object({
+    offers: z.array(OrderSchema),
+    next: z.string().nullish(),
+  })
+  .passthrough();
+
 export const BestListingSchema = OrderSchema.nullable();
 
+export const BestOfferSchema = OrderSchema.nullable();
+
 export type CollectionListingsPage = z.infer<typeof CollectionListingsPageSchema>;
+export type CollectionOffersPage = z.infer<typeof CollectionOffersPageSchema>;
+
+/* -------------------------------------------------------------------------- */
+/*  NFT metadata                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Mirrors `/api/v2/chain/{chain}/contract/{contract}/nfts/{tokenId}`.
+ * The actual response wraps everything under `nft`; callers unwrap that.
+ */
+export const NftInfoSchema = z
+  .object({
+    identifier: z.union([z.string(), z.number()]),
+    collection: z.string().optional(),
+    contract: z.string().regex(HEX_ADDRESS).optional(),
+    token_standard: z.string().optional(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    image_url: z.string().url().optional(),
+    display_image_url: z.string().url().optional(),
+    image_preview_url: z.string().url().optional(),
+    image_original_url: z.string().url().optional(),
+    animation_url: z.string().url().nullable().optional(),
+    opensea_url: z.string().url().optional(),
+    owner: z.string().regex(HEX_ADDRESS).optional(),
+    updated_at: z.string().optional(),
+    total_supply: z.number().int().nonnegative().optional(),
+    traits: z
+      .array(
+        z
+          .object({
+            trait_type: z.string().optional(),
+            value: z.union([z.string(), z.number()]).optional(),
+            display_type: z.string().nullable().optional(),
+            max_value: z.union([z.string(), z.number()]).nullable().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    rarity: z
+      .object({
+        rank: z.number().optional(),
+        score: z.number().optional(),
+        total_supply: z.number().optional(),
+      })
+      .passthrough()
+      .optional(),
+    owners: z
+      .union([
+        z.number().int().nonnegative(),
+        z.array(
+          z.union([
+            z.string().regex(HEX_ADDRESS),
+            z
+              .object({
+                address: z.string().regex(HEX_ADDRESS),
+                quantity: z.number().optional(),
+                quantity_string: z.string().optional(),
+              })
+              .passthrough(),
+          ]),
+        ),
+      ])
+      .optional(),
+  })
+  .passthrough();
+
+export type NftInfo = z.infer<typeof NftInfoSchema>;
+
+export const NftResponseSchema = z
+  .object({
+    nft: NftInfoSchema,
+  })
+  .passthrough();
+
+/* -------------------------------------------------------------------------- */
+/*  Collection stats                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `/api/v2/collections/{slug}/stats`. Two distinct currencies appear in the
+ * same response:
+ *   - total.volume / intervals[].volume are denominated in chain-native (ETH)
+ *   - total.floor_price is denominated in the collection's payment currency
+ *     (USDG on Robinhood Chain Button Presser)
+ */
+export const CollectionStatsSchema = z
+  .object({
+    total: z
+      .object({
+        volume: z.number().nullable().optional(),
+        volume_symbol: z.string().optional(),
+        sales: z.number().int().nonnegative().optional(),
+        num_owners: z.number().int().nonnegative().optional(),
+        total_supply: z.number().int().nonnegative().nullable().optional(),
+        num_items: z.number().int().nonnegative().nullable().optional(),
+        floor_price: z.number().nullable().optional(),
+        floor_price_symbol: z.string().optional(),
+        market_cap: z.number().nullable().optional(),
+      })
+      .passthrough(),
+    intervals: z
+      .array(
+        z
+          .object({
+            interval: z.string(),
+            volume: z.number().nullable().optional(),
+            volume_symbol: z.string().optional(),
+            sales: z.number().int().nonnegative().optional(),
+            average_price: z.number().nullable().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+  })
+  .passthrough();
+
+export type CollectionStats = z.infer<typeof CollectionStatsSchema>;
+
+/* -------------------------------------------------------------------------- */
+/*  Fulfillment / actions (still loosely validated)                           */
+/* -------------------------------------------------------------------------- */
 
 export type FulfillmentRequest = {
   orderHash: string;
@@ -68,11 +276,43 @@ export type FulfillmentResponse = {
   raw: unknown;
 };
 
-/**
- * Configuration for the OpenSea client. The API key is required and
- * must be supplied by the server environment. Missing keys cause the
- * client to throw on first use, not silently degrade.
- */
+/* -------------------------------------------------------------------------- */
+/*  Chain discovery                                                            */
+/* -------------------------------------------------------------------------- */
+
+export const ChainInfoSchema = z
+  .object({
+    chain: z.string().min(1),
+    /**
+     * Numeric EVM chain id. Optional because OpenSea has shipped
+     * responses without this field; we fall back to name matching in
+     * {@link OpenSeaClient.resolveChainSlug}.
+     */
+    chain_id: z.number().int().optional(),
+    name: z.string().min(1),
+    native_currency: z.string().optional(),
+    symbol: z.string().optional(),
+    block_explorer: z.string().optional(),
+    block_explorer_url: z.string().optional(),
+    erc20_tokens: z.array(z.string()).optional(),
+    opensea_verified_at: z.union([z.string(), z.number()]).optional(),
+  })
+  .passthrough();
+
+export type ChainInfo = z.infer<typeof ChainInfoSchema>;
+
+const ProfileListingsResponseSchema = z
+  .object({
+    listings: z.array(OrderSchema),
+    offers: z.array(OrderSchema).optional(),
+    next: z.string().nullish(),
+  })
+  .passthrough();
+
+/* -------------------------------------------------------------------------- */
+/*  Config + errors                                                            */
+/* -------------------------------------------------------------------------- */
+
 export type OpenSeaClientConfig = {
   baseUrl: string;
   apiKey: string;
@@ -87,6 +327,10 @@ export class OpenSeaConfigError extends Error {
     this.name = 'OpenSeaConfigError';
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Client                                                                     */
+/* -------------------------------------------------------------------------- */
 
 export class OpenSeaResponseError extends Error {
   readonly status: number;
@@ -169,8 +413,6 @@ export class OpenSeaClient {
             method,
             headers,
             body,
-            // OpenSea requires a User-Agent; many CDNs reject default UAs.
-            // The header is informational; the API key is the auth surface.
           }),
           this.timeoutMs,
         );
@@ -184,7 +426,6 @@ export class OpenSeaClient {
               res.headers.get('x-request-id') ?? undefined,
             );
           }
-          // Exponential backoff with jitter, capped at 2s.
           const delay = Math.min(2_000, 100 * 2 ** (attempt - 1)) + Math.random() * 50;
           await new Promise((r) => setTimeout(r, delay));
           continue;
@@ -217,9 +458,7 @@ export class OpenSeaClient {
 
   /**
    * Page through listings for a collection. OpenSea v2
-   * `GET /api/v2/listings/collection/{slug}/all` is the preferred
-   * collection-specific endpoint. We do not use the deprecated generic
-   * listings endpoints.
+   * `GET /api/v2/listings/collection/{slug}/all`.
    */
   async getCollectionListings(input: {
     slug: string;
@@ -235,6 +474,23 @@ export class OpenSeaClient {
   }
 
   /**
+   * Page through collection-wide offers (bids on any token in the
+   * collection). OpenSea v2 `GET /api/v2/offers/collection/{slug}/all`.
+   */
+  async getCollectionOffers(input: {
+    slug: string;
+    cursor?: string;
+    limit?: number;
+  }): Promise<CollectionOffersPage> {
+    return this.request(
+      'GET',
+      `/api/v2/offers/collection/${encodeURIComponent(input.slug)}/all`,
+      CollectionOffersPageSchema,
+      { query: { cursor: input.cursor, limit: input.limit } },
+    );
+  }
+
+  /**
    * Best listing for a specific NFT in a collection. OpenSea v2
    * `GET /api/v2/listings/collection/{slug}/nfts/{identifier}/best`.
    */
@@ -244,14 +500,24 @@ export class OpenSeaClient {
   }
 
   /**
-   * Fulfillment data is what the user's wallet signs. The application
-   * never signs on the user's behalf, but it may forward OpenSea's
-   * fulfillment payload after validating it locally.
-   *
-   * NOTE: We do not define the full fulfillment response schema here
-   * because it varies by protocol version. The transaction policy
-   * package is the authoritative validator of executable actions.
+   * Best item offer for a collection (top bid across all tokens).
    */
+  async getBestOffer(input: { slug: string }): Promise<Order | null> {
+    const path = `/api/v2/offers/collection/${encodeURIComponent(input.slug)}/best`;
+    return this.request('GET', path, BestOfferSchema);
+  }
+
+  /**
+   * Collection stats. OpenSea v2 `GET /api/v2/collections/{slug}/stats`.
+   */
+  async getCollectionStats(input: { slug: string }): Promise<CollectionStats> {
+    return this.request(
+      'GET',
+      `/api/v2/collections/${encodeURIComponent(input.slug)}/stats`,
+      CollectionStatsSchema,
+    );
+  }
+
   async getListingFulfillmentData(input: FulfillmentRequest): Promise<FulfillmentResponse> {
     const raw = await this.request<unknown>(
       'POST',
@@ -263,11 +529,6 @@ export class OpenSeaClient {
     return { raw };
   }
 
-  /**
-   * Listing creation actions. Used by the seller flow. The transaction
-   * policy engine validates each returned action before any signature
-   * prompt is shown.
-   */
   async getListingActions(input: unknown): Promise<unknown> {
     return this.request<unknown>(
       'POST',
@@ -278,10 +539,6 @@ export class OpenSeaClient {
     );
   }
 
-  /**
-   * Sweep endpoint. Used by the virtual collection sweep flow. The
-   * transaction policy engine validates the basket before execution.
-   */
   async getSweepActions(input: unknown): Promise<unknown> {
     return this.request<unknown>(
       'POST',
@@ -294,10 +551,6 @@ export class OpenSeaClient {
 
   /**
    * Discover the canonical OpenSea chain identifier for Robinhood Chain.
-   *
-   * OpenSea exposes `/api/v2/chains`. The exact slug for Robinhood Chain
-   * must be verified at deploy time rather than hard-coded. The response
-   * is matched by numeric chain id against `ROBINHOOD_CHAIN.id`.
    */
   async getChains(): Promise<ChainInfo[]> {
     const envelope = await this.request(
@@ -308,23 +561,12 @@ export class OpenSeaClient {
     return envelope.chains;
   }
 
-  /**
-   * Find the OpenSea chain slug for the configured Robinhood Chain.
-   * Falls back to the constructor default if the discovery call fails.
-   */
   async resolveChainSlug(): Promise<ChainInfo> {
     const chains = await this.getChains();
-    // Primary match: numeric chain id. OpenSea historically returns this.
-    let match = chains.find((c) => c.chain_id === ROBINHOOD_CHAIN_ID);
-    // Fallback match: case-insensitive name contains "robinhood".
-    // Some OpenSea payloads omit `chain_id` entirely; we still want to
-    // discover the slug rather than fall back to the constructor hint.
-    if (!match) {
-      match = chains.find((c) => /robinhood/i.test(c.name));
-    }
+    const match = chains.find((c) => /robinhood/i.test(c.name));
     if (!match) {
       throw new OpenSeaResponseError(
-        `Robinhood Chain (chain id ${ROBINHOOD_CHAIN_ID}) not present in /api/v2/chains response`,
+        `Robinhood Chain not present in /api/v2/chains response`,
         404,
       );
     }
@@ -333,7 +575,8 @@ export class OpenSeaClient {
 
   /**
    * Get NFT metadata, traits, ownership, and rarity for a single token.
-   * Path: `GET /api/v2/chain/{chain}/contract/{contract}/nfts/{tokenId}`.
+   * OpenSea v2 `GET /api/v2/chain/{chain}/contract/{contract}/nfts/{tokenId}`.
+   * Returns the unwrapped NFT object.
    */
   async getNFT(input: {
     chain: string;
@@ -341,12 +584,12 @@ export class OpenSeaClient {
     tokenId: string;
   }): Promise<NftInfo> {
     const path = `/api/v2/chain/${encodeURIComponent(input.chain)}/contract/${encodeURIComponent(input.contractAddress)}/nfts/${encodeURIComponent(input.tokenId)}`;
-    return this.request('GET', path, NftInfoSchema);
+    const envelope = await this.request('GET', path, NftResponseSchema);
+    return envelope.nft;
   }
 
   /**
    * Get active listings for a wallet address.
-   * Path: `GET /api/v2/account/{address}/listings`.
    */
   async getProfileListings(input: {
     address: string;
@@ -362,10 +605,6 @@ export class OpenSeaClient {
     return ProfileListingsResponseSchema.parse(data).listings;
   }
 
-  /**
-   * Get active offers received or made by a wallet address.
-   * Path: `GET /api/v2/account/{address}/offers`.
-   */
   async getAccountOffers(input: {
     address: string;
     chain?: string;
@@ -380,20 +619,6 @@ export class OpenSeaClient {
     return ProfileListingsResponseSchema.parse(data).offers ?? [];
   }
 
-  /**
-   * Get the best item offer for a collection.
-   * Path: `GET /api/v2/offers/collection/{slug}/best`.
-   */
-  async getBestOffer(input: { slug: string }): Promise<Order | null> {
-    const path = `/api/v2/offers/collection/${encodeURIComponent(input.slug)}/best`;
-    return this.request('GET', path, BestListingSchema);
-  }
-
-  /**
-   * Offer fulfillment data is what the user's wallet signs to accept an
-   * offer. Same shape as listing fulfillment_data; the transaction
-   * policy engine validates it before the wallet sees it.
-   */
   async getOfferFulfillmentData(input: FulfillmentRequest): Promise<FulfillmentResponse> {
     const raw = await this.request<unknown>(
       'POST',
@@ -407,76 +632,10 @@ export class OpenSeaClient {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  New schemas: chains, nft, profile listings/offers                         */
+/*  Factory                                                                    */
 /* -------------------------------------------------------------------------- */
 
 const ROBINHOOD_CHAIN_ID = 1311;
-
-export const ChainInfoSchema = z
-  .object({
-    chain: z.string().min(1),
-    /**
-     * Numeric EVM chain id. Optional because OpenSea has shipped
-     * responses without this field; we fall back to name matching
-     * in {@link OpenSeaClient.resolveChainSlug}.
-     */
-    chain_id: z.number().int().optional(),
-    name: z.string().min(1),
-    native_currency: z.string().optional(),
-    erc20_tokens: z.array(z.string()).optional(),
-    opensea_verified_at: z.union([z.string(), z.number()]).optional(),
-  })
-  .passthrough();
-
-export type ChainInfo = z.infer<typeof ChainInfoSchema>;
-
-export const NftInfoSchema = z
-  .object({
-    identifier: z.union([z.string(), z.number()]),
-    collection: z.string().optional(),
-    contract: z.string().regex(HEX_ADDRESS).optional(),
-    token_standard: z.string().optional(),
-    name: z.string().optional(),
-    image_url: z.string().url().optional(),
-    image_preview_url: z.string().url().optional(),
-    image_original_url: z.string().url().optional(),
-    animation_url: z.string().url().optional().nullable(),
-    owner: z.string().regex(HEX_ADDRESS).optional().nullable(),
-    traits: z
-      .array(
-        z
-          .object({
-            trait_type: z.string().optional(),
-            value: z.union([z.string(), z.number()]).optional(),
-            display_type: z.string().optional(),
-            rarity: z.number().optional(),
-            frequency: z.number().optional(),
-          })
-          .passthrough(),
-      )
-      .optional(),
-    rarity: z
-      .object({
-        rank: z.number().optional(),
-        score: z.number().optional(),
-        total_supply: z.number().optional(),
-      })
-      .passthrough()
-      .optional(),
-    owners: z.number().optional(),
-    total_supply: z.number().optional(),
-  })
-  .passthrough();
-
-export type NftInfo = z.infer<typeof NftInfoSchema>;
-
-const ProfileListingsResponseSchema = z
-  .object({
-    listings: z.array(OrderSchema),
-    offers: z.array(OrderSchema).optional(),
-    next: z.string().nullish(),
-  })
-  .passthrough();
 
 /**
  * Build a client from the server environment. This is the only entry
@@ -484,7 +643,7 @@ const ProfileListingsResponseSchema = z
  *
  * The `OPENSEA_CHAIN` environment variable is treated as a hint only.
  * The authoritative chain slug is discovered via `/api/v2/chains` at
- * server boot. See `apps/web/lib/opensea/chain-discovery.ts`.
+ * server boot.
  */
 export function createOpenSeaClient(env: {
   OPENSEA_API_KEY?: string;
@@ -503,3 +662,5 @@ export function createOpenSeaClient(env: {
     chain: env.OPENSEA_CHAIN ?? '',
   });
 }
+
+export { ROBINHOOD_CHAIN_ID };

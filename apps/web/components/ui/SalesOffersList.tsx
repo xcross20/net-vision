@@ -1,8 +1,7 @@
 import { ArrowRight, ArrowUpRight } from '@phosphor-icons/react/dist/ssr';
 import Link from 'next/link';
 import { LiveIndicator } from './LiveIndicator';
-import { address, eth, relative } from '@/lib/format';
-import type { Offer, Sale } from '@/lib/market';
+import { address, payment, relative } from '@/lib/format';
 
 /**
  * Compact, borderless list of recent sales or offers. Reads as a
@@ -63,7 +62,7 @@ export function SalesOffersList({
                   #{e.tokenId}
                 </span>
                 <span className="text-numeral text-sm text-[var(--color-text-secondary)]">
-                  {eth(Number.parseFloat(e.price))}
+                  {payment(e.price, e.currency)}
                 </span>
                 <span className="hidden truncate text-[11px] text-[var(--color-text-tertiary)] md:inline">
                   {e.kind === 'sale'
@@ -87,11 +86,19 @@ export function SalesOffersList({
   );
 }
 
-export type SaleOrOfferEntry = (
-  | (Omit<Sale, 'orderHash'> & { kind: 'sale' })
-  | (Omit<Offer, 'orderHash'> & { kind: 'offer' })
-) & {
+export type SaleOrOfferEntry = {
+  kind: 'sale' | 'offer';
   tokenId: string;
-  price: string;
+  /** Numeric payment-currency price (e.g. USDG). */
+  price: number;
+  currency: string;
+  /** epoch seconds, when the trade cleared or the offer last changed. */
   occurredAt: number;
+  orderHash: string | null;
+  /** Sale-only fields. */
+  buyer?: string | null;
+  seller?: string | null;
+  /** Offer-only fields. */
+  expiresAt?: number | null;
+  maker?: string | null;
 };

@@ -9,7 +9,7 @@ import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
 import { MarketplaceBadge } from './MarketplaceBadge';
 import { Price } from './Price';
-import { address, relative } from '@/lib/format';
+import { address, payment, relative } from '@/lib/format';
 
 /**
  * Compact row used in dense market tables. Sophisticated collectors
@@ -20,8 +20,8 @@ import { address, relative } from '@/lib/format';
  * breakdown.
  */
 export function AssetRow({ token }: { token: Token }) {
-  const ask = token.listingPriceEth ? Number.parseFloat(token.listingPriceEth) : null;
-  const last = token.lastSalePriceEth ? Number.parseFloat(token.lastSalePriceEth) : null;
+  const ask = token.listingPrice;
+  const last = token.lastSalePrice;
   const [favorited, setFavorited] = useState(false);
   const topCategory = token.traits.find((t) => t.family !== 'digits');
   return (
@@ -77,11 +77,11 @@ export function AssetRow({ token }: { token: Token }) {
         </div>
 
         <div className="hidden md:block">
-          <Price ethValue={ask} size="sm" align="right" />
+          <Price value={ask} currency={token.currency} size="sm" align="right" />
         </div>
 
         <div className="hidden md:block">
-          <Price ethValue={last} size="sm" align="right" dim />
+          <Price value={last} currency={token.currency} size="sm" align="right" dim />
         </div>
 
         <div className="hidden min-w-0 md:block">
@@ -115,9 +115,9 @@ export function AssetRow({ token }: { token: Token }) {
         </div>
 
         <div className="col-span-3 mt-1 flex items-center justify-between md:hidden">
-          <Price ethValue={ask} size="sm" />
+          <Price value={ask} currency={token.currency} size="sm" />
           <span className="text-numeral text-[11px] text-[var(--color-text-tertiary)]">
-            Last {last !== null ? `${last.toFixed(3)} ETH` : '—'}
+            Last {last !== null ? `${last.toFixed(3)} ${token.currency}` : '—'}
           </span>
         </div>
         <ArrowRight

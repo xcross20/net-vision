@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { ArrowRight, Star } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { CategoryMetrics } from '@/lib/market';
-import { compact, pct } from '@/lib/format';
+import { compact, payment, pct } from '@/lib/format';
 import { LiveIndicator } from './LiveIndicator';
 
 /**
@@ -49,7 +49,7 @@ export function CategoryRow({
         </div>
 
         <span className="hidden text-numeral text-sm text-[var(--color-text-primary)] md:inline-block md:w-24 md:text-right">
-          {metrics.floorPriceEth !== null ? `${metrics.floorPriceEth.toFixed(2)} ETH` : '—'}
+          {metrics.floorPrice !== null ? payment(metrics.floorPrice, metrics.currency) : '—'}
         </span>
         <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-16 md:text-right">
           {metrics.listedCount.toLocaleString()}
@@ -58,7 +58,7 @@ export function CategoryRow({
           {metrics.owners.toLocaleString()}
         </span>
         <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-24 md:text-right">
-          {compact(metrics.volume24hEth)} ETH
+          {compact(metrics.volume24hNative)} ETH
         </span>
         <span
           className={cn(
@@ -77,14 +77,14 @@ export function CategoryRow({
       </div>
 
       <div className="grid grid-cols-3 gap-3 md:hidden">
-        <Cell label="Floor" value={metrics.floorPriceEth !== null ? `${metrics.floorPriceEth.toFixed(2)}` : '—'} unit="ETH" emphasis />
+        <Cell label="Floor" value={metrics.floorPrice !== null ? `${metrics.floorPrice.toFixed(2)}` : '—'} unit={metrics.currency} emphasis />
         <Cell label="Listed" value={metrics.listedCount.toLocaleString()} />
         <Cell label="Owners" value={metrics.owners.toLocaleString()} />
       </div>
       <div className="flex items-center justify-between text-[11px] text-[var(--color-text-tertiary)] md:hidden">
         <LiveIndicator tone="green" size={5} label="Live" />
         <span className="text-numeral">
-          Vol 24h {compact(metrics.volume24hEth)} ETH
+          Vol 24h {compact(metrics.volume24hNative)} ETH
         </span>
         <ArrowRight size={12} weight="bold" />
       </div>

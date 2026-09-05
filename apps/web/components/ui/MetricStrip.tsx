@@ -1,6 +1,6 @@
 import { Metric } from './Metric';
 import { LiveIndicator } from './LiveIndicator';
-import { compact, eth } from '@/lib/format';
+import { compact, payment } from '@/lib/format';
 import type { CollectionSnapshot, DataFreshness } from '@/lib/market';
 
 /**
@@ -41,12 +41,12 @@ export function MetricStrip({
         />
         <Metric
           label="Floor"
-          value={eth(snapshot.floorPriceEth)}
+          value={payment(snapshot.floorPrice, snapshot.currency)}
           emphasis
         />
         <Metric
           label="Volume 24h"
-          value={eth(snapshot.volume24hEth)}
+          value={payment(snapshot.volume24hNative, 'ETH')}
           sub={`${snapshot.sales24h.toLocaleString()} sales`}
         />
         <Metric

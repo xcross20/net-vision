@@ -6,13 +6,11 @@
  * data still exists, but only as a test-time fixture for offline UI
  * iteration and adversarial unit tests; it is no longer the runtime
  * source of truth.
- *
- * The market source abstraction lets us swap an in-memory implementation
- * (default for now) for a Postgres/Redis-backed implementation later
- * without touching routes or components.
  */
 
 import type { NumberTrait } from '@net-vision/taxonomy';
+
+export const DEFAULT_PAYMENT_CURRENCY = 'USDG' as const;
 
 export type TraitSlug = string;
 
@@ -23,10 +21,11 @@ export type Token = {
   /** Live OpenSea image URL when available; falls back to the deterministic media proxy. */
   imageUrl: string;
   name: string | null;
-  /** ETH-denominated listing price as a decimal string. null = no active ask. */
-  listingPriceEth: string | null;
-  /** Last sale price in ETH. null = no recorded sale. */
-  lastSalePriceEth: string | null;
+  /** Payment-token price. null = no active ask. */
+  listingPrice: number | null;
+  currency: string;
+  /** Most recent recorded payment-token sale. null = no recorded sale. */
+  lastSalePrice: number | null;
   ownerAddress: string | null;
   traits: NumberTrait[];
   /** OpenSea rarity rank. null = not yet ranked. */
@@ -46,12 +45,14 @@ export type CategoryMetrics = {
   totalSupply: number;
   listedCount: number;
   owners: number;
-  floorPriceEth: number | null;
-  lastSalePriceEth: number | null;
-  topOfferPriceEth: number | null;
-  topSalePriceEth: number | null;
-  volume24hEth: number;
-  volume7dEth: number;
+  currency: string;
+  floorPrice: number | null;
+  lastSalePrice: number | null;
+  topOfferPrice: number | null;
+  topSalePrice: number | null;
+  /** Native-chain volume, denominated in ETH on Robinhood Chain. */
+  volume24hNative: number;
+  volume7dNative: number;
   sales24h: number;
   sales7d: number;
 };
@@ -65,13 +66,15 @@ export type CollectionSnapshot = {
   totalSupply: number;
   owners: number;
   listedCount: number;
-  floorPriceEth: number | null;
-  volume24hEth: number;
-  volume7dEth: number;
+  currency: string;
+  floorPrice: number | null;
+  /** Native-chain volume, denominated in ETH on Robinhood Chain. */
+  volume24hNative: number;
+  volume7dNative: number;
   sales24h: number;
   sales7d: number;
-  topSalePriceEth: number | null;
-  topOfferPriceEth: number | null;
+  topSalePrice: number | null;
+  topOfferPrice: number | null;
   /** epoch milliseconds when the snapshot was produced. */
   refreshedAt: number;
 };

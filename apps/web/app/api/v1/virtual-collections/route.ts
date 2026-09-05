@@ -13,8 +13,15 @@ export async function GET() {
       description: c.description,
       memberSupply: c.memberSupply,
       listedCount: c.listedCount,
-      floorPriceEth: c.floorPriceEth,
-      lastSalePriceEth: c.lastSalePriceEth,
+      floorPrice: c.floorPrice,
+      currency: c.currency,
+      lastSalePrice: c.lastSalePrice,
+      topOfferPrice: c.topOfferPrice,
+      topSalePrice: c.topSalePrice,
+      volume24hNative: c.volume24hNative,
+      volume7dNative: c.volume7dNative,
+      sales24h: c.sales24h,
+      sales7d: c.sales7d,
     })),
   });
 }

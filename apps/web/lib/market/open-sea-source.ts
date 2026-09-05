@@ -24,8 +24,10 @@ import { classifyNumber, type NumberTrait } from '@net-vision/taxonomy';
 import {
   createOpenSeaClient,
   type ChainInfo,
-  type Order,
+  type CollectionStats,
   type NftInfo,
+  type Order,
+  OpenSeaResponseError,
 } from '@net-vision/opensea-client';
 import { buildTokenImageUrl } from '@/lib/data/media';
 import type {
@@ -41,6 +43,7 @@ import type {
   Offer,
   Sale,
 } from './source';
+import { DEFAULT_PAYMENT_CURRENCY } from './types';
 
 type Env = {
   OPENSEA_API_KEY?: string;
@@ -55,13 +58,25 @@ type CacheEntry<T> = {
 };
 
 const TTL_MS = 60_000;
+const MAX_LISTING_PAGE_COUNT = 4;
+const MAX_LISTING_PAGE_SIZE = 200;
+const NFT_METADATA_CONCURRENCY = 4;
 
 type TokenCacheEntry = CacheEntry<Token>;
+type NftCacheEntry = CacheEntry<NftInfo>;
 type CollectionCacheEntry = CacheEntry<CollectionSnapshot>;
 type CategoryCacheEntry = CacheEntry<CategoryMetrics>;
 type TokensPageCacheEntry = CacheEntry<ListTokensPage>;
 type OffersCacheEntry = CacheEntry<Offer[]>;
 type SalesCacheEntry = CacheEntry<Sale[]>;
+
+type PriceTuple = {
+  currency: string;
+  decimals: number;
+  value: string | number;
+};
+
+type OpenSeaClient = ReturnType<typeof createOpenSeaClient>;
 
 function isFresh<T>(entry: CacheEntry<T> | undefined): entry is CacheEntry<T> {
   if (!entry) return false;
@@ -76,22 +91,103 @@ function readEnv(): Env {
   };
 }
 
-type OpenSeaClient = ReturnType<typeof createOpenSeaClient>;
+function isMissingResource(err: unknown): boolean {
+  return err instanceof OpenSeaResponseError && err.status === 404;
+}
+
+function normalizeAddress(value: string | undefined | null): string | null {
+  if (!value || !/^0x[a-fA-F0-9]{40}$/.test(value)) return null;
+  return value.toLowerCase();
+}
+
+function parseEpoch(value: unknown): number | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : value;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function isPriceTuple(value: unknown): value is PriceTuple {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<PriceTuple>;
+  return (
+    typeof candidate.currency === 'string' &&
+    candidate.currency.length > 0 &&
+    typeof candidate.decimals === 'number' &&
+    Number.isInteger(candidate.decimals) &&
+    candidate.decimals >= 0 &&
+    candidate.decimals <= 36 &&
+    (typeof candidate.value === 'string' || typeof candidate.value === 'number')
+  );
+}
+
+function getOrderPrice(order: Order): { amount: number | null; currency: string | null } {
+  const envelope = order.price as unknown;
+  const current = isPriceTuple((envelope as { current?: unknown } | null)?.current)
+    ? ((envelope as { current: PriceTuple }).current as PriceTuple)
+    : isPriceTuple(envelope)
+      ? (envelope as PriceTuple)
+      : null;
+  if (!current) return { amount: null, currency: null };
+
+  const amount = Number(current.value);
+  if (!Number.isFinite(amount)) return { amount: null, currency: current.currency };
+  return { amount: amount / 10 ** current.decimals, currency: current.currency };
+}
+
+function getTokenIdFromOrder(order: Order): string | null {
+  const identifier = order.asset?.identifier;
+  if (identifier === undefined || identifier === null) return null;
+  const tokenId = String(identifier);
+  return /^\d+$/.test(tokenId) ? tokenId : null;
+}
+
+function getOfferTokenId(order: Order): string | null {
+  const directId = getTokenIdFromOrder(order);
+  if (directId) return directId;
+
+  const consideration = order.protocol_data.parameters.consideration ?? [];
+  const nftItem = consideration.find((item) => item.itemType === 2);
+  if (!nftItem) return null;
+  const tokenId = String(nftItem.identifierOrCriteria);
+  return /^\d+$/.test(tokenId) ? tokenId : null;
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= values.length) return;
+      results[index] = await mapper(values[index], index);
+    }
+  }
+
+  const workerCount = Math.min(Math.max(concurrency, 1), values.length || 1);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
 
 class OpenSeaMarketSource implements MarketSource {
   private readonly client: OpenSeaClient;
   private readonly tokens: Map<string, TokenCacheEntry> = new Map();
+  private readonly nfts: Map<string, NftCacheEntry> = new Map();
   private collectionCache: CollectionCacheEntry | undefined;
   private readonly categories: Map<string, CategoryCacheEntry> = new Map();
   private readonly tokenPages: Map<string, TokensPageCacheEntry> = new Map();
-  private readonly sales: SalesCacheEntry | undefined = undefined;
-  private readonly offers: OffersCacheEntry | undefined = undefined;
+  private readonly sales: Map<string, SalesCacheEntry> = new Map();
+  private readonly offers: Map<string, OffersCacheEntry> = new Map();
   private readonly tokenOffers: Map<string, OffersCacheEntry> = new Map();
   private readonly accountListings: Map<string, CacheEntry<Token[]>> = new Map();
   private readonly accountOffers: Map<string, OffersCacheEntry> = new Map();
   private resolvedChain: ChainInfo | undefined;
   private resolvedChainError: string | null = null;
-  private resolvedAt: number | null = null;
 
   constructor(client: OpenSeaClient) {
     this.client = client;
@@ -106,7 +202,6 @@ class OpenSeaMarketSource implements MarketSource {
     if (this.resolvedChainError) return null;
     try {
       this.resolvedChain = await this.client.resolveChainSlug();
-      this.resolvedAt = Date.now();
       return this.resolvedChain;
     } catch (err) {
       this.resolvedChainError = err instanceof Error ? err.message : String(err);
@@ -114,18 +209,23 @@ class OpenSeaMarketSource implements MarketSource {
     }
   }
 
-  private async fetchNFT(tokenId: string): Promise<Token | null> {
+  private async fetchNFT(tokenId: string): Promise<NftInfo | null> {
+    const cached = this.nfts.get(tokenId);
+    if (isFresh(cached)) return cached.value;
     const chain = await this.ensureChain();
     if (!chain) return null;
     try {
-      const nft: NftInfo = await this.client.getNFT({
+      const nft = await this.client.getNFT({
         chain: chain.chain,
         contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
         tokenId,
       });
-      return nftToToken(tokenId, nft);
-    } catch {
-      // The indexer may not know about this token yet. Return null.
+      this.nfts.set(tokenId, { value: nft, fetchedAt: Date.now() });
+      return nft;
+    } catch (err) {
+      if (!isMissingResource(err)) {
+        console.error(`OpenSea NFT lookup failed for ${tokenId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
       return null;
     }
   }
@@ -133,9 +233,34 @@ class OpenSeaMarketSource implements MarketSource {
   async getToken(tokenId: string): Promise<Token | null> {
     const cached = this.tokens.get(tokenId);
     if (isFresh(cached)) return cached.value;
-    const fresh = await this.fetchNFT(tokenId);
-    if (fresh) this.tokens.set(tokenId, { value: fresh, fetchedAt: Date.now() });
-    return fresh;
+
+    const chain = await this.ensureChain();
+    if (!chain) return null;
+
+    const [nft, listing] = await Promise.all([
+      this.fetchNFT(tokenId),
+      this.client
+        .getBestListing({
+          slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+          tokenId,
+        })
+        .catch((err: unknown) => {
+          if (!isMissingResource(err) && !(err instanceof Error)) {
+            console.error(`OpenSea best-listing lookup failed for ${tokenId}: ${String(err)}`);
+          }
+          return null;
+        }),
+    ]);
+
+    if (!nft && !listing) return null;
+    const listedToken = listing ? orderToListedToken(listing) : null;
+    const token = nft ? nftToToken(tokenId, nft) : listedToken;
+    let finalToken: Token | null = token;
+    if (token && listedToken && nft) {
+      finalToken = mergeListedTokenWithNft(listedToken, nft);
+    }
+    if (finalToken) this.tokens.set(tokenId, { value: finalToken, fetchedAt: Date.now() });
+    return finalToken;
   }
 
   async listTokens(filter?: ListTokensFilter): Promise<ListTokensPage> {
@@ -151,42 +276,41 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   private async fetchListingsPage(
-    chainSlug: string,
+    _chainSlug: string,
     filter?: ListTokensFilter,
   ): Promise<ListTokensPage> {
     let cursor: string | undefined;
-    const collected: Token[] = [];
-    const want = filter?.limit ?? 60;
-    const wantListedOnly = filter?.listedOnly ?? true;
-    try {
-      for (let i = 0; i < 4 && collected.length < want; i++) {
-        const page = await this.client.getCollectionListings({
-          slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-          cursor,
-          limit: 50,
-        });
-        for (const order of page.listings) {
-          if (!order.token_id) continue;
-          const tokenId = String(order.token_id);
-          const token = orderToListedToken(order, chainSlug);
-          collected.push(token);
-          this.tokens.set(tokenId, { value: token, fetchedAt: Date.now() });
-        }
-        if (!page.next || page.listings.length === 0) break;
-        cursor = String(page.next);
+    const orders: Order[] = [];
+    const want = Math.min(Math.max(filter?.limit ?? 60, 1), MAX_LISTING_PAGE_SIZE);
+
+    for (let i = 0; i < MAX_LISTING_PAGE_COUNT && orders.length < want; i += 1) {
+      const page = await this.client.getCollectionListings({
+        slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+        cursor,
+        limit: 50,
+      });
+      for (const order of page.listings) {
+        if (!getTokenIdFromOrder(order)) continue;
+        orders.push(order);
+        if (orders.length >= want) break;
       }
-    } catch {
-      // Fail closed: return whatever we collected.
+      if (!page.next || page.listings.length === 0) break;
+      cursor = String(page.next);
     }
-    let tokens = collected;
-    if (filter?.category) {
-      tokens = tokens.filter((t) => t.traits.some((tr) => tr.slug === filter.category));
-    }
-    if (!wantListedOnly) {
-      // No-op; listings are inherently listed. The caller is asking for
-      // all currently-listed tokens.
-    }
-    return { tokens: tokens.slice(0, want), total: tokens.length };
+
+    const listedTokens = await mapWithConcurrency(orders, NFT_METADATA_CONCURRENCY, async (order) => {
+      const listedToken = orderToListedToken(order);
+      if (!listedToken) return null;
+      const nft = await this.fetchNFT(listedToken.tokenId);
+      const token = nft ? mergeListedTokenWithNft(listedToken, nft) : listedToken;
+      this.tokens.set(token.tokenId, { value: token, fetchedAt: Date.now() });
+      return token;
+    });
+    const tokens = listedTokens.filter((token): token is Token => token !== null);
+    const filteredTokens = filter?.category
+      ? tokens.filter((token) => token.traits.some((trait) => trait.slug === filter.category))
+      : tokens;
+    return { tokens: filteredTokens.slice(0, want), total: filteredTokens.length };
   }
 
   async getCollectionSnapshot(): Promise<CollectionSnapshot> {
@@ -201,65 +325,69 @@ class OpenSeaMarketSource implements MarketSource {
       totalSupply: 0,
       owners: 0,
       listedCount: 0,
-      floorPriceEth: null,
-      volume24hEth: 0,
-      volume7dEth: 0,
+      currency: DEFAULT_PAYMENT_CURRENCY,
+      floorPrice: null,
+      volume24hNative: 0,
+      volume7dNative: 0,
       sales24h: 0,
       sales7d: 0,
-      topSalePriceEth: null,
-      topOfferPriceEth: null,
+      topSalePrice: null,
+      topOfferPrice: null,
       refreshedAt: Date.now(),
     };
     if (!chain) {
       this.collectionCache = { value: fallback, fetchedAt: Date.now() };
       return fallback;
     }
-    try {
-      const listingsPage = await this.client.getCollectionListings({
+
+    const [statsResult, listingsResult] = await Promise.allSettled([
+      this.client.getCollectionStats({ slug: BUTTON_PRESSER_COLLECTION.openseaSlug }),
+      this.client.getCollectionListings({
         slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-        limit: 200,
-      });
-      const prices = listingsPage.listings
-        .map((o) => decimalPriceEth(o))
-        .filter((n): n is number => n !== null);
-      const floor = prices.length > 0 ? Math.min(...prices) : null;
-      const listed = listingsPage.listings.length;
-      this.collectionCache = {
-        value: {
-          ...fallback,
-          listedCount: listed,
-          floorPriceEth: floor,
-        },
-        fetchedAt: Date.now(),
-      };
-      return this.collectionCache.value;
-    } catch {
-      this.collectionCache = { value: fallback, fetchedAt: Date.now() };
-      return fallback;
+        limit: MAX_LISTING_PAGE_SIZE,
+      }),
+    ]);
+    const stats = statsResult.status === 'fulfilled' ? statsResult.value : undefined;
+    const listings = listingsResult.status === 'fulfilled' ? listingsResult.value : undefined;
+    if (!stats) {
+      console.error(`OpenSea collection stats failed: ${statsResult.status === 'rejected' ? String(statsResult.reason) : 'unknown error'}`);
     }
+    if (!listings) {
+      console.error(`OpenSea collection listings failed: ${listingsResult.status === 'rejected' ? String(listingsResult.reason) : 'unknown error'}`);
+    }
+
+    const oneDay = stats?.intervals?.find((interval) => interval.interval === 'one_day');
+    const sevenDays = stats?.intervals?.find((interval) => interval.interval === 'seven_day');
+    const snapshot: CollectionSnapshot = {
+      ...fallback,
+      totalSupply: stats?.total.total_supply ?? stats?.total.num_items ?? 0,
+      owners: stats?.total.num_owners ?? 0,
+      listedCount: listings?.listings.length ?? 0,
+      currency: stats?.total.floor_price_symbol ?? DEFAULT_PAYMENT_CURRENCY,
+      floorPrice: stats?.total.floor_price ?? null,
+      volume24hNative: oneDay?.volume ?? 0,
+      volume7dNative: sevenDays?.volume ?? 0,
+      sales24h: oneDay?.sales ?? 0,
+      sales7d: sevenDays?.sales ?? 0,
+      refreshedAt: Date.now(),
+    };
+    this.collectionCache = { value: snapshot, fetchedAt: Date.now() };
+    return snapshot;
   }
 
   async getCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
     const cached = this.categories.get(slug);
     if (isFresh(cached)) return cached.value;
     const snapshot = await this.getCollectionSnapshot();
-    // Without per-token ownership and historical sales in the indexer,
-    // we can only compute category analytics from the listings we have
-    // and from per-NFT metadata. This is intentionally a minimal P0
-    // implementation; P5 will add per-token sale history persistence.
-    const tokens = await this.listTokens({ listedOnly: true, limit: 200 });
-    const members = tokens.tokens.filter((t) => t.traits.some((tr) => tr.slug === slug));
-    const listed = members.filter((t) => t.listingPriceEth !== null);
+    const tokens = await this.listTokens({ listedOnly: true, limit: MAX_LISTING_PAGE_SIZE });
+    const members = tokens.tokens.filter((token) => token.traits.some((trait) => trait.slug === slug));
+    const listed = members.filter((token) => token.listingPrice !== null);
     const floors = listed
-      .map((t) => (t.listingPriceEth ? Number.parseFloat(t.listingPriceEth) : null))
-      .filter((n): n is number => n !== null);
+      .map((token) => token.listingPrice)
+      .filter((price): price is number => price !== null);
     const floor = floors.length > 0 ? Math.min(...floors) : null;
-    const lastSales = members
-      .map((t) => (t.lastSalePriceEth ? Number.parseFloat(t.lastSalePriceEth) : null))
-      .filter((n): n is number => n !== null);
-    const lastSale = lastSales.length > 0 ? lastSales[lastSales.length - 1] ?? null : null;
     const owners = new Set(
-      members.map((t) => (t.ownerAddress ?? '').toLowerCase()).filter(Boolean),
+      members.map((token) => token.ownerAddress?.toLowerCase() ?? '').filter(Boolean),
     ).size;
     const metrics: CategoryMetrics = {
       slug,
@@ -270,12 +398,13 @@ class OpenSeaMarketSource implements MarketSource {
       totalSupply: snapshot.totalSupply,
       listedCount: listed.length,
       owners,
-      floorPriceEth: floor,
-      lastSalePriceEth: lastSale,
-      topOfferPriceEth: snapshot.topOfferPriceEth,
-      topSalePriceEth: snapshot.topSalePriceEth,
-      volume24hEth: 0,
-      volume7dEth: 0,
+      currency: snapshot.currency,
+      floorPrice: floor,
+      lastSalePrice: null,
+      topOfferPrice: null,
+      topSalePrice: null,
+      volume24hNative: 0,
+      volume7dNative: 0,
       sales24h: 0,
       sales7d: 0,
     };
@@ -285,75 +414,102 @@ class OpenSeaMarketSource implements MarketSource {
 
   async listCategories(): Promise<CategoryMetrics[]> {
     const snapshot = await this.getCollectionSnapshot();
-    const page = await this.listTokens({ listedOnly: true, limit: 200 });
-    // Group listed tokens by their virtual-collection slugs.
+    const page = await this.listTokens({ listedOnly: true, limit: MAX_LISTING_PAGE_SIZE });
     const bySlug = new Map<string, { count: number; floors: number[]; owners: Set<string> }>();
-    for (const t of page.tokens) {
-      const tokenFloor = t.listingPriceEth ? Number.parseFloat(t.listingPriceEth) : null;
-      for (const tr of t.traits) {
-        if (tr.family === 'digits' && !tr.slug.startsWith('digits-')) continue;
-        const entry = bySlug.get(tr.slug) ?? { count: 0, floors: [], owners: new Set() };
+    for (const token of page.tokens) {
+      for (const trait of token.traits) {
+        if (trait.family === 'digits' && !trait.slug.startsWith('digits-')) continue;
+        const entry = bySlug.get(trait.slug) ?? { count: 0, floors: [], owners: new Set() };
         entry.count += 1;
-        if (tokenFloor !== null) entry.floors.push(tokenFloor);
-        if (t.ownerAddress) entry.owners.add(t.ownerAddress.toLowerCase());
-        bySlug.set(tr.slug, entry);
+        if (token.listingPrice !== null) entry.floors.push(token.listingPrice);
+        if (token.ownerAddress) entry.owners.add(token.ownerAddress.toLowerCase());
+        bySlug.set(trait.slug, entry);
       }
     }
-    const out: CategoryMetrics[] = [];
-    for (const [slug, agg] of bySlug.entries()) {
-      const floor = agg.floors.length > 0 ? Math.min(...agg.floors) : null;
-      out.push({
-        slug,
-        name: slug,
-        family: 'unknown',
-        description: '',
-        memberSupply: agg.count,
-        totalSupply: snapshot.totalSupply,
-        listedCount: agg.count,
-        owners: agg.owners.size,
-        floorPriceEth: floor,
-        lastSalePriceEth: null,
-        topOfferPriceEth: snapshot.topOfferPriceEth,
-        topSalePriceEth: snapshot.topSalePriceEth,
-        volume24hEth: 0,
-        volume7dEth: 0,
-        sales24h: 0,
-        sales7d: 0,
-      });
-    }
-    return out;
+    return [...bySlug.entries()].map(([slug, aggregate]) => ({
+      slug,
+      name: slug,
+      family: 'unknown',
+      description: '',
+      memberSupply: aggregate.count,
+      totalSupply: snapshot.totalSupply,
+      listedCount: aggregate.count,
+      owners: aggregate.owners.size,
+      currency: snapshot.currency,
+      floorPrice: aggregate.floors.length > 0 ? Math.min(...aggregate.floors) : null,
+      lastSalePrice: null,
+      topOfferPrice: null,
+      topSalePrice: null,
+      volume24hNative: 0,
+      volume7dNative: 0,
+      sales24h: 0,
+      sales7d: 0,
+    }));
   }
 
   async listRecentSales(_limit = 20): Promise<Sale[]> {
-    // P0: not implemented. We have no sale history yet; the indexer
-    // adds this in a later slice. Returning an empty array keeps the
-    // UI honest.
     return [];
   }
 
-  async listRecentOffers(_limit = 20): Promise<Offer[]> {
-    return [];
+  async listRecentOffers(limit = 20): Promise<Offer[]> {
+    const cacheKey = `collection:${limit}`;
+    const cached = this.offers.get(cacheKey);
+    if (isFresh(cached)) return cached.value;
+    const chain = await this.ensureChain();
+    if (!chain) return [];
+    const page = await this.client.getCollectionOffers({
+      slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+      limit: Math.min(Math.max(limit, 1), MAX_LISTING_PAGE_SIZE),
+    });
+    const offers = page.offers
+      .map(orderToOffer)
+      .filter((offer): offer is Offer => offer !== null)
+      .sort((a, b) => b.price - a.price)
+      .slice(0, limit);
+    this.offers.set(cacheKey, { value: offers, fetchedAt: Date.now() });
+    return offers;
   }
 
-  async getTokenOffers(_tokenId: string): Promise<Offer[]> {
-    return [];
+  async getTokenOffers(tokenId: string): Promise<Offer[]> {
+    const cached = this.tokenOffers.get(tokenId);
+    if (isFresh(cached)) return cached.value;
+    const chain = await this.ensureChain();
+    if (!chain) return [];
+    const page = await this.client.getCollectionOffers({
+      slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+      limit: MAX_LISTING_PAGE_SIZE,
+    });
+    const offers = page.offers
+      .map(orderToOffer)
+      .filter((offer): offer is Offer => offer !== null)
+      .filter((offer) => offer.tokenId === tokenId)
+      .sort((a, b) => b.price - a.price);
+    this.tokenOffers.set(tokenId, { value: offers, fetchedAt: Date.now() });
+    return offers;
   }
 
-  async getAccountListings(_address: string): Promise<Token[]> {
-    return [];
+  async getAccountListings(address: string): Promise<Token[]> {
+    const cached = this.accountListings.get(address);
+    if (isFresh(cached)) return cached.value;
+    const orders = await this.client.getProfileListings({ address });
+    const tokens = orders.map(orderToListedToken).filter((token): token is Token => token !== null);
+    this.accountListings.set(address, { value: tokens, fetchedAt: Date.now() });
+    return tokens;
   }
 
-  async getAccountOffers(_address: string): Promise<Offer[]> {
-    return [];
+  async getAccountOffers(address: string): Promise<Offer[]> {
+    const cached = this.accountOffers.get(address);
+    if (isFresh(cached)) return cached.value;
+    const orders = await this.client.getAccountOffers({ address });
+    const offers = orders.map(orderToOffer).filter((offer): offer is Offer => offer !== null);
+    this.accountOffers.set(address, { value: offers, fetchedAt: Date.now() });
+    return offers;
   }
 
   async getFreshness(): Promise<DataFreshness> {
-    await this.ensureChain();
+    if (!this.collectionCache) await this.getCollectionSnapshot();
     const refreshedAt = this.collectionCache?.fetchedAt ?? null;
-    const fresh =
-      this.resolvedChain !== undefined &&
-      refreshedAt !== null &&
-      Date.now() - refreshedAt < TTL_MS;
+    const fresh = this.resolvedChain !== undefined && refreshedAt !== null && Date.now() - refreshedAt < TTL_MS;
     return {
       fresh: Boolean(fresh),
       refreshedAt,
@@ -361,6 +517,16 @@ class OpenSeaMarketSource implements MarketSource {
       resolvedChainSlug: this.resolvedChain?.chain ?? null,
     };
   }
+}
+
+function nftOwnerAddress(nft: NftInfo): string | null {
+  const directOwner = normalizeAddress(nft.owner ?? null);
+  if (directOwner) return directOwner;
+  if (Array.isArray(nft.owners)) {
+    const first = nft.owners[0];
+    return typeof first === 'string' ? normalizeAddress(first) : normalizeAddress(first?.address ?? null);
+  }
+  return null;
 }
 
 function nftToToken(tokenId: string, nft: NftInfo): Token {
@@ -371,11 +537,17 @@ function nftToToken(tokenId: string, nft: NftInfo): Token {
     contractAddress:
       nft.contract?.toLowerCase() ?? BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
     chainId: ROBINHOOD_CHAIN.id,
-    imageUrl: nft.image_url ?? nft.image_preview_url ?? buildTokenImageUrl(tokenId),
+    imageUrl:
+      nft.display_image_url ??
+      nft.image_url ??
+      nft.image_preview_url ??
+      nft.image_original_url ??
+      buildTokenImageUrl(tokenId),
     name: nft.name ?? `#${tokenId}`,
-    listingPriceEth: null,
-    lastSalePriceEth: null,
-    ownerAddress: nft.owner?.toLowerCase() ?? null,
+    listingPrice: null,
+    currency: DEFAULT_PAYMENT_CURRENCY,
+    lastSalePrice: null,
+    ownerAddress: nftOwnerAddress(nft),
     traits,
     rarityRank: nft.rarity?.rank ?? null,
     listedAt: null,
@@ -383,18 +555,31 @@ function nftToToken(tokenId: string, nft: NftInfo): Token {
   };
 }
 
+function mergeListedTokenWithNft(token: Token, nft: NftInfo): Token {
+  return {
+    ...token,
+    contractAddress: nft.contract?.toLowerCase() ?? token.contractAddress,
+    imageUrl:
+      nft.display_image_url ??
+      nft.image_url ??
+      nft.image_preview_url ??
+      nft.image_original_url ??
+      token.imageUrl,
+    name: nft.name ?? token.name,
+    ownerAddress: nftOwnerAddress(nft) ?? token.ownerAddress,
+    traits: mergeTraits(token.traits, nft.traits ?? []),
+    rarityRank: nft.rarity?.rank ?? token.rarityRank,
+  };
+}
+
 function mergeTraits(
   base: NumberTrait[],
   openSeaTraits: NonNullable<NftInfo['traits']>,
 ): NumberTrait[] {
-  // OpenSea traits use the trait_type/value pair the project published.
-  // Net Vision taxonomy traits are deterministic. We keep the taxonomy
-  // traits as the source of truth and let OpenSea values override
-  // labels when they exist.
   const byTraitType = new Map<string, string>();
-  for (const t of openSeaTraits) {
-    if (t.trait_type && t.value !== undefined) {
-      byTraitType.set(t.trait_type.toLowerCase(), String(t.value));
+  for (const trait of openSeaTraits) {
+    if (trait.trait_type && trait.value !== undefined) {
+      byTraitType.set(trait.trait_type.toLowerCase(), String(trait.value));
     }
   }
   return base.map((trait) => {
@@ -404,36 +589,49 @@ function mergeTraits(
   });
 }
 
-function orderToListedToken(order: Order, chainSlug: string): Token {
-  const tokenId = String(order.token_id ?? '');
+function orderToListedToken(order: Order): Token | null {
+  const tokenId = getTokenIdFromOrder(order);
+  if (!tokenId) return null;
   const classification = classifyNumber(tokenId);
-  const price = decimalPriceEth(order);
+  const { amount, currency } = getOrderPrice(order);
+  const listedAt = parseEpoch(
+    order.order_created_at ?? order.protocol_data.parameters.startTime,
+  );
   return {
     tokenId,
     contractAddress:
-      (order.nft_contract ?? BUTTON_PRESSER_COLLECTION.contractAddress).toLowerCase(),
+      order.asset?.contract?.toLowerCase() ?? BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
     chainId: ROBINHOOD_CHAIN.id,
     imageUrl: buildTokenImageUrl(tokenId),
-    name: order.token_id ? `#${tokenId}` : null,
-    listingPriceEth: price === null ? null : price.toFixed(6),
-    lastSalePriceEth: null,
-    ownerAddress: order.maker.toLowerCase(),
+    name: `#${tokenId}`,
+    listingPrice: amount,
+    currency: currency ?? DEFAULT_PAYMENT_CURRENCY,
+    lastSalePrice: null,
+    ownerAddress: normalizeAddress(order.protocol_data.parameters.offerer ?? null),
     traits: classification.traits,
     rarityRank: null,
-    listedAt: typeof order.valid_from === 'number' ? order.valid_from : null,
+    listedAt,
     lastSaleAt: null,
   };
-  // chainSlug is unused here; it stays on the snapshot for diagnostics.
-  void chainSlug;
+}
+
+function orderToOffer(order: Order): Offer | null {
+  const tokenId = getOfferTokenId(order);
+  const maker = normalizeAddress(order.protocol_data.parameters.offerer ?? null);
+  const { amount, currency } = getOrderPrice(order);
+  if (!tokenId || !maker || amount === null) return null;
+  return {
+    tokenId,
+    price: amount,
+    currency: currency ?? DEFAULT_PAYMENT_CURRENCY,
+    expiresAt: parseEpoch(order.protocol_data.parameters.endTime),
+    orderHash: order.order_hash,
+    maker,
+  };
 }
 
 function decimalPriceEth(order: Order): number | null {
-  const raw = order.price?.current;
-  const decimals = order.price?.decimals;
-  if (raw === undefined || decimals === undefined) return null;
-  const n = typeof raw === 'string' ? Number.parseFloat(raw) : raw;
-  if (!Number.isFinite(n)) return null;
-  return n / 10 ** decimals;
+  return getOrderPrice(order).amount;
 }
 
 let singleton: MarketSource | null = null;
@@ -476,13 +674,14 @@ class FailingMarketSource implements MarketSource {
       totalSupply: 0,
       owners: 0,
       listedCount: 0,
-      floorPriceEth: null,
-      volume24hEth: 0,
-      volume7dEth: 0,
+      currency: DEFAULT_PAYMENT_CURRENCY,
+      floorPrice: null,
+      volume24hNative: 0,
+      volume7dNative: 0,
       sales24h: 0,
       sales7d: 0,
-      topSalePriceEth: null,
-      topOfferPriceEth: null,
+      topSalePrice: null,
+      topOfferPrice: null,
       refreshedAt: 0,
     };
   }
@@ -521,18 +720,18 @@ class FailingMarketSource implements MarketSource {
       resolvedChainSlug: null,
     };
   }
-  // Expose the failure reason in logs only; not in API responses.
   describeFailure(): string {
     return this.reason;
   }
 }
 
 function failingSource(reason: string): MarketSource {
-  // Cast is safe; the failing source intentionally exposes a diagnostic
-  // helper used by /api/health.
   return new FailingMarketSource(reason) as unknown as MarketSource;
 }
 
 export function describeMarketSourceFailure(): string | null {
   return singletonError;
 }
+
+// Keep the old helper name available to callers that used the old source API.
+export { decimalPriceEth };

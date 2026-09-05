@@ -57,9 +57,9 @@ export function MarketView({
     if (sort === 'recent') {
       out.sort((a, b) => (b.listedAt ?? 0) - (a.listedAt ?? 0));
     } else if (sort === 'price-asc') {
-      out.sort((a, b) => Number(a.listingPriceEth ?? Infinity) - Number(b.listingPriceEth ?? Infinity));
+      out.sort((a, b) => (a.listingPrice ?? Infinity) - (b.listingPrice ?? Infinity));
     } else if (sort === 'price-desc') {
-      out.sort((a, b) => Number(b.listingPriceEth ?? -1) - Number(a.listingPriceEth ?? -1));
+      out.sort((a, b) => (b.listingPrice ?? -1) - (a.listingPrice ?? -1));
     }
     return out;
   }, [tokens, filter, sort]);

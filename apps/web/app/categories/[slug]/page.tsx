@@ -6,7 +6,7 @@ import { VIRTUAL_COLLECTION_CATALOG } from '@net-vision/taxonomy';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { AssetCard } from '@/components/ui/AssetCard';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { compact, eth } from '@/lib/format';
+import { compact, payment } from '@/lib/format';
 import { getMarketSource } from '@/lib/market';
 
 export const dynamic = 'force-dynamic';
@@ -76,10 +76,10 @@ export default async function CategoryDetailPage({
           <div className="md:col-span-5 flex flex-col gap-4">
             <span className="text-eyebrow-muted">Collection pulse</span>
             <div className="grid grid-cols-2 gap-x-8 gap-y-6 border-y border-[var(--color-border-subtle)] py-6 md:grid-cols-2">
-              <Stat label="Floor" value={eth(metrics.floorPriceEth)} emphasis />
+              <Stat label="Floor" value={payment(metrics.floorPrice, metrics.currency)} emphasis />
               <Stat label="Listed" value={metrics.listedCount.toLocaleString()} sub={`${listedPct.toFixed(1)}% of members`} />
               <Stat label="Owners" value={metrics.owners.toLocaleString()} />
-              <Stat label="Vol 24h" value={eth(metrics.volume24hEth)} sub={`${metrics.sales24h.toLocaleString()} sales`} />
+              <Stat label="Vol 24h" value={payment(metrics.volume24hNative, 'ETH')} sub={`${metrics.sales24h.toLocaleString()} sales`} />
             </div>
           </div>
         </div>

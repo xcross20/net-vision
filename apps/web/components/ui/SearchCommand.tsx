@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MagnifyingGlass, X, ArrowRight, Hash, Coins } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { Token, CategoryMetrics } from '@/lib/market';
-import { eth, relative } from '@/lib/format';
+import { payment, relative } from '@/lib/format';
 
 /**
  * Cmd+K command palette. Searches across categories and tokens; opens
@@ -143,7 +143,7 @@ export function SearchCommand({
                             </span>
                           </span>
                           <span className="text-numeral text-xs text-[var(--color-text-secondary)]">
-                            Floor {c.floorPriceEth !== null ? `${c.floorPriceEth.toFixed(2)} ETH` : '—'}
+                            Floor {c.floorPrice !== null ? payment(c.floorPrice, c.currency) : '—'}
                           </span>
                         </Link>
                       ))}
@@ -153,7 +153,7 @@ export function SearchCommand({
                   {filteredTokens.length > 0 ? (
                     <Section title="Tokens" icon={<Hash size={11} weight="duotone" />}>
                       {filteredTokens.map((t) => {
-                        const ask = t.listingPriceEth ? Number.parseFloat(t.listingPriceEth) : null;
+                        const ask = t.listingPrice;
                         return (
                           <Link
                             key={t.tokenId}
@@ -175,7 +175,7 @@ export function SearchCommand({
                               </span>
                             </span>
                             <span className="text-numeral text-xs text-[var(--color-text-secondary)]">
-                              {eth(ask, '—')}
+                              {payment(ask, t.currency, '—')}
                             </span>
                           </Link>
                         );

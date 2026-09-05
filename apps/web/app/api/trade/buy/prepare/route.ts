@@ -81,6 +81,9 @@ export async function POST(request: Request) {
       (raw?.['transaction'] as Record<string, unknown> | undefined) ??
       raw;
 
+    const listingCurrency =
+      (listing.price as { current?: { currency?: string } }).current?.currency ?? 'ETH';
+
     const valueRaw = BigInt(0);
     const policyDecision = validateTradeAction({
       expectedChainId: 1311,
@@ -88,7 +91,7 @@ export async function POST(request: Request) {
       expectedCollectionContract: BUTTON_PRESSER_COLLECTION.contractAddress,
       expectedTokenIds: [parsed.data.tokenId],
       expectedActionType: 'buy',
-      expectedCurrency: listing.currency,
+      expectedCurrency: listingCurrency,
       openseaAction: {
         chainId: 1311,
         target: String(
@@ -111,14 +114,13 @@ export async function POST(request: Request) {
       listing: {
         orderHash: listing.order_hash,
         chain: listing.chain,
-        protocol: listing.protocol,
         protocolAddress: listing.protocol_address,
-        maker: listing.maker,
-        currency: listing.currency,
+        maker: listing.protocol_data.parameters.offerer ?? null,
+        currency: listingCurrency,
         price: listing.price,
-        quantity: listing.quantity,
-        validFrom: listing.valid_from ?? null,
-        validUntil: listing.valid_until ?? null,
+        remainingQuantity: listing.remaining_quantity ?? 1,
+        validFrom: listing.protocol_data.parameters.startTime ?? null,
+        validUntil: listing.protocol_data.parameters.endTime ?? null,
       },
       transaction: txCandidate,
       policy: { allowed: true },

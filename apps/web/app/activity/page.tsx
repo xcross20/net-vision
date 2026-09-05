@@ -19,16 +19,24 @@ export default async function ActivityPage() {
   ]);
 
   const saleEntries: SaleOrOfferEntry[] = sales.map((s) => ({
-    ...s,
     kind: 'sale' as const,
-    price: s.priceEth,
+    tokenId: s.tokenId,
+    price: s.price,
+    currency: s.currency,
     occurredAt: s.occurredAt,
+    orderHash: s.orderHash,
+    buyer: s.buyer,
+    seller: s.seller,
   }));
   const offerEntries: SaleOrOfferEntry[] = offers.map((o) => ({
-    ...o,
     kind: 'offer' as const,
-    price: o.priceEth,
+    tokenId: o.tokenId,
+    price: o.price,
+    currency: o.currency,
     occurredAt: o.expiresAt ?? Math.floor(Date.now() / 1000),
+    orderHash: o.orderHash,
+    maker: o.maker,
+    expiresAt: o.expiresAt,
   }));
 
   return (

@@ -1,24 +1,29 @@
 import { cn } from '@/lib/cn';
-import { eth, usd } from '@/lib/format';
+import { payment, usd } from '@/lib/format';
 
 /**
  * Price display used in cards, rows, and detail pages. Accepts an
- * optional secondary currency (USDG) shown as a smaller companion
- * under the primary ETH value.
+ * optional secondary USDG value shown as a smaller companion.
  */
 export function Price({
+  value,
   ethValue,
   usdValue,
+  currency = 'USDG',
   size = 'md',
   align = 'left',
   dim,
 }: {
-  ethValue: number | null | undefined;
+  value?: number | null;
+  /** Backward-compatible alias for callers that still use the ETH-era name. */
+  ethValue?: number | null;
   usdValue?: number | null;
+  currency?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   align?: 'left' | 'right';
   dim?: boolean;
 }) {
+  const primaryValue = value ?? ethValue;
   const sz =
     size === 'xl' ? 'text-3xl md:text-4xl' :
     size === 'lg' ? 'text-xl md:text-2xl' :
@@ -37,7 +42,7 @@ export function Price({
           dim ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-primary)]',
         )}
       >
-        {eth(ethValue)}
+        {payment(primaryValue, currency)}
       </span>
       {usdValue !== undefined && usdValue !== null ? (
         <span className="text-numeral text-xs text-[var(--color-text-tertiary)]">
