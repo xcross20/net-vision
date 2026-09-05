@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@/components/ConnectButton';
 import { BuyDrawer } from '@/components/BuyDrawer';
+import { AddToCartButton } from '@/components/cart';
 import { ArrowUR, WalletIcon } from '@/components/icons';
 
 export function TokenCommercePanel({
@@ -13,12 +14,16 @@ export function TokenCommercePanel({
   ask,
   lastSale,
   openseaUrl,
+  contractAddress,
+  currency,
 }: {
   tokenId: string;
   imageUrl: string;
   ask: number | null;
   lastSale: number | null;
   openseaUrl: string;
+  contractAddress: string;
+  currency: string;
 }) {
   const [buying, setBuying] = useState(false);
   const { isConnected } = useAccount();
@@ -53,8 +58,28 @@ export function TokenCommercePanel({
           disabled
           whileTap={{ scale: 0.98 }}
         >
-          Add to cart
+          Make offer
         </motion.button>
+        <AddToCartButton
+          variant="primary"
+          draft={{
+            token: {
+              tokenId,
+              contractAddress,
+              chainId: 1311,
+              imageUrl,
+              name: `#${tokenId}`,
+              listingPrice: ask,
+              currency,
+              lastSalePrice: lastSale,
+              ownerAddress: null,
+              traits: [],
+              rarityRank: null,
+              listedAt: null,
+              lastSaleAt: null,
+            },
+          }}
+        />
       </div>
 
       <div className="flex items-center gap-3 text-xs text-[var(--nv-muted)]">

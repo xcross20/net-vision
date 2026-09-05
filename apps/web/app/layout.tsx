@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Footer } from '@/components/ui/Footer';
 import { MarketHeaderClient } from '@/components/ui/MarketHeaderClient';
+import { CartDrawer, CartProvider } from '@/components/cart';
 import { listCategories } from '@/lib/data/categories';
 import { listTokens } from '@/lib/data/tokens';
 import { WalletProvider } from '@/lib/wallet/WalletProvider';
@@ -33,15 +34,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
         <WalletProvider>
-          <div className="flex min-h-[100dvh] flex-col">
-            <Shell />
-            <main className="flex-1">
-              <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-10 md:px-8 md:pb-24 md:pt-16">
-                {children}
-              </div>
-            </main>
-            <Footer />
-          </div>
+          <CartProvider>
+            <div className="flex min-h-[100dvh] flex-col">
+              <Shell />
+              <main className="flex-1">
+                <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-10 md:px-8 md:pb-24 md:pt-16">
+                  {children}
+                </div>
+              </main>
+              <Footer />
+            </div>
+            <CartDrawer />
+          </CartProvider>
         </WalletProvider>
       </body>
     </html>

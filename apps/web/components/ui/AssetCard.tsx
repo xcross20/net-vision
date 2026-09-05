@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
 import { MarketplaceBadge } from './MarketplaceBadge';
 import { Price } from './Price';
+import { AddToCartButton } from '@/components/cart';
 
 /**
  * NFT market card used in grids. Image-first composition with the token
@@ -80,6 +81,17 @@ export function AssetCard({
               Buy now
               <ArrowRight size={12} weight="bold" />
             </span>
+          </div>
+          <div className="absolute bottom-2 right-2 opacity-0 transition-opacity duration-200 group-hover/card:opacity-100 max-md:opacity-100">
+            <AddToCartButton
+              variant="compact"
+              className="border-[var(--color-border-default)] bg-[rgba(8,12,10,0.78)] backdrop-blur-md"
+              draft={{
+                token,
+                displayedPriceDecimal: token.listingPrice !== null ? token.listingPrice.toString() : null,
+                currencySymbol: token.currency,
+              }}
+            />
           </div>
         </div>
 

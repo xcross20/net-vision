@@ -7,6 +7,7 @@ import { MagnifyingGlass, ShoppingBag, Hexagon, List, X } from '@phosphor-icons/
 import { useState } from 'react';
 import { cn } from '@/lib/cn';
 import { WalletControl } from './WalletControl';
+import { CartButton } from '@/components/cart';
 
 const NAV = [
   { href: '/market', label: 'Market' },
@@ -96,13 +97,7 @@ export function MarketHeader({ onOpenSearch }: { onOpenSearch?: () => void }) {
           >
             <MagnifyingGlass size={16} weight="bold" />
           </button>
-          <button
-            type="button"
-            aria-label="Cart"
-            className="nv-icon-btn"
-          >
-            <ShoppingBag size={16} weight="regular" />
-          </button>
+          <CartButton />
           <WalletControl />
           <button
             type="button"

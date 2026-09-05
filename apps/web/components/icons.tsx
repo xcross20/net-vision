@@ -12,6 +12,7 @@
 import {
   ArrowRight,
   ArrowUpRight,
+  Check,
   CircleNotch,
   Clock,
   Cube,
@@ -77,6 +78,9 @@ export const SpinnerIcon = (p: React.ComponentProps<typeof CircleNotch>) => (
 );
 export const WarnIcon = (p: React.ComponentProps<typeof Warning>) => (
   <Warning {...baseProps} weight="duotone" {...p} />
+);
+export const CheckIcon = (p: React.ComponentProps<typeof Check>) => (
+  <Check {...baseProps} weight="bold" {...p} />
 );
 
 export { ArrowRight, ArrowUpRight, Hexagon };
