@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { motion } from 'framer-motion';
 import { ArrowRight, Sparkle } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { CategoryMetrics } from '@/lib/market';
@@ -13,6 +12,9 @@ import { LiveIndicator } from './LiveIndicator';
  * dense row. Shows: name, floor, listed count, and a 7-day movement
  * indicator. Card surface is intentionally minimal; the surrounding
  * negative space carries the weight.
+ *
+ * No motion / animation library: the hover lift is a CSS transition
+ * so the component stays render-safe when bundled into server pages.
  */
 export function CategoryCard({
   metrics,
@@ -34,11 +36,7 @@ export function CategoryCard({
           : 'flat'
       : null;
   return (
-    <motion.div
-      whileHover={{ y: -2 }}
-      transition={{ type: 'spring', stiffness: 240, damping: 22 }}
-      className="group/cat h-full"
-    >
+    <div className="group/cat h-full transition-transform duration-200 hover:-translate-y-0.5">
       <Link
         href={`/categories/${metrics.slug}`}
         className={cn(
@@ -86,7 +84,7 @@ export function CategoryCard({
           />
         </div>
       </Link>
-    </motion.div>
+    </div>
   );
 }
 
