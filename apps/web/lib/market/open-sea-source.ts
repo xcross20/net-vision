@@ -47,7 +47,6 @@ import {
 import { isMissingOpenSeaResource, isOpenSeaRateLimited } from './opensea-errors';
 import {
   allAttributions,
-  allListingRecords,
   allSales,
   appendFloorSnapshot,
   floorHistory as storedFloorHistory,
