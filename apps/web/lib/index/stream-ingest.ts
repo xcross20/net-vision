@@ -15,44 +15,58 @@ export async function startOpenSeaStreamIngest(): Promise<boolean> {
   const apiKey = process.env.OPENSEA_API_KEY?.trim();
   if (!apiKey) return false;
 
-  let OpenSeaStreamClient: new (opts: { apiKey: string }) => {
-    onItemListed: (slug: string, cb: (e: unknown) => void) => () => void;
-    onItemSold: (slug: string, cb: (e: unknown) => void) => () => void;
-    onItemCancelled: (slug: string, cb: (e: unknown) => void) => () => void;
-    onItemTransferred: (slug: string, cb: (e: unknown) => void) => () => void;
-    onItemMetadataUpdated: (slug: string, cb: (e: unknown) => void) => () => void;
-  };
   try {
-    ({ OpenSeaStreamClient } = await import('@opensea/sdk/stream'));
+    const [{ OpenSeaStreamClient }, wsMod] = await Promise.all([
+      import('@opensea/sdk/stream'),
+      import('ws').catch(() => null),
+    ]);
+    const transport =
+      (globalThis as { WebSocket?: unknown }).WebSocket ??
+      (wsMod as { default?: unknown } | null)?.default ??
+      (wsMod as { WebSocket?: unknown } | null)?.WebSocket;
+    const slug = BUTTON_PRESSER_COLLECTION.openseaSlug;
+    const client = new OpenSeaStreamClient({
+      apiKey,
+      connectOptions: transport ? { transport } : undefined,
+      onError: (err: unknown) => {
+        console.warn('[stream] transport error', err instanceof Error ? err.message : err);
+        patchMaintenance({
+          streamConnected: false,
+          lastError: err instanceof Error ? err.message : String(err),
+        });
+      },
+    });
+    const handle = (raw: unknown) => {
+      const event = streamMessageToMarketEvent(raw);
+      if (!event) return;
+      const result = applyMarketEvent(event);
+      if (result === 'applied') {
+        patchMaintenance({ streamConnected: true, mode: 'stream+rest' });
+        saveIndex();
+      }
+    };
+
+    client.onItemListed(slug, handle);
+    client.onItemSold(slug, handle);
+    client.onItemCancelled(slug, handle);
+    client.onItemTransferred(slug, handle);
+    client.onItemMetadataUpdated(slug, handle);
+    streamStarted = true;
+    patchMaintenance({ streamConnected: true, mode: 'stream+rest' });
+    saveIndex();
+    console.log('[stream] subscribed to', slug);
+    return true;
   } catch (err) {
     console.warn(
-      '[stream] @opensea/sdk/stream unavailable — REST event poll is the maintenance path',
+      '[stream] unavailable — REST event poll is the maintenance path',
       err instanceof Error ? err.message : err,
     );
-    patchMaintenance({ streamConnected: false, mode: 'rest' });
+    patchMaintenance({
+      streamConnected: false,
+      mode: 'rest',
+      lastError: err instanceof Error ? err.message : String(err),
+    });
+    saveIndex();
     return false;
   }
-
-  const slug = BUTTON_PRESSER_COLLECTION.openseaSlug;
-  const client = new OpenSeaStreamClient({ apiKey });
-  const handle = (raw: unknown) => {
-    const event = streamMessageToMarketEvent(raw);
-    if (!event) return;
-    const result = applyMarketEvent(event);
-    if (result === 'applied') {
-      patchMaintenance({ streamConnected: true, mode: 'stream+rest' });
-      saveIndex();
-    }
-  };
-
-  client.onItemListed(slug, handle);
-  client.onItemSold(slug, handle);
-  client.onItemCancelled(slug, handle);
-  client.onItemTransferred(slug, handle);
-  client.onItemMetadataUpdated(slug, handle);
-  streamStarted = true;
-  patchMaintenance({ streamConnected: true, mode: 'stream+rest' });
-  saveIndex();
-  console.log('[stream] subscribed to', slug);
-  return true;
 }
