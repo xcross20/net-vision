@@ -74,6 +74,8 @@ function fallbackCategoryMetrics(slug: string): CategoryMetrics | null {
     verifiedCount: 0,
     unknownCount: memberSupply,
     coveragePercent: 0,
+    membershipCoverage: meta.source === 'metadata' ? 0 : 1,
+    marketCoverage: 0,
     marketStatus: 'syncing',
     owners: 0,
     currency: 'USDG',

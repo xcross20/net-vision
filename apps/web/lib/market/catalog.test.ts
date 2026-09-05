@@ -167,4 +167,16 @@ describe('TokenCatalog', () => {
     expect(catalog.listingFor('121')?.price).toBe(12);
     expect(catalog.recentSales(5)).toHaveLength(1);
   });
+
+  it('does not treat empty Brass membership as fully covered', () => {
+    const catalog = new TokenCatalog(RANGE);
+    catalog.classify();
+    // Material membership only via attachFacets — never enumerated.
+    expect(catalog.memberIds('material-brass')).toEqual([]);
+    const totals = catalog.categoryTotals('material-brass');
+    expect(totals.memberSupply).toBe(0);
+    expect(totals.coveragePercent).toBe(0);
+    expect(totals.marketStatus).toBe('syncing');
+  });
 });
+

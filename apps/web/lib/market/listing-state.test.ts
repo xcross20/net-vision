@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyObservation,
+  categoryReadiness,
   coveragePercent,
   decayIfStale,
   emptyListingRecord,
@@ -75,4 +76,42 @@ describe('listing state machine', () => {
     expect(marketStatus(0.4766)).toBe('syncing');
     expect(marketStatus(0.95)).toBe('live');
   });
+
+  it('treats an empty membership set as uncovered, not live', () => {
+    expect(coveragePercent(0, 0)).toBe(0);
+    expect(marketStatus(0)).toBe('syncing');
+  });
+
+  it('does not mark unhydrated Brass as live', () => {
+    const readiness = categoryReadiness({
+      source: 'metadata',
+      expectedSupply: 999,
+      discoveredMembers: 0,
+      verifiedMarketMembers: 0,
+    });
+    expect(readiness.membershipCoverage).toBe(0);
+    expect(readiness.marketCoverage).toBe(0);
+    expect(readiness.marketStatus).toBe('syncing');
+  });
+
+  it('requires both membership and market coverage for metadata LIVE', () => {
+    expect(
+      categoryReadiness({
+        source: 'metadata',
+        expectedSupply: 999,
+        discoveredMembers: 999,
+        verifiedMarketMembers: 500,
+      }).marketStatus,
+    ).toBe('syncing');
+    expect(
+      categoryReadiness({
+        source: 'metadata',
+        expectedSupply: 999,
+        discoveredMembers: 999,
+        verifiedMarketMembers: 980,
+      }).marketStatus,
+    ).toBe('live');
+  });
 });
+
+

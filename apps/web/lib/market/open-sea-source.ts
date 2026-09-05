@@ -73,7 +73,11 @@ import {
   type SweepPreviewInput,
   MS_DAY,
 } from './engine';
-import { applyObservation, type ListingObservation } from './listing-state';
+import {
+  applyObservation,
+  categoryReadiness,
+  type ListingObservation,
+} from './listing-state';
 import { buildTokenImageUrl } from '@/lib/data/media';
 import type {
   CategoryMetrics,
@@ -269,11 +273,18 @@ class OpenSeaMarketSource implements MarketSource {
       .catch(() => {
         /* Postgres optional until DATABASE_URL + schema are live */
       });
-    startBackgroundIndexer((tokenId) => this.lookupListingObservation(tokenId), (record) => {
-      this.catalog.hydrateListingRecord(record);
-      this.categories.clear();
-      this.tokenPages.clear();
-    });
+    startBackgroundIndexer(
+      (tokenId) => this.lookupListingObservation(tokenId),
+      (record) => {
+        this.catalog.hydrateListingRecord(record);
+        this.categories.clear();
+        this.tokenPages.clear();
+      },
+      async (tokenId) => {
+        const nft = await this.fetchNFT(tokenId);
+        return nft !== null;
+      },
+    );
   }
 
   private hydrateFromIndex(): void {
@@ -792,7 +803,15 @@ class OpenSeaMarketSource implements MarketSource {
       }),
       memberSupply,
     );
-    if (totals.marketStatus === 'live') {
+    const discoveredMembers =
+      meta.source === 'metadata' ? this.catalog.memberIds(slug).length : memberSupply;
+    const readiness = categoryReadiness({
+      source: meta.source,
+      expectedSupply: memberSupply,
+      discoveredMembers,
+      verifiedMarketMembers: totals.verifiedCount,
+    });
+    if (readiness.marketStatus === 'live') {
       appendFloorSnapshot(slug, {
         at: Date.now(),
         floor: stats.floorPrice,
@@ -825,13 +844,9 @@ class OpenSeaMarketSource implements MarketSource {
             }),
           }
         : undefined;
-    const verifiedCount =
-      meta.source === 'metadata'
-        ? totals.verifiedCount
-        : totals.verifiedCount;
+    const verifiedCount = totals.verifiedCount;
     const unknownCount = Math.max(memberSupply - verifiedCount, 0);
-    const coverage = memberSupply > 0 ? verifiedCount / memberSupply : 1;
-    const liveFloor = totals.marketStatus === 'syncing' ? null : stats.floorPrice;
+    const liveFloor = readiness.marketStatus === 'syncing' ? null : stats.floorPrice;
     return {
       slug,
       name: meta.name,
@@ -845,13 +860,15 @@ class OpenSeaMarketSource implements MarketSource {
       listedPercentage: stats.listedPercentage,
       verifiedCount,
       unknownCount,
-      coveragePercent: coverage,
-      marketStatus: totals.marketStatus,
+      coveragePercent: Math.min(readiness.membershipCoverage, readiness.marketCoverage),
+      membershipCoverage: readiness.membershipCoverage,
+      marketCoverage: readiness.marketCoverage,
+      marketStatus: readiness.marketStatus,
       owners: stats.owners,
       currency: snapshot.currency,
       floorPrice: liveFloor,
-      ceilingPrice: totals.marketStatus === 'syncing' ? null : stats.highestAsk,
-      medianAsk: totals.marketStatus === 'syncing' ? null : stats.medianAsk,
+      ceilingPrice: readiness.marketStatus === 'syncing' ? null : stats.highestAsk,
+      medianAsk: readiness.marketStatus === 'syncing' ? null : stats.medianAsk,
       lastSalePrice: stats.highestSale?.price ?? totals.lastSalePrice,
       topOfferPrice: stats.bestOffer,
       offerCount: stats.offerCount,

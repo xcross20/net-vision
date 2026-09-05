@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS index_blob (
   id TEXT PRIMARY KEY,
   payload JSONB NOT NULL,
   taxonomy_version TEXT,
+  revision BIGINT NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

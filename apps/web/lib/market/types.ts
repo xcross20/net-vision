@@ -65,8 +65,20 @@ export type CategoryMetrics = {
   verifiedCount: number;
   /** Members whose listing state is UNKNOWN or STALE. */
   unknownCount: number;
-  /** verifiedCount / memberSupply. */
+  /**
+   * For derived categories: verifiedCount / memberSupply.
+   * For metadata categories: min(membershipCoverage, marketCoverage).
+   */
   coveragePercent: number;
+  /**
+   * Share of expectedSupply with official metadata facets discovered.
+   * Derived categories report 1.
+   */
+  membershipCoverage: number;
+  /**
+   * Share of expectedSupply with LISTED or UNLISTED_VERIFIED market state.
+   */
+  marketCoverage: number;
   /** Partial coverage must never be presented as a final floor. */
   marketStatus: 'syncing' | 'live';
   owners: number;

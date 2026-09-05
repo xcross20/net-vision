@@ -35,10 +35,23 @@ export type WorkerCheckpoint = {
   last429At: number | null;
 };
 
+/** Resumable Plate/NFT metadata bootstrap (separate from listing scan). */
+export type MetadataCheckpoint = {
+  phase: 'brass-priority' | 'full' | 'done';
+  cursor: number;
+  processedTotal: number;
+  missingTotal: number;
+  lastTickAt: number;
+  lastError: string | null;
+  last429At: number | null;
+};
+
 export type IndexSnapshot = {
   version: 1;
   taxonomyVersion: string;
   historyStartedAt: number;
+  /** Monotonic dual-write revision — Postgres rejects older payloads. */
+  snapshotRevision: number;
   tokens: Record<string, TokenRow>;
   listings: Record<string, ListingRecord>;
   categories: Record<string, string[]>;
@@ -47,6 +60,7 @@ export type IndexSnapshot = {
   saleAttributions: SaleAttribution[];
   floorHistory: Record<string, FloorSnapshot[]>;
   worker: WorkerCheckpoint;
+  metadataWorker: MetadataCheckpoint;
 };
 
 const DEFAULT_PATH = resolve(process.cwd(), 'data', 'market-index.json');
@@ -60,6 +74,7 @@ function emptySnapshot(): IndexSnapshot {
     version: 1,
     taxonomyVersion: '2026-09-05.v1',
     historyStartedAt: Date.now(),
+    snapshotRevision: 0,
     tokens: {},
     listings: {},
     categories: {},
@@ -75,6 +90,15 @@ function emptySnapshot(): IndexSnapshot {
       lastError: null,
       last429At: null,
     },
+    metadataWorker: {
+      phase: 'brass-priority',
+      cursor: 0,
+      processedTotal: 0,
+      missingTotal: 0,
+      lastTickAt: 0,
+      lastError: null,
+      last429At: null,
+    },
   };
 }
 
@@ -84,6 +108,7 @@ function coerceSnapshot(parsed: IndexSnapshot): IndexSnapshot {
     ...base,
     ...parsed,
     historyStartedAt: parsed.historyStartedAt || base.historyStartedAt,
+    snapshotRevision: parsed.snapshotRevision ?? 0,
     tokenFacets: parsed.tokenFacets ?? {},
     sales: parsed.sales ?? [],
     saleAttributions: parsed.saleAttributions ?? [],
@@ -102,6 +127,7 @@ function coerceSnapshot(parsed: IndexSnapshot): IndexSnapshot {
     listings: parsed.listings ?? {},
     categories: parsed.categories ?? {},
     worker: parsed.worker ?? base.worker,
+    metadataWorker: parsed.metadataWorker ?? base.metadataWorker,
   };
 }
 
@@ -130,15 +156,20 @@ export function loadIndex(): IndexSnapshot {
 
 export function saveIndex(): void {
   if (!memory) return;
+  // Bump revision *before* scheduling the async PG write so a slower
+  // older payload cannot overwrite a newer one (WHERE revision < …).
+  memory.snapshotRevision = (memory.snapshotRevision ?? 0) + 1;
+  const revision = memory.snapshotRevision;
   const path = dbPath();
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.tmp`;
   writeFileSync(tmp, JSON.stringify(memory));
   renameSync(tmp, path);
-  // Dual-write to Postgres when DATABASE_URL is set (fire-and-forget).
-  // Dynamic import keeps vitest / local runs free of a hard pg dependency path.
+  const snapshot = memory;
   void import('./pg')
-    .then(({ scheduleSaveSnapshotToPg }) => scheduleSaveSnapshotToPg(memory!))
+    .then(({ scheduleSaveSnapshotToPg }) =>
+      scheduleSaveSnapshotToPg(snapshot, { revision }),
+    )
     .catch(() => {
       /* pg optional at boot */
     });
@@ -222,6 +253,19 @@ export function writeWorkerCheckpoint(patch: Partial<WorkerCheckpoint>): void {
   snap.worker = { ...snap.worker, ...patch, lastTickAt: Date.now() };
 }
 
+export function metadataCheckpoint(): MetadataCheckpoint {
+  return loadIndex().metadataWorker;
+}
+
+export function writeMetadataCheckpoint(patch: Partial<MetadataCheckpoint>): void {
+  const snap = loadIndex();
+  snap.metadataWorker = { ...snap.metadataWorker, ...patch, lastTickAt: Date.now() };
+}
+
+export function snapshotRevision(): number {
+  return loadIndex().snapshotRevision ?? 0;
+}
+
 export function taxonomyMemberships(slug: string): string[] {
   return loadIndex().categories[slug] ?? [];
 }
@@ -248,7 +292,7 @@ export function persistNftMetadata(
   upsertToken({
     tokenId,
     displayNumber: tokenId,
-    exists: true,
+    exists: true, // metadata fetch proves the NFT exists
     name: nft.name ?? null,
     imageUrl: nft.imageUrl ?? null,
     ownerAddress: nft.ownerAddress ?? null,

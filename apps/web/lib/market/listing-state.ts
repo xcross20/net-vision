@@ -116,10 +116,45 @@ export function decayIfStale(record: ListingRecord, now = Date.now()): ListingRe
 }
 
 export function coveragePercent(verifiedCount: number, memberCount: number): number {
-  if (memberCount <= 0) return 1;
+  // Empty membership is uncovered, not "100% done". Metadata categories
+  // with expectedSupply=999 and 0 discovered members must stay syncing.
+  if (memberCount <= 0) return 0;
   return verifiedCount / memberCount;
 }
 
 export function marketStatus(coverage: number): 'syncing' | 'live' {
   return coverage >= 0.95 ? 'live' : 'syncing';
+}
+
+/**
+ * Metadata categories (Brass, …) need *two* coverages before LIVE:
+ * membership (official Plate facets discovered) and market (listing state
+ * verified for those members against expected supply).
+ */
+export function categoryReadiness(input: {
+  source: 'derived' | 'metadata' | 'curated' | 'game';
+  expectedSupply: number;
+  discoveredMembers: number;
+  verifiedMarketMembers: number;
+}): {
+  membershipCoverage: number;
+  marketCoverage: number;
+  marketStatus: 'syncing' | 'live';
+} {
+  const expected = Math.max(input.expectedSupply, 0);
+  if (input.source === 'metadata') {
+    const membershipCoverage = coveragePercent(input.discoveredMembers, expected);
+    const marketCoverage = coveragePercent(input.verifiedMarketMembers, expected);
+    return {
+      membershipCoverage,
+      marketCoverage,
+      marketStatus: marketStatus(Math.min(membershipCoverage, marketCoverage)),
+    };
+  }
+  const marketCoverage = coveragePercent(input.verifiedMarketMembers, expected);
+  return {
+    membershipCoverage: 1,
+    marketCoverage,
+    marketStatus: marketStatus(marketCoverage),
+  };
 }

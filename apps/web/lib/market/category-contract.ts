@@ -9,6 +9,8 @@ export function categoryResponse(metrics: CategoryMetrics) {
     members: metrics.memberSupply,
     verifiedMarketMembers: metrics.verifiedCount,
     coveragePercent: metrics.coveragePercent,
+    membershipCoverage: metrics.membershipCoverage,
+    marketCoverage: metrics.marketCoverage,
     marketStatus: metrics.marketStatus,
     trackedSince: metrics.trackedSince,
     description: metrics.description,

@@ -22,8 +22,10 @@ CREATE TABLE IF NOT EXISTS index_blob (
   id TEXT PRIMARY KEY,
   payload JSONB NOT NULL,
   taxonomy_version TEXT,
+  revision BIGINT NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE index_blob ADD COLUMN IF NOT EXISTS revision BIGINT NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS tokens (
   token_id INTEGER PRIMARY KEY,
   display_number TEXT NOT NULL,
@@ -333,20 +335,23 @@ async function upsertNormalized(client: PoolClient, snap: IndexSnapshot): Promis
 
 export async function saveSnapshotToPg(
   snap: IndexSnapshot,
-  options: { normalized?: boolean } = {},
+  options: { normalized?: boolean; revision?: number } = {},
 ): Promise<void> {
   const db = getPool();
   if (!db) return;
   await ensureSchema();
-  // Blob first — enough for hydrateIndexFromPostgres recovery.
+  const revision = options.revision ?? snap.snapshotRevision ?? 0;
+  // Conditional upsert: never let an older async write clobber a newer one.
   await db.query(
-    `INSERT INTO index_blob (id, payload, taxonomy_version, updated_at)
-     VALUES ($1, $2::jsonb, $3, NOW())
+    `INSERT INTO index_blob (id, payload, taxonomy_version, revision, updated_at)
+     VALUES ($1, $2::jsonb, $3, $4, NOW())
      ON CONFLICT (id) DO UPDATE SET
        payload = EXCLUDED.payload,
        taxonomy_version = EXCLUDED.taxonomy_version,
-       updated_at = NOW()`,
-    [BLOB_ID, JSON.stringify(snap), snap.taxonomyVersion],
+       revision = EXCLUDED.revision,
+       updated_at = NOW()
+     WHERE index_blob.revision < EXCLUDED.revision`,
+    [BLOB_ID, JSON.stringify(snap), snap.taxonomyVersion, revision],
   );
   if (options.normalized === false) return;
   const client = await db.connect();
@@ -356,7 +361,6 @@ export async function saveSnapshotToPg(
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
-    // Blob already durable; normalized sync can retry on next save.
     console.error(
       '[index/pg] normalized upsert failed',
       err instanceof Error ? err.message : err,
@@ -371,9 +375,12 @@ export async function saveSnapshotToPg(
  * Blob-only on the hot path — a full normalized rebuild of 60k rows
  * every SAVE_EVERY tick would stall the worker.
  */
-export function scheduleSaveSnapshotToPg(snap: IndexSnapshot): void {
+export function scheduleSaveSnapshotToPg(
+  snap: IndexSnapshot,
+  options: { revision?: number } = {},
+): void {
   if (!databaseUrl()) return;
-  void saveSnapshotToPg(snap, { normalized: false }).catch((err) => {
+  void saveSnapshotToPg(snap, { normalized: false, revision: options.revision }).catch((err) => {
     console.error('[index/pg] dual-write failed', err instanceof Error ? err.message : err);
   });
 }
