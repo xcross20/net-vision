@@ -77,6 +77,12 @@ export function WalletControl() {
               {address(addr ?? '')}
             </div>
             <div className="my-1 h-px bg-[var(--color-border-subtle)]" />
+            <a
+              href="/portfolio"
+              className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]"
+            >
+              Portfolio
+            </a>
             <button
               type="button"
               onClick={() => {

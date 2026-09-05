@@ -29,7 +29,7 @@ export function AssetCard({
   const ask = token.listingPrice;
   const canTrade = showActions && ask !== null;
   const topTraits = token.traits
-    .filter((t) => t.family !== 'digits')
+    .filter((t) => t.family !== 'digits' && t.family !== 'number')
     .slice(0, 2);
   return (
     <motion.div

@@ -4,6 +4,7 @@ import './globals.css';
 import { Footer } from '@/components/ui/Footer';
 import { MarketHeaderClient } from '@/components/ui/MarketHeaderClient';
 import { CartDrawer, CartProvider } from '@/components/cart';
+import { WatchlistProvider } from '@/lib/watchlist/WatchlistProvider';
 import { listCategories } from '@/lib/data/categories';
 import { listTokens } from '@/lib/data/tokens';
 import { WalletProvider } from '@/lib/wallet/WalletProvider';
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
         <WalletProvider>
+          <WatchlistProvider>
           <CartProvider>
             <div className="flex min-h-[100dvh] flex-col">
               <Shell />
@@ -46,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
             <CartDrawer />
           </CartProvider>
+          </WatchlistProvider>
         </WalletProvider>
       </body>
     </html>

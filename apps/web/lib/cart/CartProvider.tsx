@@ -40,6 +40,7 @@ type CartContextValue = {
   open: () => void;
   close: () => void;
   add: (draft: CartItemDraft) => { ok: boolean; reason?: string };
+  addMany: (drafts: CartItemDraft[]) => { added: string[]; skipped: Array<{ tokenId: string; reason: string }> };
   remove: (tokenId: string) => void;
   clear: () => void;
   removeConfirmed: (tokenIds: ReadonlyArray<string>) => void;
@@ -69,48 +70,44 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const add = useCallback(
     (draft: CartItemDraft): { ok: boolean; reason?: string } => {
-      const tokenId = draft.token.tokenId;
-      if (state.items.some((existing) => existing.tokenId === tokenId)) {
+      const built = buildCartItem(draft);
+      if ('reason' in built) return { ok: false, reason: built.reason };
+      if (state.items.some((existing) => existing.tokenId === built.item.tokenId)) {
         return { ok: false, reason: 'already-in-cart' };
       }
       if (state.items.length >= CART_MAX_ITEMS) {
         return { ok: false, reason: 'cart-full' };
       }
-      const contract =
-        draft.contractAddressOverride ??
-        (draft.token.contractAddress as `0x${string}`);
-      if (
-        contract.toLowerCase() !==
-        BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase()
-      ) {
-        return { ok: false, reason: 'wrong-collection' };
-      }
-      const categories = draft.token.traits
-        .filter((t) => t.family !== 'digits')
-        .slice(0, 4)
-        .map((t) => ({ slug: t.slug, label: t.label }));
-      const item: CartItem = {
-        collectionSlug: 'button-presser',
-        contractAddress: contract.toLowerCase() as `0x${string}`,
-        tokenId,
-        imageUrl: draft.token.imageUrl,
-        displayName: draft.token.name ?? `#${tokenId}`,
-        categories,
-        sourceMarketplace: draft.sourceMarketplace ?? 'opensea',
-        displayedOrderHash: draft.displayedOrderHash ?? null,
-        displayedPriceRaw: draft.displayedPriceRaw ?? null,
-        displayedPriceDecimal: draft.displayedPriceDecimal ?? null,
-        currencySymbol:
-          draft.currencySymbol ??
-          (draft.token.currency && draft.token.currency !== 'ETH'
-            ? draft.token.currency
-            : null),
-        currencyAddress: (draft.currencyAddress ?? null) as `0x${string}` | null,
-        currencyDecimals: draft.currencyDecimals ?? null,
-        addedAt: Date.now(),
-      };
-      dispatch({ type: 'ADD', item });
+      dispatch({ type: 'ADD', item: built.item });
       return { ok: true };
+    },
+    [state.items],
+  );
+
+  const addMany = useCallback(
+    (drafts: CartItemDraft[]) => {
+      const added: string[] = [];
+      const skipped: Array<{ tokenId: string; reason: string }> = [];
+      let current = [...state.items];
+      for (const draft of drafts) {
+        const built = buildCartItem(draft);
+        if ('reason' in built) {
+          skipped.push({ tokenId: draft.token.tokenId, reason: built.reason });
+          continue;
+        }
+        if (current.some((existing) => existing.tokenId === built.item.tokenId)) {
+          skipped.push({ tokenId: built.item.tokenId, reason: 'already-in-cart' });
+          continue;
+        }
+        if (current.length >= CART_MAX_ITEMS) {
+          skipped.push({ tokenId: built.item.tokenId, reason: 'cart-full' });
+          continue;
+        }
+        dispatch({ type: 'ADD', item: built.item });
+        current = [...current, built.item];
+        added.push(built.item.tokenId);
+      }
+      return { added, skipped };
     },
     [state.items],
   );
@@ -140,16 +137,58 @@ export function CartProvider({ children }: { children: ReactNode }) {
       open,
       close,
       add,
+      addMany,
       remove,
       clear,
       removeConfirmed,
       phase,
       setPhase,
     }),
-    [state.items, state.hydrated, isOpen, open, close, add, remove, clear, removeConfirmed, phase],
+    [state.items, state.hydrated, isOpen, open, close, add, addMany, remove, clear, removeConfirmed, phase],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+}
+
+function buildCartItem(
+  draft: CartItemDraft,
+): { item: CartItem } | { reason: string } {
+  const tokenId = draft.token.tokenId;
+  const contract =
+    draft.contractAddressOverride ??
+    (draft.token.contractAddress as `0x${string}`);
+  if (
+    contract.toLowerCase() !==
+    BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase()
+  ) {
+    return { reason: 'wrong-collection' };
+  }
+  const categories = draft.token.traits
+    .filter((t) => t.family !== 'digits' && t.family !== 'number')
+    .slice(0, 4)
+    .map((t) => ({ slug: t.slug, label: t.label }));
+  return {
+    item: {
+      collectionSlug: 'button-presser',
+      contractAddress: contract.toLowerCase() as `0x${string}`,
+      tokenId,
+      imageUrl: draft.token.imageUrl,
+      displayName: draft.token.name ?? `#${tokenId}`,
+      categories,
+      sourceMarketplace: draft.sourceMarketplace ?? 'opensea',
+      displayedOrderHash: draft.displayedOrderHash ?? null,
+      displayedPriceRaw: draft.displayedPriceRaw ?? null,
+      displayedPriceDecimal: draft.displayedPriceDecimal ?? null,
+      currencySymbol:
+        draft.currencySymbol ??
+        (draft.token.currency && draft.token.currency !== 'ETH'
+          ? draft.token.currency
+          : null),
+      currencyAddress: (draft.currencyAddress ?? null) as `0x${string}` | null,
+      currencyDecimals: draft.currencyDecimals ?? null,
+      addedAt: Date.now(),
+    },
+  };
 }
 
 export function useCart(): CartContextValue {

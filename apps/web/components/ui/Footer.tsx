@@ -26,8 +26,9 @@ export function Footer() {
           </FooterColumn>
           <FooterColumn title="Categories">
             <FooterLink href="/categories">All categories</FooterLink>
-            <FooterLink href="/categories/digits-1">3 digit club</FooterLink>
-            <FooterLink href="/categories/digits-2">Palindromes</FooterLink>
+            <FooterLink href="/categories/digits-3">3 Digit</FooterLink>
+            <FooterLink href="/categories/material-brass">Brass</FooterLink>
+            <FooterLink href="/categories/palindrome">Palindromes</FooterLink>
           </FooterColumn>
           <FooterColumn title="Activity">
             <FooterLink href="/activity">Recent sales</FooterLink>

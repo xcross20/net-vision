@@ -30,8 +30,8 @@ export default async function HomePage() {
     getRecentOffers(8),
   ]);
 
-  const featuredCategories = categories
-    .filter((c) => c.memberSupply > 0)
+  const featuredCategories = [...categories]
+    .sort((a, b) => b.trendingScore - a.trendingScore)
     .slice(0, 6);
   const heroTokens = tokens.slice(0, 3);
 
@@ -134,8 +134,8 @@ function TrendingCategoriesSection({ categories }: { categories: CategoryMetrics
   return (
     <section className="flex flex-col gap-8">
       <SectionHeader
-        eyebrow="Browse"
-        title="Trending categories"
+        eyebrow="Markets"
+        title="Trending markets"
         trailing={
           <Link
             href="/categories"
@@ -156,7 +156,7 @@ function TrendingCategoriesSection({ categories }: { categories: CategoryMetrics
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {categories.map((c) => (
-            <CategoryCard key={c.slug} metrics={c} movement={null} />
+            <CategoryCard key={c.slug} metrics={c} movement={c.floorChange7d} />
           ))}
         </div>
       )}
