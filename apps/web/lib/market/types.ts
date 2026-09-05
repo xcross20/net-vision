@@ -41,7 +41,14 @@ export type CategoryMetrics = {
   name: string;
   family: string;
   description: string;
+  /** Total deterministic member supply across the on-chain range. */
   memberSupply: number;
+  /**
+   * Visible member supply after applying the active sub-filters
+   * (e.g. palindrome digit count). Defaults to `memberSupply` when no
+   * filter is active.
+   */
+  filteredMemberSupply: number;
   totalSupply: number;
   listedCount: number;
   owners: number;
@@ -55,6 +62,20 @@ export type CategoryMetrics = {
   volume7dNative: number;
   sales24h: number;
   sales7d: number;
+  /**
+   * Per-digit-count sub-filter dimension. Only populated when the
+   * category supports a sub-filter (currently `palindrome` for 2/3/4/5
+   * digits).
+   */
+  subFilter?: {
+    /** Available facet values for the category. */
+    facets: Array<{
+      value: string;
+      label: string;
+      memberCount: number;
+      listedCount: number;
+    }>;
+  };
 };
 
 export type CollectionSnapshot = {

@@ -12,6 +12,7 @@ export async function GET() {
       family: c.family,
       description: c.description,
       memberSupply: c.memberSupply,
+      filteredMemberSupply: c.filteredMemberSupply,
       listedCount: c.listedCount,
       floorPrice: c.floorPrice,
       currency: c.currency,
@@ -22,6 +23,7 @@ export async function GET() {
       volume7dNative: c.volume7dNative,
       sales24h: c.sales24h,
       sales7d: c.sales7d,
+      subFilter: c.subFilter,
     })),
   });
 }

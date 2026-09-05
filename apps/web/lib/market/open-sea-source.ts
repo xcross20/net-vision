@@ -20,7 +20,12 @@ import {
   BUTTON_PRESSER_COLLECTION,
   ROBINHOOD_CHAIN,
 } from '@net-vision/chain-config';
-import { classifyNumber, type NumberTrait } from '@net-vision/taxonomy';
+import {
+  classifyNumber,
+  enumerateMembers,
+  type NumberTrait,
+  type MemberSet,
+} from '@net-vision/taxonomy';
 import {
   createOpenSeaClient,
   type ChainInfo,
@@ -188,9 +193,23 @@ class OpenSeaMarketSource implements MarketSource {
   private readonly accountOffers: Map<string, OffersCacheEntry> = new Map();
   private resolvedChain: ChainInfo | undefined;
   private resolvedChainError: string | null = null;
+  /** Per-slug precomputed member set keyed by supply range. */
+  private readonly memberSets: Map<string, MemberSet> = new Map();
 
   constructor(client: OpenSeaClient) {
     this.client = client;
+  }
+
+  private membersFor(slug: string): MemberSet {
+    const cached = this.memberSets.get(slug);
+    if (cached) return cached;
+    const range = {
+      minTokenId: BUTTON_PRESSER_COLLECTION.minTokenId,
+      maxTokenId: BUTTON_PRESSER_COLLECTION.maxTokenId,
+    };
+    const set = enumerateMembers(slug, range);
+    this.memberSets.set(slug, set);
+    return set;
   }
 
   private getChainSlug(): string {
@@ -307,9 +326,7 @@ class OpenSeaMarketSource implements MarketSource {
       return token;
     });
     const tokens = listedTokens.filter((token): token is Token => token !== null);
-    const filteredTokens = filter?.category
-      ? tokens.filter((token) => token.traits.some((trait) => trait.slug === filter.category))
-      : tokens;
+    const filteredTokens = tokens.filter((token) => matchesCategoryFilter(token, filter));
     return { tokens: filteredTokens.slice(0, want), total: filteredTokens.length };
   }
 
@@ -380,21 +397,30 @@ class OpenSeaMarketSource implements MarketSource {
     if (isFresh(cached)) return cached.value;
     const snapshot = await this.getCollectionSnapshot();
     const tokens = await this.listTokens({ listedOnly: true, limit: MAX_LISTING_PAGE_SIZE });
-    const members = tokens.tokens.filter((token) => token.traits.some((trait) => trait.slug === slug));
-    const listed = members.filter((token) => token.listingPrice !== null);
+    const members = this.membersFor(slug);
+    const memberIdSet = new Set(members.members);
+    const memberTokens = tokens.tokens.filter((token) => memberIdSet.has(token.tokenId));
+    const listed = memberTokens.filter((token) => token.listingPrice !== null);
     const floors = listed
       .map((token) => token.listingPrice)
       .filter((price): price is number => price !== null);
     const floor = floors.length > 0 ? Math.min(...floors) : null;
     const owners = new Set(
-      members.map((token) => token.ownerAddress?.toLowerCase() ?? '').filter(Boolean),
+      memberTokens
+        .map((token) => token.ownerAddress?.toLowerCase() ?? '')
+        .filter(Boolean),
     ).size;
+    const subFilter =
+      slug === 'palindrome' && members.byDigitCount
+        ? buildPalindromeFacets(members, listed)
+        : undefined;
     const metrics: CategoryMetrics = {
       slug,
       name: slug,
       family: 'unknown',
       description: '',
-      memberSupply: members.length,
+      memberSupply: members.count,
+      filteredMemberSupply: members.count,
       totalSupply: snapshot.totalSupply,
       listedCount: listed.length,
       owners,
@@ -407,6 +433,7 @@ class OpenSeaMarketSource implements MarketSource {
       volume7dNative: 0,
       sales24h: 0,
       sales7d: 0,
+      subFilter,
     };
     this.categories.set(slug, { value: metrics, fetchedAt: Date.now() });
     return metrics;
@@ -426,25 +453,36 @@ class OpenSeaMarketSource implements MarketSource {
         bySlug.set(trait.slug, entry);
       }
     }
-    return [...bySlug.entries()].map(([slug, aggregate]) => ({
-      slug,
-      name: slug,
-      family: 'unknown',
-      description: '',
-      memberSupply: aggregate.count,
-      totalSupply: snapshot.totalSupply,
-      listedCount: aggregate.count,
-      owners: aggregate.owners.size,
-      currency: snapshot.currency,
-      floorPrice: aggregate.floors.length > 0 ? Math.min(...aggregate.floors) : null,
-      lastSalePrice: null,
-      topOfferPrice: null,
-      topSalePrice: null,
-      volume24hNative: 0,
-      volume7dNative: 0,
-      sales24h: 0,
-      sales7d: 0,
-    }));
+    const supplyRange = {
+      minTokenId: BUTTON_PRESSER_COLLECTION.minTokenId,
+      maxTokenId: BUTTON_PRESSER_COLLECTION.maxTokenId,
+    };
+    const allMembers = enumerateAllMembersFor(supplyRange);
+    return [...allMembers.entries()]
+      .filter(([slug]) => bySlug.has(slug))
+      .map(([slug, members]) => {
+        const aggregate = bySlug.get(slug)!;
+        return {
+          slug,
+          name: slug,
+          family: 'unknown',
+          description: '',
+          memberSupply: members.count,
+          filteredMemberSupply: members.count,
+          totalSupply: snapshot.totalSupply,
+          listedCount: aggregate.count,
+          owners: aggregate.owners.size,
+          currency: snapshot.currency,
+          floorPrice: aggregate.floors.length > 0 ? Math.min(...aggregate.floors) : null,
+          lastSalePrice: null,
+          topOfferPrice: null,
+          topSalePrice: null,
+          volume24hNative: 0,
+          volume7dNative: 0,
+          sales24h: 0,
+          sales7d: 0,
+        };
+      });
   }
 
   async listRecentSales(_limit = 20): Promise<Sale[]> {
@@ -633,6 +671,106 @@ function orderToOffer(order: Order): Offer | null {
 function decimalPriceEth(order: Order): number | null {
   return getOrderPrice(order).amount;
 }
+
+function enumerateAllMembersFor(range: { minTokenId: number; maxTokenId: number }): Map<string, MemberSet> {
+  const out = new Map<string, MemberSet>();
+  for (const slug of ALL_SLUGS) {
+    out.set(slug, enumerateMembers(slug, range));
+  }
+  return out;
+}
+
+/**
+ * Quick membership predicate against the deterministic supply range.
+ * Used by the listing path to filter live tokens by category without
+ * re-classifying per call.
+ */
+function isMemberTokenId(slug: string, tokenId: string): boolean {
+  const n = Number.parseInt(tokenId, 10);
+  if (!Number.isFinite(n)) return false;
+  if (n < BUTTON_PRESSER_COLLECTION.minTokenId || n > BUTTON_PRESSER_COLLECTION.maxTokenId) {
+    return false;
+  }
+  return classifyNumber(tokenId).traits.some((t) => t.slug === slug);
+}
+
+function buildPalindromeFacets(
+  members: MemberSet,
+  listed: Token[],
+): NonNullable<CategoryMetrics['subFilter']> {
+  const buckets = members.byDigitCount ?? {
+    2: [],
+    3: [],
+    4: [],
+    5: [],
+  };
+  const listedByDigits: Record<number, number> = { 2: 0, 3: 0, 4: 0, 5: 0 };
+  for (const token of listed) {
+    const len = token.tokenId.length;
+    if (len === 2 || len === 3 || len === 4 || len === 5) {
+      listedByDigits[len] = (listedByDigits[len] ?? 0) + 1;
+    }
+  }
+  return {
+    facets: [2, 3, 4, 5].map((digits) => ({
+      value: `digits-${digits}`,
+      label: `${digits} Digit`,
+      memberCount: buckets[digits as 2 | 3 | 4 | 5]?.length ?? 0,
+      listedCount: listedByDigits[digits] ?? 0,
+    })),
+  };
+}
+
+/**
+ * Resolve a `palindrome:digits-N` facet value to the corresponding
+ * digit count, or null when not applicable. Used to drive the
+ * digit-count sub-filter.
+ */
+function parsePalindromeFacetValue(value: string): 2 | 3 | 4 | 5 | null {
+  const m = /^digits-([2-5])$/.exec(value);
+  if (!m) return null;
+  return Number(m[1]) as 2 | 3 | 4 | 5;
+}
+
+function matchesCategoryFilter(
+  token: Token,
+  filter?: ListTokensFilter,
+): boolean {
+  if (!filter?.category) return true;
+  if (!isMemberTokenId(filter.category, token.tokenId)) return false;
+  const facets = filter.facets ?? [];
+  if (facets.length === 0) return true;
+  if (filter.category !== 'palindrome') return true;
+  const len = token.tokenId.length;
+  if (len !== 2 && len !== 3 && len !== 4 && len !== 5) return false;
+  return facets.some((f) => {
+    const digits = parsePalindromeFacetValue(f);
+    return digits !== null && digits === len;
+  });
+}
+
+const ALL_SLUGS = [
+  'digits-1',
+  'digits-2',
+  'digits-3',
+  'digits-4',
+  'digits-5',
+  'palindrome',
+  'repdigit',
+  'double',
+  'triple',
+  'quad',
+  'ascending',
+  'descending',
+  'alternating',
+  'bookend',
+  'round',
+  'meme',
+  'lucky',
+  'year',
+  'binary-style',
+  'mirror-sequence',
+] as const;
 
 let singleton: MarketSource | null = null;
 let singletonError: string | null = null;

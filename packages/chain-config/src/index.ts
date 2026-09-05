@@ -19,6 +19,13 @@ export const BUTTON_PRESSER_COLLECTION = {
   openseaSlug: 'button-presser',
   contractAddress: '0xE5143de9D3CcBc31Ffb4e7Fc66d8320e0E2693D2' as const,
   tokenStandard: 'ERC721' as const,
+  /**
+   * Total on-chain supply range. The deterministic taxonomy enumerates
+   * every token id in `[minTokenId, maxTokenId]` to compute category
+   * membership. Update `maxTokenId` if the on-chain supply grows.
+   */
+  minTokenId: 1,
+  maxTokenId: 62095,
 } as const;
 
 /**

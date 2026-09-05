@@ -433,3 +433,102 @@ export type VirtualCollectionSlug = (typeof VIRTUAL_COLLECTION_CATALOG)[number][
 export function getVirtualCollection(slug: string) {
   return VIRTUAL_COLLECTION_CATALOG.find((c) => c.slug === slug) ?? null;
 }
+
+/**
+ * Default supply range for the Button Presser collection. The taxonomy
+ * uses this to enumerate the deterministic member set for each virtual
+ * collection. Callers that need a different range (e.g. tests for an
+ * older or projected supply) can pass their own range to
+ * {@link enumerateMembers}.
+ */
+export const DEFAULT_SUPPLY_RANGE = { minTokenId: 1, maxTokenId: 62095 } as const;
+
+export type SupplyRange = { minTokenId: number; maxTokenId: number };
+
+/**
+ * Result of enumerating the deterministic member set for a single
+ * virtual collection slug. `members` are the token IDs that belong to
+ * the category in canonical decimal form. `count` is the length.
+ */
+export type MemberSet = {
+  slug: string;
+  count: number;
+  members: string[];
+  /** Map of digitCount -> count, only populated for palindromes. */
+  byDigitCount?: Record<2 | 3 | 4 | 5, string[]>;
+};
+
+function assertInRange(n: number, range: SupplyRange): void {
+  if (!Number.isInteger(n) || n < range.minTokenId || n > range.maxTokenId) {
+    throw new RangeError(`token id ${n} outside supply range ${range.minTokenId}..${range.maxTokenId}`);
+  }
+}
+
+/**
+ * Enumerate every token ID in `range` whose trait list includes `slug`.
+ *
+ * The enumeration is purely deterministic: same input range produces
+ * the same member set, sorted ascending, every time. Used by the UI to
+ * surface category membership counts and by the palindrome filter to
+ * sub-divide by digit count.
+ */
+export function enumerateMembers(
+  slug: string,
+  range: SupplyRange = DEFAULT_SUPPLY_RANGE,
+): MemberSet {
+  const meta = getVirtualCollection(slug);
+  if (!meta) {
+    return { slug, count: 0, members: [] };
+  }
+  const members: string[] = [];
+  for (let n = range.minTokenId; n <= range.maxTokenId; n += 1) {
+    assertInRange(n, range);
+    const traits = classifyNumber(String(n)).traits;
+    if (traits.some((t) => t.slug === slug)) {
+      members.push(String(n));
+    }
+  }
+  const set: MemberSet = { slug, count: members.length, members };
+  if (slug === 'palindrome') {
+    const byDigitCount: Record<2 | 3 | 4 | 5, string[]> = {
+      2: [],
+      3: [],
+      4: [],
+      5: [],
+    };
+    for (const id of members) {
+      const len = id.length;
+      if (len === 2 || len === 3 || len === 4 || len === 5) {
+        byDigitCount[len as 2 | 3 | 4 | 5].push(id);
+      }
+    }
+    set.byDigitCount = byDigitCount;
+  }
+  return set;
+}
+
+/**
+ * Pre-computed member counts per slug, indexed by taxonomy version.
+ * Cheap O(supply) compute; reused by the listing layer to avoid
+ * re-classifying on every request. Refresh when the supply range
+ * changes.
+ */
+export function enumerateAllMembers(
+  range: SupplyRange = DEFAULT_SUPPLY_RANGE,
+): Record<string, MemberSet> {
+  const out: Record<string, MemberSet> = {};
+  for (const c of VIRTUAL_COLLECTION_CATALOG) {
+    out[c.slug] = enumerateMembers(c.slug, range);
+  }
+  return out;
+}
+
+/**
+ * Quick membership predicate (no allocation, no Set): does this token
+ * id belong to `slug`? Used by the market source to slice the
+ * deterministic member set against the live listing set.
+ */
+export function isMember(slug: string, tokenId: string): boolean {
+  const traits = classifyNumber(tokenId).traits;
+  return traits.some((t) => t.slug === slug);
+}

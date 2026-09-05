@@ -51,6 +51,9 @@ export function CategoryRow({
         <span className="hidden text-numeral text-sm text-[var(--color-text-primary)] md:inline-block md:w-24 md:text-right">
           {metrics.floorPrice !== null ? payment(metrics.floorPrice, metrics.currency) : '—'}
         </span>
+        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-20 md:text-right">
+          {metrics.memberSupply.toLocaleString()}
+        </span>
         <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-16 md:text-right">
           {metrics.listedCount.toLocaleString()}
         </span>
@@ -76,8 +79,9 @@ export function CategoryRow({
         </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 md:hidden">
+      <div className="grid grid-cols-4 gap-3 md:hidden">
         <Cell label="Floor" value={metrics.floorPrice !== null ? `${metrics.floorPrice.toFixed(2)}` : '—'} unit={metrics.currency} emphasis />
+        <Cell label="Members" value={metrics.memberSupply.toLocaleString()} />
         <Cell label="Listed" value={metrics.listedCount.toLocaleString()} />
         <Cell label="Owners" value={metrics.owners.toLocaleString()} />
       </div>

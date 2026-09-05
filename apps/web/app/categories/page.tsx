@@ -53,10 +53,11 @@ export default async function CategoriesPage() {
         />
       ) : (
         <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
-          <div className="hidden grid-cols-[2.25rem_minmax(0,1fr)_6rem_4rem_5rem_6rem_5rem_2.5rem] items-center gap-3 border-b border-[var(--color-border-subtle)] px-6 py-3 text-eyebrow-muted md:grid">
+          <div className="hidden grid-cols-[2.25rem_minmax(0,1fr)_6rem_5rem_4rem_5rem_6rem_5rem_2.5rem] items-center gap-3 border-b border-[var(--color-border-subtle)] px-6 py-3 text-eyebrow-muted md:grid">
             <span />
             <span>Category</span>
             <span className="text-right">Floor</span>
+            <span className="text-right">Members</span>
             <span className="text-right">Listed</span>
             <span className="text-right">Owners</span>
             <span className="text-right">Vol 24h</span>

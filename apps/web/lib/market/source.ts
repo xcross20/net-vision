@@ -20,6 +20,11 @@ import type {
 
 export type ListTokensFilter = {
   category?: string;
+  /**
+   * Sub-filter facet values to apply. Format: `${slug}:${value}`. For
+   * palindrome: `palindrome:digits-3`, `palindrome:digits-4`, etc.
+   */
+  facets?: string[];
   /** When set, only include tokens currently listed. */
   listedOnly?: boolean;
   /** Page size; sources may cap this. */
