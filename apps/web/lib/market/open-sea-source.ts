@@ -22,7 +22,9 @@ import {
 } from '@net-vision/chain-config';
 import {
   classifyNumber,
+  enumerateAllMembers,
   enumerateMembers,
+  isMember,
   type NumberTrait,
   type MemberSet,
 } from '@net-vision/taxonomy';
@@ -457,7 +459,9 @@ class OpenSeaMarketSource implements MarketSource {
       minTokenId: BUTTON_PRESSER_COLLECTION.minTokenId,
       maxTokenId: BUTTON_PRESSER_COLLECTION.maxTokenId,
     };
-    const allMembers = enumerateAllMembersFor(supplyRange);
+    const allMembers = new Map(
+      Object.entries(enumerateAllMembers(supplyRange)),
+    );
     return [...allMembers.entries()]
       .filter(([slug]) => bySlug.has(slug))
       .map(([slug, members]) => {
@@ -668,32 +672,6 @@ function orderToOffer(order: Order): Offer | null {
   };
 }
 
-function decimalPriceEth(order: Order): number | null {
-  return getOrderPrice(order).amount;
-}
-
-function enumerateAllMembersFor(range: { minTokenId: number; maxTokenId: number }): Map<string, MemberSet> {
-  const out = new Map<string, MemberSet>();
-  for (const slug of ALL_SLUGS) {
-    out.set(slug, enumerateMembers(slug, range));
-  }
-  return out;
-}
-
-/**
- * Quick membership predicate against the deterministic supply range.
- * Used by the listing path to filter live tokens by category without
- * re-classifying per call.
- */
-function isMemberTokenId(slug: string, tokenId: string): boolean {
-  const n = Number.parseInt(tokenId, 10);
-  if (!Number.isFinite(n)) return false;
-  if (n < BUTTON_PRESSER_COLLECTION.minTokenId || n > BUTTON_PRESSER_COLLECTION.maxTokenId) {
-    return false;
-  }
-  return classifyNumber(tokenId).traits.some((t) => t.slug === slug);
-}
-
 function buildPalindromeFacets(
   members: MemberSet,
   listed: Token[],
@@ -737,7 +715,7 @@ function matchesCategoryFilter(
   filter?: ListTokensFilter,
 ): boolean {
   if (!filter?.category) return true;
-  if (!isMemberTokenId(filter.category, token.tokenId)) return false;
+  if (!isMember(filter.category, token.tokenId)) return false;
   const facets = filter.facets ?? [];
   if (facets.length === 0) return true;
   if (filter.category !== 'palindrome') return true;
@@ -748,29 +726,6 @@ function matchesCategoryFilter(
     return digits !== null && digits === len;
   });
 }
-
-const ALL_SLUGS = [
-  'digits-1',
-  'digits-2',
-  'digits-3',
-  'digits-4',
-  'digits-5',
-  'palindrome',
-  'repdigit',
-  'double',
-  'triple',
-  'quad',
-  'ascending',
-  'descending',
-  'alternating',
-  'bookend',
-  'round',
-  'meme',
-  'lucky',
-  'year',
-  'binary-style',
-  'mirror-sequence',
-] as const;
 
 let singleton: MarketSource | null = null;
 let singletonError: string | null = null;
@@ -870,6 +825,3 @@ function failingSource(reason: string): MarketSource {
 export function describeMarketSourceFailure(): string | null {
   return singletonError;
 }
-
-// Keep the old helper name available to callers that used the old source API.
-export { decimalPriceEth };
