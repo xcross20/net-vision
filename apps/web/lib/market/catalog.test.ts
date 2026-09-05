@@ -91,13 +91,15 @@ describe('TokenCatalog', () => {
     expect(catalog.categoryTotals('digits-1').floorPrice).toBeNull();
   });
 
-  it('moves a token out of not-listed once a scan confirms an ask', () => {
+  it('keeps an unscanned token unknown, not unlisted', () => {
     const catalog = new TokenCatalog(RANGE);
     catalog.classify();
-    expect(catalog.notListedIds('digits-3')).toContain('628');
+    expect(catalog.unknownIds('digits-3')).toContain('628');
+    expect(catalog.unlistedVerifiedIds('digits-3')).not.toContain('628');
+    expect(catalog.listingState('628')).toBe('UNKNOWN');
     catalog.confirmScan('628', listing('628', 560));
     expect(catalog.isListed('628')).toBe(true);
-    expect(catalog.notListedIds('digits-3')).not.toContain('628');
+    expect(catalog.unknownIds('digits-3')).not.toContain('628');
     expect(catalog.listedIds('digits-3')).toContain('628');
   });
 
@@ -107,6 +109,7 @@ describe('TokenCatalog', () => {
     catalog.confirmScan('628', null);
     expect(catalog.isListed('628')).toBe(false);
     expect(catalog.isConfirmedUnlisted('628')).toBe(true);
+    expect(catalog.listingState('628')).toBe('UNLISTED_VERIFIED');
     expect(catalog.categoryTotals('digits-3').listedCount).toBe(0);
   });
 

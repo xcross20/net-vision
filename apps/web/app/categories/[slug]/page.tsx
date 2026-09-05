@@ -107,10 +107,10 @@ export default async function CategoryDetailPage({
       : metrics.subFilter.facets
           .filter((f) => activeDigits.includes(Number(f.value.replace('digits-', ''))))
           .reduce((sum, f) => sum + f.listedCount, 0);
+  const verifiedUnlistedCount = Math.max(metrics.verifiedCount - metrics.listedCount, 0);
   const tokenCountForView =
-    listingStatus === 'not-listed'
-      ? Math.max(memberSupplyForView - listedCountForView, 0)
-      : listedCountForView;
+    listingStatus === 'not-listed' ? verifiedUnlistedCount : listedCountForView;
+  const isSyncing = metrics.marketStatus === 'syncing';
   const tokenCountPct =
     memberSupplyForView > 0 ? (tokenCountForView / memberSupplyForView) * 100 : 0;
 
@@ -128,9 +128,9 @@ export default async function CategoryDetailPage({
         <div className="flex items-center gap-3">
           <span className="text-eyebrow">{metrics.family}</span>
           <LiveIndicator
-            tone={freshness.fresh ? 'green' : 'amber'}
+            tone={isSyncing ? 'amber' : freshness.fresh ? 'green' : 'amber'}
             size={6}
-            label={freshness.fresh ? 'Live' : 'Warming'}
+            label={isSyncing ? 'Syncing market data' : freshness.fresh ? 'Live' : 'Warming'}
           />
         </div>
         <div className="grid grid-cols-1 gap-8 md:grid-cols-12 md:gap-10">
@@ -145,8 +145,15 @@ export default async function CategoryDetailPage({
           <div className="md:col-span-5 flex flex-col gap-4">
             <span className="text-eyebrow-muted">Collection pulse</span>
             <div className="grid grid-cols-2 gap-x-8 gap-y-6 border-y border-[var(--color-border-subtle)] py-6 md:grid-cols-2">
-              <Stat label="Floor" value={payment(metrics.floorPrice, metrics.currency)} emphasis />
-              <Stat label="High ask" value={payment(metrics.ceilingPrice, metrics.currency)} />
+              <Stat
+                label="Floor"
+                value={isSyncing ? 'Syncing' : payment(metrics.floorPrice, metrics.currency)}
+                emphasis
+              />
+              <Stat
+                label="High ask"
+                value={isSyncing ? '—' : payment(metrics.ceilingPrice, metrics.currency)}
+              />
               <Stat
                 label={listingStatus === 'not-listed' ? 'Not listed' : 'Listed'}
                 value={tokenCountForView.toLocaleString()}
@@ -163,7 +170,7 @@ export default async function CategoryDetailPage({
                 sub={
                   metrics.memberSupply !== memberSupplyForView
                     ? `of ${metrics.memberSupply.toLocaleString()} total`
-                    : 'all eligible'
+                    : `${Math.round(metrics.coveragePercent * 1000) / 10}% market coverage`
                 }
               />
             </div>
@@ -202,22 +209,28 @@ export default async function CategoryDetailPage({
           activeDigits={activeDigits}
           listingStatus={listingStatus}
           listedCount={listedCountForView}
-          notListedCount={Math.max(memberSupplyForView - listedCountForView, 0)}
+          notListedCount={verifiedUnlistedCount}
         />
 
         {tokens.length === 0 ? (
           <EmptyState
             title={
-              listingStatus === 'not-listed'
-                ? 'Every member is currently listed'
-                : 'No live listings for this category'
+              isSyncing && listingStatus === 'listed'
+                ? 'Syncing market data'
+                : listingStatus === 'not-listed'
+                  ? isSyncing
+                    ? 'Verified unlisted tokens will appear as the indexer catches up'
+                    : 'Every verified member is currently listed'
+                  : 'No verified listings for this category'
             }
             body={
-              listingStatus === 'not-listed'
-                ? `${memberSupplyForView.toLocaleString()} tokens belong to this category and all currently have an active ask.`
-                : memberSupplyForView > 0
-                  ? `${memberSupplyForView.toLocaleString()} tokens belong to this category, but none are currently listed on the OpenSea orderbook.`
-                  : 'No tokens have been classified into this category yet.'
+              isSyncing
+                ? `${metrics.verifiedCount.toLocaleString()} of ${memberSupplyForView.toLocaleString()} members have verified market state. Unknown tokens are not treated as unlisted.`
+                : listingStatus === 'not-listed'
+                  ? `${memberSupplyForView.toLocaleString()} tokens belong to this category and all verified members currently have an active ask.`
+                  : memberSupplyForView > 0
+                    ? `${memberSupplyForView.toLocaleString()} tokens belong to this category, but none currently have a verified active listing.`
+                    : 'No tokens have been classified into this category yet.'
             }
             tone="muted"
           />

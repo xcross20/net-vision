@@ -1,0 +1,20 @@
+{
+  "sampledAt": "2026-09-05",
+  "page1": {
+    "count": 200,
+    "next": "WzEuMzMsIjIwMjYtMDktMDRUMTk6Mjg6MzIuMjc0WiIsIjc1NjRhOTU2LTZlMzUtMzMwNC05MDAxLTViY2YyOGU0YzNkYyJd",
+    "firstHash": "0x904af93487c10f5fd194a6faf2e648786d300cbc4c9a5d7fbbb3f923a1448c7e",
+    "lastHash": "0x7427df86ef7f28f4982ddf4fdf996aad54abc8cbe05d637c68500703e0eaf449",
+    "uniqueHashes": 200
+  },
+  "page2": {
+    "count": 200,
+    "next": "WzEuMzMsIjIwMjYtMDktMDRUMTk6Mjg6MzIuMjc0WiIsIjc1NjRhOTU2LTZlMzUtMzMwNC05MDAxLTViY2YyOGU0YzNkYyJd",
+    "firstHash": "0x904af93487c10f5fd194a6faf2e648786d300cbc4c9a5d7fbbb3f923a1448c7e",
+    "lastHash": "0x7427df86ef7f28f4982ddf4fdf996aad54abc8cbe05d637c68500703e0eaf449",
+    "uniqueHashes": 200
+  },
+  "overlapCount": 200,
+  "cursorRepeated": true,
+  "pagesIdentical": true
+}

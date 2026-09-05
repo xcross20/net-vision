@@ -1,10 +1,8 @@
 [build]
 builder = "NIXPACKS"
-# Override Nixpacks' auto-detected Next.js build. We wipe the compiled
-# output and the build cache before each build to defeat stale route
-# manifests. The bind-mounted .next/cache was causing the server to
-# serve a cached static 404 page for newly added API routes.
-buildCommand = "rm -rf apps/web/.next && cd apps/web && npm run build"
+# Wipe compiled output before each build. Leave apps/web/.next/cache
+# because Railway bind-mounts it (removing it is EBUSY).
+buildCommand = "rm -rf apps/web/.next/server apps/web/.next/static apps/web/.next/standalone apps/web/.next/types && cd apps/web && npm run build"
 
 [deploy]
 startCommand = "npm run start --workspace=apps/web"

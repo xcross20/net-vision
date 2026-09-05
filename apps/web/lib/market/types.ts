@@ -53,6 +53,14 @@ export type CategoryMetrics = {
   filteredMemberSupply: number;
   totalSupply: number;
   listedCount: number;
+  /** Members whose listing state is LISTED or UNLISTED_VERIFIED. */
+  verifiedCount: number;
+  /** Members whose listing state is UNKNOWN or STALE. */
+  unknownCount: number;
+  /** verifiedCount / memberSupply. */
+  coveragePercent: number;
+  /** Partial coverage must never be presented as a final floor. */
+  marketStatus: 'syncing' | 'live';
   owners: number;
   currency: string;
   floorPrice: number | null;

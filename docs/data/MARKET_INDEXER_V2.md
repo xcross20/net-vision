@@ -238,14 +238,13 @@ The rebuild ships when **all** of the following are true:
 
 Until all eight are true, commerce features (Category Sweep, Value Sweep, alerts, market radar, category bids) stay feature-flagged.
 
-## Storage decision (deferred to PR 2)
+## Storage decision
 
-This doc deliberately leaves the storage engine decision open. Two viable paths:
+**v1 engine: JSON snapshot on disk** (`INDEX_DB_PATH`, default `apps/web/data/market-index.json`).
 
-- **Postgres** (Railway plugin). Best fit for SQL joins across the schema above. Requires provisioning a Railway Postgres database.
-- **SQLite** via better-sqlite3. Zero infra, single-file DB. Worker and web share the file. Easier to operate, harder to scale.
+Why not Postgres yet: Railway currently has no `DATABASE_URL`. Why not better-sqlite3: native compilation on Nixpacks has failed this repo before. 62k Button Presser rows is a few megabytes; the schema in this document is unchanged so a Postgres migration is a copy.
 
-The implementer must pick one before Phase 2 (Token Registry) and record the decision in this file under "Storage decision".
+Worker runtime (v1): same Node process as the web app, fire-and-forget, never awaited from a request handler. Single replica. Heartbeat in `worker_state` (the JSON `worker` object). A separate Railway service is the next step once coverage is live.
 
 ## Phase rollout
 

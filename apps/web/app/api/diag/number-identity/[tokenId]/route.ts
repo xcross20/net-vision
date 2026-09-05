@@ -6,8 +6,6 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-console.log('[diag] module loaded');
-
 /**
  * Diagnostic endpoint used by the number-identity probe. Returns the raw
  * OpenSea NFT fields so we can verify that the contract tokenId equals
@@ -19,7 +17,6 @@ export async function GET(
   _request: Request,
   ctx: { params: Promise<{ tokenId: string }> },
 ) {
-  console.log('[diag] GET called');
   const { tokenId } = await ctx.params;
   if (!/^\d+$/.test(tokenId)) {
     return NextResponse.json({ error: 'tokenId must be a positive integer string' }, { status: 400 });

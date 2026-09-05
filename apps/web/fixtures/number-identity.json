@@ -1,0 +1,378 @@
+{
+  "sampledAt": "2026-09-05T06:01:40Z",
+  "target": "opensea-direct",
+  "samples": [
+    {
+      "requestedTokenId": "1",
+      "identifier": "1",
+      "name": "Button Presser #1",
+      "presserTraitValue": "1"
+    },
+    {
+      "requestedTokenId": "2",
+      "identifier": "2",
+      "name": "Button Presser #2",
+      "presserTraitValue": "2"
+    },
+    {
+      "requestedTokenId": "3",
+      "identifier": "3",
+      "name": "Button Presser #3",
+      "presserTraitValue": "3"
+    },
+    {
+      "requestedTokenId": "4",
+      "identifier": "4",
+      "name": "Button Presser #4",
+      "presserTraitValue": "4"
+    },
+    {
+      "requestedTokenId": "5",
+      "identifier": "5",
+      "name": "Button Presser #5",
+      "presserTraitValue": "5"
+    },
+    {
+      "requestedTokenId": "6",
+      "identifier": "6",
+      "name": "Button Presser #6",
+      "presserTraitValue": "6"
+    },
+    {
+      "requestedTokenId": "7",
+      "identifier": "7",
+      "name": "Button Presser #7",
+      "presserTraitValue": "7"
+    },
+    {
+      "requestedTokenId": "8",
+      "identifier": "8",
+      "name": "Button Presser #8",
+      "presserTraitValue": "8"
+    },
+    {
+      "requestedTokenId": "9",
+      "identifier": "9",
+      "name": "Button Presser #9",
+      "presserTraitValue": "9"
+    },
+    {
+      "requestedTokenId": "10",
+      "identifier": "10",
+      "name": "Button Presser #10",
+      "presserTraitValue": "10"
+    },
+    {
+      "requestedTokenId": "11",
+      "identifier": "11",
+      "name": "Button Presser #11",
+      "presserTraitValue": "11"
+    },
+    {
+      "requestedTokenId": "12",
+      "identifier": "12",
+      "name": "Button Presser #12",
+      "presserTraitValue": "12"
+    },
+    {
+      "requestedTokenId": "13",
+      "identifier": "13",
+      "name": "Button Presser #13",
+      "presserTraitValue": "13"
+    },
+    {
+      "requestedTokenId": "14",
+      "identifier": "14",
+      "name": "Button Presser #14",
+      "presserTraitValue": "14"
+    },
+    {
+      "requestedTokenId": "15",
+      "identifier": "15",
+      "name": "Button Presser #15",
+      "presserTraitValue": "15"
+    },
+    {
+      "requestedTokenId": "16",
+      "identifier": "16",
+      "name": "Button Presser #16",
+      "presserTraitValue": "16"
+    },
+    {
+      "requestedTokenId": "17",
+      "identifier": "17",
+      "name": "Button Presser #17",
+      "presserTraitValue": "17"
+    },
+    {
+      "requestedTokenId": "18",
+      "identifier": "18",
+      "name": "Button Presser #18",
+      "presserTraitValue": "18"
+    },
+    {
+      "requestedTokenId": "19",
+      "identifier": "19",
+      "name": "Button Presser #19",
+      "presserTraitValue": "19"
+    },
+    {
+      "requestedTokenId": "20",
+      "identifier": "20",
+      "name": "Button Presser #20",
+      "presserTraitValue": "20"
+    },
+    {
+      "requestedTokenId": "99",
+      "identifier": "99",
+      "name": "Button Presser #99",
+      "presserTraitValue": "99"
+    },
+    {
+      "requestedTokenId": "100",
+      "identifier": "100",
+      "name": "Button Presser #100",
+      "presserTraitValue": "100"
+    },
+    {
+      "requestedTokenId": "507",
+      "identifier": "507",
+      "name": "Button Presser #507",
+      "presserTraitValue": "507"
+    },
+    {
+      "requestedTokenId": "628",
+      "identifier": "628",
+      "name": "Button Presser #628",
+      "presserTraitValue": "628"
+    },
+    {
+      "requestedTokenId": "635",
+      "identifier": "635",
+      "name": "Button Presser #635",
+      "presserTraitValue": "635"
+    },
+    {
+      "requestedTokenId": "756",
+      "identifier": "756",
+      "name": "Button Presser #756",
+      "presserTraitValue": "756"
+    },
+    {
+      "requestedTokenId": "870",
+      "identifier": "870",
+      "name": "Button Presser #870",
+      "presserTraitValue": "870"
+    },
+    {
+      "requestedTokenId": "966",
+      "identifier": "966",
+      "name": "Button Presser #966",
+      "presserTraitValue": "966"
+    },
+    {
+      "requestedTokenId": "999",
+      "identifier": "999",
+      "name": "Button Presser #999",
+      "presserTraitValue": "999"
+    },
+    {
+      "requestedTokenId": "1000",
+      "identifier": "1000",
+      "name": "Button Presser #1000",
+      "presserTraitValue": "1000"
+    },
+    {
+      "requestedTokenId": "9999",
+      "identifier": "9999",
+      "name": "Button Presser #9999",
+      "presserTraitValue": "9999"
+    },
+    {
+      "requestedTokenId": "10000",
+      "identifier": "10000",
+      "name": "Button Presser #10000",
+      "presserTraitValue": "10000"
+    },
+    {
+      "requestedTokenId": "59522",
+      "identifier": "59522",
+      "name": "Button Presser #59522",
+      "presserTraitValue": "59522"
+    },
+    {
+      "requestedTokenId": "16998",
+      "identifier": "16998",
+      "name": "Button Presser #16998",
+      "presserTraitValue": "16998"
+    },
+    {
+      "requestedTokenId": "44403",
+      "identifier": "44403",
+      "name": "Button Presser #44403",
+      "presserTraitValue": "44403"
+    },
+    {
+      "requestedTokenId": "50216",
+      "identifier": "50216",
+      "name": "Button Presser #50216",
+      "presserTraitValue": "50216"
+    },
+    {
+      "requestedTokenId": "34066",
+      "identifier": "34066",
+      "name": "Button Presser #34066",
+      "presserTraitValue": "34066"
+    },
+    {
+      "requestedTokenId": "49094",
+      "identifier": "49094",
+      "name": "Button Presser #49094",
+      "presserTraitValue": "49094"
+    },
+    {
+      "requestedTokenId": "52763",
+      "identifier": "52763",
+      "name": "Button Presser #52763",
+      "presserTraitValue": "52763"
+    },
+    {
+      "requestedTokenId": "27902",
+      "identifier": "27902",
+      "name": "Button Presser #27902",
+      "presserTraitValue": "27902"
+    },
+    {
+      "requestedTokenId": "5626",
+      "identifier": "5626",
+      "name": "Button Presser #5626",
+      "presserTraitValue": "5626"
+    },
+    {
+      "requestedTokenId": "52707",
+      "identifier": "52707",
+      "name": "Button Presser #52707",
+      "presserTraitValue": "52707"
+    },
+    {
+      "requestedTokenId": "39151",
+      "identifier": "39151",
+      "name": "Button Presser #39151",
+      "presserTraitValue": "39151"
+    },
+    {
+      "requestedTokenId": "4356",
+      "identifier": "4356",
+      "name": "Button Presser #4356",
+      "presserTraitValue": "4356"
+    },
+    {
+      "requestedTokenId": "6692",
+      "identifier": "6692",
+      "name": "Button Presser #6692",
+      "presserTraitValue": "6692"
+    },
+    {
+      "requestedTokenId": "402",
+      "identifier": "402",
+      "name": "Button Presser #402",
+      "presserTraitValue": "402"
+    },
+    {
+      "requestedTokenId": "45442",
+      "identifier": "45442",
+      "name": "Button Presser #45442",
+      "presserTraitValue": "45442"
+    },
+    {
+      "requestedTokenId": "26472",
+      "identifier": "26472",
+      "name": "Button Presser #26472",
+      "presserTraitValue": "26472"
+    },
+    {
+      "requestedTokenId": "50793",
+      "identifier": "50793",
+      "name": "Button Presser #50793",
+      "presserTraitValue": "50793"
+    },
+    {
+      "requestedTokenId": "7915",
+      "identifier": "7915",
+      "name": "Button Presser #7915",
+      "presserTraitValue": "7915"
+    },
+    {
+      "requestedTokenId": "50722",
+      "identifier": "50722",
+      "name": "Button Presser #50722",
+      "presserTraitValue": "50722"
+    },
+    {
+      "requestedTokenId": "57087",
+      "identifier": "57087",
+      "name": "Button Presser #57087",
+      "presserTraitValue": "57087"
+    },
+    {
+      "requestedTokenId": "53146",
+      "identifier": "53146",
+      "name": "Button Presser #53146",
+      "presserTraitValue": "53146"
+    },
+    {
+      "requestedTokenId": "38164",
+      "identifier": "38164",
+      "name": "Button Presser #38164",
+      "presserTraitValue": "38164"
+    },
+    {
+      "requestedTokenId": "17116",
+      "identifier": "17116",
+      "name": "Button Presser #17116",
+      "presserTraitValue": "17116"
+    },
+    {
+      "requestedTokenId": "56783",
+      "identifier": "56783",
+      "name": "Button Presser #56783",
+      "presserTraitValue": "56783"
+    },
+    {
+      "requestedTokenId": "44490",
+      "identifier": "44490",
+      "name": "Button Presser #44490",
+      "presserTraitValue": "44490"
+    },
+    {
+      "requestedTokenId": "44289",
+      "identifier": "44289",
+      "name": "Button Presser #44289",
+      "presserTraitValue": "44289"
+    },
+    {
+      "requestedTokenId": "17730",
+      "identifier": "17730",
+      "name": "Button Presser #17730",
+      "presserTraitValue": "17730"
+    },
+    {
+      "requestedTokenId": "34777",
+      "identifier": "34777",
+      "name": "Button Presser #34777",
+      "presserTraitValue": "34777"
+    },
+    {
+      "requestedTokenId": "44671",
+      "identifier": "44671",
+      "name": "Button Presser #44671",
+      "presserTraitValue": "44671"
+    },
+    {
+      "requestedTokenId": "24321",
+      "identifier": "24321",
+      "name": "Button Presser #24321",
+      "presserTraitValue": "24321"
+    }
+  ]
+}

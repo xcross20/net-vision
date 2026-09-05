@@ -18,6 +18,15 @@ import {
   VIRTUAL_COLLECTION_CATALOG,
   type NumberTrait,
 } from '@net-vision/taxonomy';
+import {
+  applyObservation,
+  coveragePercent,
+  emptyListingRecord,
+  isVerifiedState,
+  marketStatus,
+  type ListingRecord,
+  type ListingState,
+} from './listing-state';
 
 export type SupplyRange = { minTokenId: number; maxTokenId: number };
 
@@ -44,6 +53,10 @@ export type CategoryTotals = {
   slug: string;
   memberSupply: number;
   listedCount: number;
+  verifiedCount: number;
+  unknownCount: number;
+  coveragePercent: number;
+  marketStatus: 'syncing' | 'live';
   floorPrice: number | null;
   ceilingPrice: number | null;
   owners: number;
@@ -86,8 +99,7 @@ export class TokenCatalog {
   private readonly tokensBySlug = new Map<string, string[]>();
   private readonly traitsByToken = new Map<string, NumberTrait[]>();
   private readonly listings = new Map<string, CatalogListing>();
-  private readonly unlisted = new Set<string>();
-  private readonly scanned = new Set<string>();
+  private readonly market = new Map<string, ListingRecord>();
   private readonly salesByToken = new Map<string, CatalogSale[]>();
   private readonly allSales: CatalogSale[] = [];
 
@@ -104,11 +116,19 @@ export class TokenCatalog {
   }
 
   get scannedCount(): number {
-    return this.scanned.size;
+    return [...this.market.values()].filter((row) => row.state !== 'UNKNOWN').length;
   }
 
   get listedCount(): number {
     return this.listings.size;
+  }
+
+  private recordFor(tokenId: string): ListingRecord {
+    return this.market.get(tokenId) ?? emptyListingRecord(tokenId);
+  }
+
+  listingState(tokenId: string): ListingState {
+    return this.recordFor(tokenId).state;
   }
 
   classify(): void {
@@ -166,11 +186,37 @@ export class TokenCatalog {
         continue;
       }
       if (existing && existing.price < listing.price) continue;
-      this.listings.set(listing.tokenId, listing);
-      this.unlisted.delete(listing.tokenId);
-      this.scanned.add(listing.tokenId);
+      this.applyAsk(listing);
     }
     return unique;
+  }
+
+  hydrateListingRecord(record: ListingRecord): void {
+    this.market.set(record.tokenId, record);
+    if (record.state === 'LISTED' && record.price != null) {
+      this.listings.set(record.tokenId, {
+        tokenId: record.tokenId,
+        price: record.price,
+        currency: record.currency ?? 'USDG',
+        listedAt: record.listedAt,
+        ownerAddress: record.seller,
+        orderHash: record.orderHash,
+      });
+    } else {
+      this.listings.delete(record.tokenId);
+    }
+  }
+
+  private applyAsk(listing: CatalogListing): void {
+    const next = applyObservation(this.recordFor(listing.tokenId), {
+      kind: 'ask',
+      price: listing.price,
+      currency: listing.currency,
+      orderHash: listing.orderHash,
+      seller: listing.ownerAddress,
+      listedAt: listing.listedAt,
+    });
+    this.hydrateListingRecord(next);
   }
 
   /**
@@ -179,10 +225,9 @@ export class TokenCatalog {
    */
   confirmScan(tokenId: string, listing: CatalogListing | null): void {
     if (!isInSupplyRange(tokenId, this.range)) return;
-    this.scanned.add(tokenId);
     if (!listing) {
-      this.listings.delete(tokenId);
-      this.unlisted.add(tokenId);
+      const next = applyObservation(this.recordFor(tokenId), { kind: 'no-ask' });
+      this.hydrateListingRecord(next);
       return;
     }
     this.ingestListings([listing]);
@@ -206,32 +251,47 @@ export class TokenCatalog {
   }
 
   isListed(tokenId: string): boolean {
-    return this.listings.has(tokenId);
+    return this.listingState(tokenId) === 'LISTED';
   }
 
   isConfirmedUnlisted(tokenId: string): boolean {
-    return this.unlisted.has(tokenId);
+    return this.listingState(tokenId) === 'UNLISTED_VERIFIED';
   }
 
   isScanned(tokenId: string): boolean {
-    return this.scanned.has(tokenId);
+    return this.listingState(tokenId) !== 'UNKNOWN';
   }
 
   listedIds(slug?: string, facets?: string[]): string[] {
-    if (!slug) return [...this.listings.keys()].sort((a, b) => Number(a) - Number(b));
-    return this.memberIds(slug, facets).filter((tokenId) => this.listings.has(tokenId));
+    if (!slug) {
+      return [...this.listings.keys()].sort((a, b) => Number(a) - Number(b));
+    }
+    return this.memberIds(slug, facets).filter((tokenId) => this.listingState(tokenId) === 'LISTED');
+  }
+
+  unlistedVerifiedIds(slug: string, facets?: string[]): string[] {
+    return this.memberIds(slug, facets).filter(
+      (tokenId) => this.listingState(tokenId) === 'UNLISTED_VERIFIED',
+    );
+  }
+
+  unknownIds(slug: string, facets?: string[]): string[] {
+    return this.memberIds(slug, facets).filter((tokenId) => {
+      const state = this.listingState(tokenId);
+      return state === 'UNKNOWN' || state === 'STALE';
+    });
   }
 
   /**
-   * Members with no known ask. Confirmed unlisted ids stay; ids that
-   * still have an active catalog listing are excluded.
+   * @deprecated Unknown is not unlisted. Use unlistedVerifiedIds().
+   * Kept only so a CI grep can fail if new call sites appear.
    */
   notListedIds(slug: string, facets?: string[]): string[] {
-    return this.memberIds(slug, facets).filter((tokenId) => !this.listings.has(tokenId));
+    return this.unlistedVerifiedIds(slug, facets);
   }
 
   unscannedIds(slug: string, facets?: string[]): string[] {
-    return this.memberIds(slug, facets).filter((tokenId) => !this.scanned.has(tokenId));
+    return this.unknownIds(slug, facets);
   }
 
   recentSales(limit: number): CatalogSale[] {
@@ -260,10 +320,19 @@ export class TokenCatalog {
     const memberSales = members
       .flatMap((tokenId) => this.salesByToken.get(tokenId) ?? [])
       .sort((a, b) => b.occurredAt - a.occurredAt);
+    const verifiedCount = members.filter((tokenId) =>
+      isVerifiedState(this.listingState(tokenId)),
+    ).length;
+    const unknownCount = members.length - verifiedCount;
+    const coverage = coveragePercent(verifiedCount, members.length);
     return {
       slug,
       memberSupply: members.length,
       listedCount: listed.length,
+      verifiedCount,
+      unknownCount,
+      coveragePercent: coverage,
+      marketStatus: marketStatus(coverage),
       floorPrice: prices.length > 0 ? Math.min(...prices) : null,
       ceilingPrice: prices.length > 0 ? Math.max(...prices) : null,
       owners: owners.size,

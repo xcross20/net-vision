@@ -26,17 +26,24 @@ export default async function CategoriesPage() {
         <div className="flex items-center gap-3">
           <span className="text-eyebrow">Categories</span>
           <LiveIndicator
-            tone={freshness.fresh ? 'green' : 'amber'}
+            tone={categories.some((c) => c.marketStatus === 'syncing') ? 'amber' : freshness.fresh ? 'green' : 'amber'}
             size={6}
-            label={freshness.fresh ? 'Live' : 'Warming'}
+            label={
+              categories.some((c) => c.marketStatus === 'syncing')
+                ? 'Syncing market data'
+                : freshness.fresh
+                  ? 'Live'
+                  : 'Warming'
+            }
           />
         </div>
         <h1 className="text-display text-[clamp(2.25rem,5vw,3.5rem)] text-[var(--color-text-primary)]">
           Every algorithmic market
         </h1>
         <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
-          Every token id is classified first, then confirmed against OpenSea. Floors
-          and listing counts are the lowest and counted unique asks in that category.
+          Every token is classified first. Listing counts and floors only become
+          Live once the indexer has verified market state for that category.
+          Unknown tokens are never treated as unlisted.
         </p>
       </header>
 

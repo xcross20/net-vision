@@ -49,7 +49,11 @@ export function CategoryRow({
         </div>
 
         <span className="hidden text-numeral text-sm text-[var(--color-text-primary)] md:inline-block md:w-24 md:text-right">
-          {metrics.floorPrice !== null ? payment(metrics.floorPrice, metrics.currency) : '—'}
+          {metrics.marketStatus === 'syncing'
+            ? 'Syncing'
+            : metrics.floorPrice !== null
+              ? payment(metrics.floorPrice, metrics.currency)
+              : '—'}
         </span>
         <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-20 md:text-right">
           {metrics.memberSupply.toLocaleString()}
@@ -80,13 +84,28 @@ export function CategoryRow({
       </div>
 
       <div className="grid grid-cols-4 gap-3 md:hidden">
-        <Cell label="Floor" value={metrics.floorPrice !== null ? `${metrics.floorPrice.toFixed(2)}` : '—'} unit={metrics.currency} emphasis />
+        <Cell
+          label="Floor"
+          value={
+            metrics.marketStatus === 'syncing'
+              ? 'Syncing'
+              : metrics.floorPrice !== null
+                ? `${metrics.floorPrice.toFixed(2)}`
+                : '—'
+          }
+          unit={metrics.marketStatus === 'syncing' ? undefined : metrics.currency}
+          emphasis
+        />
         <Cell label="Members" value={metrics.memberSupply.toLocaleString()} />
         <Cell label="Listed" value={metrics.listedCount.toLocaleString()} />
         <Cell label="Owners" value={metrics.owners.toLocaleString()} />
       </div>
       <div className="flex items-center justify-between text-[11px] text-[var(--color-text-tertiary)] md:hidden">
-        <LiveIndicator tone="green" size={5} label="Live" />
+        <LiveIndicator
+          tone={metrics.marketStatus === 'syncing' ? 'amber' : 'green'}
+          size={5}
+          label={metrics.marketStatus === 'syncing' ? 'Syncing' : 'Live'}
+        />
         <span className="text-numeral">
           Vol 24h {compact(metrics.volume24hNative)} ETH
         </span>

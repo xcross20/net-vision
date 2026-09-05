@@ -38,8 +38,12 @@ import {
   TokenCatalog,
   type CatalogListing,
   type CatalogSale,
+  type CategoryTotals,
 } from './catalog';
 import { isMissingOpenSeaResource, isOpenSeaRateLimited } from './opensea-errors';
+import { allListingRecords, loadIndex } from '@/lib/index/store';
+import { startBackgroundIndexer } from '@/lib/index/worker';
+import type { ListingObservation } from './listing-state';
 import { buildTokenImageUrl } from '@/lib/data/media';
 import type {
   CategoryMetrics,
@@ -226,6 +230,46 @@ class OpenSeaMarketSource implements MarketSource {
       minTokenId: BUTTON_PRESSER_COLLECTION.minTokenId,
       maxTokenId: BUTTON_PRESSER_COLLECTION.maxTokenId,
     });
+    this.hydrateFromIndex();
+    startBackgroundIndexer((tokenId) => this.lookupListingObservation(tokenId), (record) => {
+      this.catalog.hydrateListingRecord(record);
+      this.categories.clear();
+      this.tokenPages.clear();
+    });
+  }
+
+  private hydrateFromIndex(): void {
+    loadIndex();
+    for (const record of allListingRecords()) {
+      this.catalog.hydrateListingRecord(record);
+    }
+  }
+
+  private async lookupListingObservation(tokenId: string): Promise<ListingObservation> {
+    if (this.isCoolingDown()) {
+      throw new Error('opensea-cooling-down');
+    }
+    try {
+      const listing = await this.client.getBestListing({
+        slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+        tokenId,
+      });
+      if (!listing) return { kind: 'no-ask' };
+      const catalogListing = orderToCatalogListing(listing);
+      if (!catalogListing) return { kind: 'no-ask' };
+      return {
+        kind: 'ask',
+        price: catalogListing.price,
+        currency: catalogListing.currency,
+        orderHash: catalogListing.orderHash,
+        seller: catalogListing.ownerAddress,
+        listedAt: catalogListing.listedAt,
+      };
+    } catch (err) {
+      if (isMissingResource(err)) return { kind: 'no-ask' };
+      if (isOpenSeaRateLimited(err)) this.noteRateLimit();
+      throw err;
+    }
   }
 
   private membersFor(slug: string): MemberSet {
@@ -490,13 +534,13 @@ class OpenSeaMarketSource implements MarketSource {
     if (filter?.category) {
       if (filter.status === 'not-listed') {
         const window = this.catalog
-          .notListedIds(filter.category, filter.facets)
+          .unlistedVerifiedIds(filter.category, filter.facets)
           .slice(offset, offset + want);
         await this.confirmVisibleListings(window);
-        const notListedIds = this.catalog.notListedIds(filter.category, filter.facets);
+        const unlistedIds = this.catalog.unlistedVerifiedIds(filter.category, filter.facets);
         return {
-          tokens: notListedIds.slice(offset, offset + want).map(buildUnlistedCategoryToken),
-          total: notListedIds.length,
+          tokens: unlistedIds.slice(offset, offset + want).map(buildUnlistedCategoryToken),
+          total: unlistedIds.length,
         };
       }
       const listedIds = this.catalog.listedIds(filter.category, filter.facets);
@@ -616,6 +660,10 @@ class OpenSeaMarketSource implements MarketSource {
       filteredMemberSupply: totals.memberSupply,
       totalSupply: snapshot.totalSupply,
       listedCount: totals.listedCount,
+      verifiedCount: totals.verifiedCount,
+      unknownCount: totals.unknownCount,
+      coveragePercent: totals.coveragePercent,
+      marketStatus: totals.marketStatus,
       owners: totals.owners,
       currency: snapshot.currency,
       floorPrice: totals.floorPrice,
@@ -636,7 +684,7 @@ class OpenSeaMarketSource implements MarketSource {
   async listCategories(): Promise<CategoryMetrics[]> {
     await this.ensurePipeline();
     const snapshot = await this.getCollectionSnapshot();
-    return this.catalog.allCategoryTotals().map((totals) => ({
+    return this.catalog.allCategoryTotals().map((totals: CategoryTotals) => ({
       slug: totals.slug,
       name: totals.slug,
       family: 'unknown',
@@ -645,6 +693,10 @@ class OpenSeaMarketSource implements MarketSource {
       filteredMemberSupply: totals.memberSupply,
       totalSupply: snapshot.totalSupply,
       listedCount: totals.listedCount,
+      verifiedCount: totals.verifiedCount,
+      unknownCount: totals.unknownCount,
+      coveragePercent: totals.coveragePercent,
+      marketStatus: totals.marketStatus,
       owners: totals.owners,
       currency: snapshot.currency,
       floorPrice: totals.floorPrice,

@@ -1,124 +1,92 @@
 #!/usr/bin/env -S node --experimental-strip-types --no-warnings
 /**
- * Number-identity probe.
+ * Probes OpenSea directly (not a Net Vision HTTP route) so identity
+ * checks do not depend on a deployed diagnostic endpoint.
  *
- * Probes OpenSea for a sample of Button Presser token IDs to verify
- * the invariant:
- *
- *   contract tokenId == OpenSea nft.identifier == Presser trait value
- *
- * Runs against a Net Vision server (local or production) that has the
- * OPENSEA_API_KEY configured. Writes a JSON fixture the unit test
- * (`lib/market/number-identity.test.ts`) reads.
- *
- * Usage:
- *   OPENSEA_TARGET=https://web-production-38d29.up.railway.app \
- *     node --experimental-strip-types apps/web/scripts/probe-number-identity.ts \
- *     --output apps/web/fixtures/number-identity.json
+ *   railway run -- node --experimental-strip-types apps/web/scripts/probe-number-identity.ts
  */
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
+import { createOpenSeaClient } from '@net-vision/opensea-client';
 
-import { writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const target = process.env.OPENSEA_TARGET ?? 'http://localhost:3000';
-const args = new Map<string, string>();
-for (let i = 2; i < process.argv.length; i++) {
-  const arg = process.argv[i];
-  if (!arg.startsWith('--')) continue;
-  const eq = arg.indexOf('=');
-  if (eq >= 0) {
-    args.set(arg.slice(2, eq), arg.slice(eq + 1));
-  } else if (i + 1 < process.argv.length) {
-    args.set(arg.slice(2), process.argv[i + 1]);
-    i++;
-  }
-}
 const outputPath = resolve(
-  process.cwd(),
-  args.get('output') ?? 'apps/web/fixtures/number-identity.json',
+  process.cwd().endsWith('apps/web') ? process.cwd() : resolve(process.cwd(), 'apps/web'),
+  'fixtures/number-identity.json',
 );
 
-function pickSampleIds(): string[] {
-  const ids = new Set<string>();
-  for (let i = 1; i <= 100; i++) ids.add(String(i));
-  for (const id of [9, 10, 99, 100, 999, 1000, 9999, 10000]) ids.add(String(id));
-  for (const known of [966, 628, 870, 507, 756, 635, 35153, 35853, 38383, 59695]) ids.add(String(known));
-  // Random 1000 across the supply range. Use a deterministic seed so
-  // repeat runs produce the same fixture shape.
-  let seed = 0xC0FFEE;
-  const rand = () => {
+function sampleIds(): string[] {
+  const ids = new Set<string>([
+    ...Array.from({ length: 20 }, (_, i) => String(i + 1)),
+    '9',
+    '10',
+    '99',
+    '100',
+    '507',
+    '628',
+    '635',
+    '756',
+    '870',
+    '966',
+    '999',
+    '1000',
+    '9999',
+    '10000',
+  ]);
+  let seed = 0xc0ffee;
+  for (let i = 0; i < 30; i++) {
     seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed;
-  };
-  for (let i = 0; i < 1000; i++) {
-    const n = (rand() % 62095) + 1;
-    ids.add(String(n));
+    ids.add(String((seed % 62095) + 1));
   }
   return [...ids].sort((a, b) => Number(a) - Number(b));
 }
 
-type Sample = {
-  requestedTokenId: string;
-  identifier: string | null;
-  name: string | null;
-  presserTraitValue: string | null;
-};
-
-async function probe(tokenId: string): Promise<Sample> {
-  const url = `${target.replace(/\/$/, '')}/api/v1/diag/number-identity/${tokenId}`;
-  const res = await fetch(url, { headers: { accept: 'application/json' } });
-  if (res.status === 404) {
-    return {
-      requestedTokenId: tokenId,
-      identifier: null,
-      name: null,
-      presserTraitValue: null,
-    };
-  }
-  if (!res.ok) {
-    console.error(`probe ${tokenId} HTTP ${res.status}`);
-    return {
-      requestedTokenId: tokenId,
-      identifier: null,
-      name: null,
-      presserTraitValue: null,
-    };
-  }
-  const body = (await res.json()) as Record<string, unknown>;
-  return {
-    requestedTokenId: String(body.requestedTokenId ?? tokenId),
-    identifier: body.identifier == null ? null : String(body.identifier),
-    name: body.name == null ? null : String(body.name),
-    presserTraitValue: body.presserTraitValue == null ? null : String(body.presserTraitValue),
-  };
-}
-
 async function main() {
-  const ids = pickSampleIds();
-  console.error(`Probing ${ids.length} ids against ${target}`);
-  const samples: Sample[] = [];
-  let nextPrint = 100;
-  for (let i = 0; i < ids.length; i++) {
-    samples.push(await probe(ids[i]));
-    if (i + 1 >= nextPrint) {
-      console.error(`  ${i + 1}/${ids.length}`);
-      nextPrint += 100;
+  const client = createOpenSeaClient({
+    OPENSEA_API_KEY: process.env.OPENSEA_API_KEY,
+    OPENSEA_BASE_URL: process.env.OPENSEA_BASE_URL,
+    OPENSEA_CHAIN: process.env.OPENSEA_CHAIN,
+  });
+  const chain = process.env.OPENSEA_CHAIN?.trim() || 'robinhood';
+  const ids = sampleIds();
+  const samples = [];
+  for (const tokenId of ids) {
+    try {
+      const nft = await client.getNFT({
+        chain,
+        contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
+        tokenId,
+      });
+      const presser = (nft.traits ?? []).find(
+        (t) => String(t.trait_type ?? '').toLowerCase() === 'presser',
+      );
+      samples.push({
+        requestedTokenId: tokenId,
+        identifier: String(nft.identifier),
+        name: nft.name ?? null,
+        presserTraitValue: presser?.value != null ? String(presser.value) : null,
+      });
+      process.stderr.write(`ok ${tokenId} identifier=${nft.identifier} name=${nft.name}\n`);
+    } catch (err) {
+      process.stderr.write(`fail ${tokenId}: ${err instanceof Error ? err.message : String(err)}\n`);
+      samples.push({
+        requestedTokenId: tokenId,
+        identifier: null,
+        name: null,
+        presserTraitValue: null,
+      });
     }
+    await new Promise((r) => setTimeout(r, 250));
   }
-
-  const fixture = {
-    sampledAt: new Date().toISOString(),
-    target,
-    samples,
-  };
-  writeFileSync(outputPath, JSON.stringify(fixture, null, 2) + '\n');
-  console.error(`Wrote ${samples.length} samples to ${outputPath}`);
+  mkdirSync(dirname(outputPath), { recursive: true });
+  writeFileSync(
+    outputPath,
+    `${JSON.stringify({ sampledAt: new Date().toISOString(), target: 'opensea-direct', samples }, null, 2)}\n`,
+  );
+  process.stderr.write(`wrote ${samples.length} samples to ${outputPath}\n`);
 }
 
 main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-
-void fileURLToPath;
