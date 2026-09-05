@@ -15,8 +15,19 @@ export function CategoryMetricsStrip({ metrics }: { metrics: CategoryMetrics }) 
         />
         <Stat label="Best offer" value={syncing ? '—' : payment(metrics.topOfferPrice, currency)} />
         <Stat
-          label="Listed"
-          value={`${metrics.listedCount.toLocaleString()} / ${metrics.memberSupply.toLocaleString()}`}
+          label={syncing ? 'Known listed' : 'Listed'}
+          value={
+            syncing
+              ? metrics.listedCount.toLocaleString()
+              : `${metrics.listedCount.toLocaleString()} / ${metrics.memberSupply.toLocaleString()}`
+          }
+          sub={
+            syncing
+              ? `Verified ${metrics.verifiedCount.toLocaleString()} / ${metrics.memberSupply.toLocaleString()} · ${(metrics.coveragePercent * 100).toFixed(1)}%`
+              : metrics.staleListedCount > 0
+                ? `${metrics.staleListedCount} awaiting reverification`
+                : undefined
+          }
         />
         <Stat label="Owners" value={metrics.owners.toLocaleString()} />
         <Stat label="24h volume" value={syncing ? '—' : compact(metrics.volume24h)} />
