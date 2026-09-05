@@ -144,6 +144,8 @@ function streamKind(eventType: string | undefined): MarketEventKind | null {
     case 'item_sold':
       return 'sold';
     case 'item_cancelled':
+    case 'order_invalidate':
+    case 'order_invalidated':
       return 'cancelled';
     case 'item_transferred':
       return 'transferred';

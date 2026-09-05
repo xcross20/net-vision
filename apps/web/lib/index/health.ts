@@ -5,6 +5,8 @@
 import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import { databaseUrl } from './pg';
 import {
+  countExistingTokens,
+  countMissingTokens,
   countVerifiedMetadataInRange,
   maintenanceState,
   metadataCheckpoint,
@@ -68,6 +70,10 @@ export type IndexerHealthReport = {
   workerHeartbeatAt: number | null;
   heartbeatAgeMs: number | null;
   embeddedIndexerAllowed: boolean;
+  discoveryMaxTokenId: number;
+  officialExistingSupply: number;
+  tokensExisting: number;
+  tokensMissing: number;
   maintenance: {
     mode: 'stream+rest' | 'rest';
     streamConnected: boolean;
@@ -162,6 +168,10 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
     workerHeartbeatAt: heartbeatAt,
     heartbeatAgeMs,
     embeddedIndexerAllowed: embedded,
+    discoveryMaxTokenId: BUTTON_PRESSER_COLLECTION.maxTokenId,
+    officialExistingSupply: BUTTON_PRESSER_COLLECTION.officialExistingSupply,
+    tokensExisting: countExistingTokens(),
+    tokensMissing: countMissingTokens(),
     maintenance: {
       mode: maint.mode,
       streamConnected: maint.streamConnected,

@@ -47,6 +47,12 @@ describe('indexer health report', () => {
     expect(report.listingCursor).toBe(0);
   });
 
+  it('reports official existing supply separately from discovery max', () => {
+    const report = buildIndexerHealthReport();
+    expect(report.officialExistingSupply).toBe(62093);
+    expect(report.discoveryMaxTokenId).toBe(62095);
+  });
+
   it('exposes maintenance counters defaulting to rest-only', () => {
     const report = buildIndexerHealthReport();
     expect(report.maintenance.mode).toBe('rest');

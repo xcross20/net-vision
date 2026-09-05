@@ -454,6 +454,14 @@ export function countVerifiedMetadataInRange(fromId: number, toId: number): numb
   return count;
 }
 
+export function countExistingTokens(): number {
+  return Object.values(loadIndex().tokens).filter((row) => row.exists).length;
+}
+
+export function countMissingTokens(): number {
+  return Object.values(loadIndex().tokens).filter((row) => row.exists === false).length;
+}
+
 export function persistMetadataMissing(tokenId: string, reason: string): void {
   upsertToken({
     tokenId,

@@ -29,6 +29,7 @@ import {
   enqueueMetadataRetry,
   listingRecord,
   loadIndex,
+  maintenanceState,
   metadataCheckpoint,
   metadataRetryQueue,
   persistMetadataMissing,
@@ -52,6 +53,8 @@ const STEEL_MAX = 4999;
 const ANODISED_MAX = 19999;
 /** Slow enough to leave headroom for page-path OpenSea calls. */
 const PACE_MS = 2_500;
+/** When Stream is connected, the listing walk is drift detection only. */
+const DRIFT_PACE_MS = 15_000;
 const METADATA_PACE_MS = 3_000;
 const RATE_LIMIT_SLEEP_MS = 5 * 60_000;
 const SAVE_EVERY = 10;
@@ -426,7 +429,8 @@ export function startBackgroundIndexer(
           saveIndex();
           await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
         } else {
-          await new Promise((resolve) => setTimeout(resolve, PACE_MS));
+          const pace = maintenanceState().streamConnected ? DRIFT_PACE_MS : PACE_MS;
+          await new Promise((resolve) => setTimeout(resolve, pace));
         }
       }
     } catch (err) {

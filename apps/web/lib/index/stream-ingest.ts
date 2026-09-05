@@ -18,7 +18,7 @@ export async function startOpenSeaStreamIngest(): Promise<boolean> {
   try {
     const [{ OpenSeaStreamClient }, wsMod] = await Promise.all([
       import('@opensea/sdk/stream'),
-      import('ws').catch(() => null),
+      import('ws').catch(() => null) as Promise<{ default?: unknown; WebSocket?: unknown } | null>,
     ]);
     const transport =
       (globalThis as { WebSocket?: unknown }).WebSocket ??
@@ -27,7 +27,7 @@ export async function startOpenSeaStreamIngest(): Promise<boolean> {
     const slug = BUTTON_PRESSER_COLLECTION.openseaSlug;
     const client = new OpenSeaStreamClient({
       apiKey,
-      connectOptions: transport ? { transport } : undefined,
+      connectOptions: transport ? ({ transport } as never) : undefined,
       onError: (err: unknown) => {
         console.warn('[stream] transport error', err instanceof Error ? err.message : err);
         patchMaintenance({
@@ -51,6 +51,12 @@ export async function startOpenSeaStreamIngest(): Promise<boolean> {
     client.onItemCancelled(slug, handle);
     client.onItemTransferred(slug, handle);
     client.onItemMetadataUpdated(slug, handle);
+    const maybeClient = client as unknown as {
+      onOrderInvalidate?: (s: string, cb: (e: unknown) => void) => () => void;
+      onOrderRevalidate?: (s: string, cb: (e: unknown) => void) => () => void;
+    };
+    maybeClient.onOrderInvalidate?.(slug, handle);
+    maybeClient.onOrderRevalidate?.(slug, handle);
     streamStarted = true;
     patchMaintenance({ streamConnected: true, mode: 'stream+rest' });
     saveIndex();
