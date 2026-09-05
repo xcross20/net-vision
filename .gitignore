@@ -16,3 +16,4 @@ coverage/
 .pnp.*
 .tsbuildinfo
 next-env.d.ts
+tsconfig.tsbuildinfo

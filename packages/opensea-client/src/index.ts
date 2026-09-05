@@ -309,7 +309,14 @@ export class OpenSeaClient {
    */
   async resolveChainSlug(): Promise<ChainInfo> {
     const chains = await this.getChains();
-    const match = chains.find((c) => c.chain_id === ROBINHOOD_CHAIN_ID);
+    // Primary match: numeric chain id. OpenSea historically returns this.
+    let match = chains.find((c) => c.chain_id === ROBINHOOD_CHAIN_ID);
+    // Fallback match: case-insensitive name contains "robinhood".
+    // Some OpenSea payloads omit `chain_id` entirely; we still want to
+    // discover the slug rather than fall back to the constructor hint.
+    if (!match) {
+      match = chains.find((c) => /robinhood/i.test(c.name));
+    }
     if (!match) {
       throw new OpenSeaResponseError(
         `Robinhood Chain (chain id ${ROBINHOOD_CHAIN_ID}) not present in /api/v2/chains response`,
@@ -403,7 +410,12 @@ const ROBINHOOD_CHAIN_ID = 1311;
 export const ChainInfoSchema = z
   .object({
     chain: z.string().min(1),
-    chain_id: z.number().int(),
+    /**
+     * Numeric EVM chain id. Optional because OpenSea has shipped
+     * responses without this field; we fall back to name matching
+     * in {@link OpenSeaClient.resolveChainSlug}.
+     */
+    chain_id: z.number().int().optional(),
     name: z.string().min(1),
     native_currency: z.string().optional(),
     erc20_tokens: z.array(z.string()).optional(),

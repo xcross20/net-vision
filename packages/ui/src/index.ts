@@ -10,25 +10,34 @@
 export const designTokens = {
   color: {
     bg: '#08110D',
+    bgElev: '#0B1612',
     panel: '#101B15',
     panelElevated: '#14231B',
+    panelSoft: '#0E1A14',
     green: '#74F0A7',
     greenStrong: '#35C97B',
+    greenDim: '#2A8A57',
     text: '#EAF5EE',
+    textSoft: '#C9DCD0',
     muted: '#9FB6A8',
-    border: '#294335',
+    mutedDim: '#6E8479',
+    border: '#1E3329',
+    borderStrong: '#294335',
     danger: '#FF6B6B',
     warning: '#E8C86A',
   },
   font: {
-    sans: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    mono: '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace',
+    sans: 'var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    mono: 'var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace',
   },
   radius: {
-    sm: '4px',
-    md: '6px',
-    lg: '10px',
+    xs: '4px',
+    sm: '6px',
+    md: '10px',
+    lg: '16px',
+    xl: '24px',
   },
+  easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
 } as const;
 
 export type DesignTokens = typeof designTokens;

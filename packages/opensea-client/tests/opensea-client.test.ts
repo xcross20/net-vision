@@ -15,6 +15,7 @@ function makeFetch(responses: Array<{ status: number; body: unknown; headers?: R
   let i = 0;
   return async (input: RequestInfo | URL): Promise<Response> => {
     const r = responses[i] ?? responses[responses.length - 1];
+    if (!r) throw new Error('no stubbed response');
     i += 1;
     return new Response(JSON.stringify(r.body), {
       status: r.status,
@@ -133,12 +134,15 @@ describe('ChainInfoSchema', () => {
     expect(r.success).toBe(true);
   });
 
-  it('rejects missing chain_id', () => {
+  it('accepts a chain entry without chain_id (name-only fallback path)', () => {
     const r = ChainInfoSchema.safeParse({
       chain: 'robinhood',
       name: 'Robinhood Chain',
     });
-    expect(r.success).toBe(false);
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.chain_id).toBeUndefined();
+    }
   });
 });
 
@@ -204,6 +208,26 @@ describe('OpenSeaClient getChains / resolveChainSlug', () => {
       ]) as typeof fetch,
     });
     await expect(client.resolveChainSlug()).rejects.toBeInstanceOf(OpenSeaResponseError);
+  });
+
+  it('falls back to case-insensitive name match when chain_id is missing', async () => {
+    const client = new OpenSeaClient({
+      baseUrl: BASE_URL,
+      apiKey: 'test-key',
+      chain: '',
+      fetchImpl: makeFetch([
+        {
+          status: 200,
+          body: [
+            { chain: 'ethereum', name: 'Ethereum' },
+            { chain: 'robinhood', name: 'Robinhood Chain' },
+          ],
+        },
+      ]) as typeof fetch,
+    });
+    const resolved = await client.resolveChainSlug();
+    expect(resolved.chain).toBe('robinhood');
+    expect(resolved.chain_id).toBeUndefined();
   });
 });
 

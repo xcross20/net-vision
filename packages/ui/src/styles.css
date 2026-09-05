@@ -2,17 +2,27 @@
 
 :root {
   --nv-bg: #08110D;
+  --nv-bg-elev: #0B1612;
   --nv-panel: #101B15;
   --nv-panel-elevated: #14231B;
+  --nv-panel-soft: #0E1A14;
   --nv-green: #74F0A7;
   --nv-green-strong: #35C97B;
+  --nv-green-dim: #2A8A57;
   --nv-text: #EAF5EE;
+  --nv-text-soft: #C9DCD0;
   --nv-muted: #9FB6A8;
-  --nv-border: #294335;
+  --nv-muted-dim: #6E8479;
+  --nv-border: #1E3329;
+  --nv-border-strong: #294335;
   --nv-danger: #FF6B6B;
   --nv-warning: #E8C86A;
 
-  --nv-radius-sm: 4px;
-  --nv-radius-md: 6px;
-  --nv-radius-lg: 10px;
+  --nv-radius-xs: 4px;
+  --nv-radius-sm: 6px;
+  --nv-radius-md: 10px;
+  --nv-radius-lg: 16px;
+  --nv-radius-xl: 24px;
+
+  --nv-easing: cubic-bezier(0.16, 1, 0.3, 1);
 }

@@ -8,6 +8,7 @@ import { DataFreshnessBadge } from '@/components/DataFreshnessBadge';
 import { getMarketSource } from '@/lib/market';
 import type { Token } from '@/lib/market';
 import { formatPrice } from '@net-vision/ui';
+import { ArrowR } from '@/components/icons';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,76 +34,63 @@ export default async function CategoryDetailPage({
     metrics.memberSupply > 0 ? metrics.listedCount / metrics.memberSupply : 0;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <nav className="text-sm text-[var(--nv-muted)]">
-        <Link href="/categories" className="hover:text-[var(--nv-text)]">
+        <Link href="/categories" className="transition-colors hover:text-[var(--nv-text)]">
           Categories
         </Link>
-        <span className="mx-2">/</span>
-        <span>{metrics.name}</span>
+        <span className="mx-2 text-[var(--nv-muted-dim)]">/</span>
+        <span className="text-[var(--nv-text)]">{metrics.name}</span>
       </nav>
 
       <header className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
-          <span className="text-[var(--nv-green)] text-xs uppercase tracking-[0.18em]">
-            {metrics.family}
-          </span>
+          <span className="nv-eyebrow">{metrics.family}</span>
           <DataFreshnessBadge freshness={freshness} />
         </div>
-        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">{metrics.name}</h1>
-        <p className="text-[var(--nv-muted)] max-w-2xl">{metrics.description}</p>
+        <h1 className="nv-display text-4xl md:text-5xl">{metrics.name}</h1>
+        <p className="nv-body">{metrics.description}</p>
       </header>
 
-      <section className="grid grid-cols-2 md:grid-cols-5 gap-6 border-y border-[var(--nv-border)] py-6">
-        <div className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Members</span>
-          <span className="text-2xl font-semibold nv-mono">{metrics.memberSupply}</span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Listed</span>
-          <span className="text-2xl font-semibold nv-mono">{metrics.listedCount}</span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Listed %</span>
-          <span className="text-2xl font-semibold nv-mono">{(listedPct * 100).toFixed(1)}%</span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Floor</span>
-          <span className="text-2xl font-semibold nv-mono">
-            {formatPrice(metrics.floorPriceEth)}
-          </span>
-        </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-xs uppercase tracking-wider text-[var(--nv-muted)]">Owners</span>
-          <span className="text-2xl font-semibold nv-mono">
-            {metrics.owners.toLocaleString()}
-          </span>
-        </div>
+      <section className="grid grid-cols-2 gap-x-6 gap-y-5 border-y border-[var(--nv-border)] py-6 md:grid-cols-5">
+        <Stat label="Members" value={metrics.memberSupply.toLocaleString()} />
+        <Stat label="Listed" value={metrics.listedCount.toLocaleString()} />
+        <Stat label="Listed %" value={`${(listedPct * 100).toFixed(1)}%`} />
+        <Stat label="Floor" value={formatPrice(metrics.floorPriceEth)} accent />
+        <Stat label="Owners" value={metrics.owners.toLocaleString()} />
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-xs uppercase tracking-[0.18em] text-[var(--nv-muted)]">
-          Active listings
-        </h2>
+        <div className="flex items-end justify-between gap-4">
+          <h2 className="nv-display text-2xl md:text-3xl">Active listings</h2>
+          <span className="nv-label">{tokens.length} live</span>
+        </div>
         {tokens.length === 0 ? (
-          <div className="nv-panel p-6 text-sm text-[var(--nv-muted)]">
-            No live listings for this category right now.
+          <div className="nv-panel-soft flex flex-col gap-2 p-6 md:p-8">
+            <span className="text-base font-semibold tracking-tight text-[var(--nv-text)]">
+              No live listings for this category right now
+            </span>
+            <p className="text-sm leading-relaxed text-[var(--nv-muted)]">
+              {metrics.memberSupply > 0
+                ? `${metrics.memberSupply.toLocaleString()} tokens belong to this category, but none are currently listed on the OpenSea orderbook.`
+                : 'No tokens have been classified into this category yet.'}
+            </p>
           </div>
         ) : (
           <>
-            <div className="hidden md:grid grid-cols-12 gap-4 px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--nv-muted)] border-y border-[var(--nv-border)]">
+            <div className="hidden grid-cols-12 gap-4 border-y border-[var(--nv-border)] px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--nv-muted)] md:grid">
               <div className="col-span-1">Token</div>
               <div className="col-span-4">Image</div>
               <div className="col-span-3">Traits</div>
               <div className="col-span-2 text-right">Price</div>
               <div className="col-span-2 text-right">Owner</div>
             </div>
-            <div className="hidden md:flex flex-col">
+            <div className="hidden flex-col md:flex">
               {tokens.map((t: Token) => (
                 <TokenRow key={t.tokenId} token={t} />
               ))}
             </div>
-            <div className="md:hidden nv-grid">
+            <div className="nv-grid-tokens md:hidden">
               {tokens.map((t: Token) => (
                 <TokenCard key={t.tokenId} token={t} />
               ))}
@@ -110,6 +98,33 @@ export default async function CategoryDetailPage({
           </>
         )}
       </section>
+
+      <Link
+        href="/market"
+        className="nv-button nv-button-ghost self-start"
+      >
+        All listings
+        <ArrowR size={14} weight="bold" />
+      </Link>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="nv-stat-label">{label}</span>
+      <span className={accent ? 'nv-stat-value nv-stat-value-strong' : 'nv-stat-value'}>
+        {value}
+      </span>
     </div>
   );
 }

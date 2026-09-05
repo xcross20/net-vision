@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
+import { motion, AnimatePresence } from 'framer-motion';
+import { CloseIcon, WalletIcon } from '@/components/icons';
 
 export function ConnectButton() {
   const { address, isConnected } = useAccount();
@@ -19,9 +21,11 @@ export function ConnectButton() {
         <button
           type="button"
           onClick={() => disconnect()}
-          className="text-xs text-[var(--nv-muted)] hover:text-[var(--nv-text)]"
+          className="nv-icon-btn"
+          aria-label="Disconnect wallet"
+          title="Disconnect"
         >
-          Disconnect
+          <CloseIcon size={14} />
         </button>
       </div>
     );
@@ -29,58 +33,82 @@ export function ConnectButton() {
 
   return (
     <>
-      <button
+      <motion.button
         type="button"
         onClick={() => setOpen(true)}
-        className="nv-button nv-button-ghost text-xs px-3 py-1.5"
+        className="nv-button nv-button-ghost"
+        whileTap={{ scale: 0.97 }}
       >
+        <WalletIcon size={14} weight="duotone" />
         Connect
-      </button>
-      {open ? (
-        <div
-          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            className="nv-panel p-6 w-full max-w-md flex flex-col gap-4"
-            onClick={(e) => e.stopPropagation()}
+      </motion.button>
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(4,9,7,0.7)] backdrop-blur-sm p-4"
+            onClick={() => setOpen(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
           >
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Connect a wallet</h2>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="text-[var(--nv-muted)] hover:text-[var(--nv-text)]"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-sm text-[var(--nv-muted)]">
-              Net Vision is non-custodial. You sign every transaction with your own wallet;
-              we never see your seed phrase or private key.
-            </p>
-            <div className="flex flex-col gap-2">
-              {connectors.map((c) => (
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Connect wallet"
+              className="nv-panel w-full max-w-md flex flex-col gap-5 p-6"
+              onClick={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={{ type: 'spring', stiffness: 220, damping: 26 }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <WalletIcon size={18} weight="duotone" />
+                  <h2 className="text-base font-semibold tracking-tight">Connect a wallet</h2>
+                </div>
                 <button
-                  key={c.uid}
                   type="button"
-                  onClick={() => {
-                    connect({ connector: c });
-                    setOpen(false);
-                  }}
-                  disabled={status === 'pending'}
-                  className="nv-button nv-button-ghost justify-start"
+                  onClick={() => setOpen(false)}
+                  className="nv-icon-btn"
+                  aria-label="Close"
                 >
-                  {c.name}
+                  <CloseIcon size={14} />
                 </button>
-              ))}
-            </div>
-            {error ? (
-              <div className="text-xs text-[var(--nv-danger)]">{error.message}</div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+              </div>
+              <p className="text-sm leading-relaxed text-[var(--nv-muted)]">
+                Net Vision is non-custodial. You sign every transaction with your own wallet;
+                we never see your seed phrase or private key.
+              </p>
+              <div className="flex flex-col gap-2">
+                {connectors.map((c) => (
+                  <motion.button
+                    key={c.uid}
+                    type="button"
+                    onClick={() => {
+                      connect({ connector: c });
+                      setOpen(false);
+                    }}
+                    disabled={status === 'pending'}
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="nv-button nv-button-ghost justify-between"
+                  >
+                    <span>{c.name}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-[var(--nv-muted)]">
+                      Connect
+                    </span>
+                  </motion.button>
+                ))}
+              </div>
+              {error ? (
+                <div className="nv-danger-banner text-sm">{error.message}</div>
+              ) : null}
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }

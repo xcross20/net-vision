@@ -4,6 +4,7 @@ import { getMarketSource } from '@/lib/market';
 import type { CategoryMetrics } from '@/lib/market';
 import { formatPrice } from '@net-vision/ui';
 import { DataFreshnessBadge } from '@/components/DataFreshnessBadge';
+import { ArrowR, StarIcon } from '@/components/icons';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -17,72 +18,93 @@ export default async function CategoriesPage() {
     getMarketSource().getFreshness(),
   ]);
 
+  const populated = categories.filter((c) => c.memberSupply > 0);
+  const empty = categories.length === 0;
+
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
+    <div className="flex flex-col gap-8">
+      <header className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
-          <span className="text-[var(--nv-green)] text-xs uppercase tracking-[0.18em]">
-            Categories
-          </span>
+          <span className="nv-eyebrow">Categories</span>
           <DataFreshnessBadge freshness={freshness} />
         </div>
-        <h1 className="text-2xl md:text-3xl font-semibold">Every algorithmic market</h1>
-        <p className="text-[var(--nv-muted)] max-w-2xl">
-          Categories are computed deterministically from the token number. Floors and listings
-          are live from the OpenSea orderbook.
+        <h1 className="nv-display text-3xl md:text-5xl">Every algorithmic market</h1>
+        <p className="nv-body">
+          Categories are computed deterministically from each token&apos;s number. Floors and
+          listing counts are live from the OpenSea orderbook.
         </p>
       </header>
 
-      <div className="hidden md:grid grid-cols-12 gap-4 px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--nv-muted)] border-y border-[var(--nv-border)]">
-        <div className="col-span-1" />
-        <div className="col-span-5">Category</div>
-        <div className="col-span-2 text-right">Floor</div>
-        <div className="col-span-1 text-right">Listed</div>
-        <div className="col-span-1 text-right">Total</div>
-        <div className="col-span-2 text-right">Owners</div>
-      </div>
-
-      <div className="flex flex-col">
-        {categories.length === 0 ? (
-          <div className="nv-panel p-6 text-sm text-[var(--nv-muted)]">
-            Live category floors are unavailable while the OpenSea indexer warms up.
+      {empty ? (
+        <div className="nv-panel-soft flex flex-col gap-3 p-6 md:p-8">
+          <span className="text-base font-semibold tracking-tight text-[var(--nv-text)]">
+            Live category floors are warming up
+          </span>
+          <p className="text-sm leading-relaxed text-[var(--nv-muted)]">
+            The OpenSea indexer has not yet surfaced listing data for Button Presser. Pull in a
+            few minutes, or browse the market directly.
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-[var(--nv-radius-lg)] border border-[var(--nv-border)]">
+          <div className="hidden border-b border-[var(--nv-border)] bg-[var(--nv-panel-soft)] px-4 py-2 md:block">
+            <div className="grid grid-cols-12 gap-4 text-[10px] uppercase tracking-wider text-[var(--nv-muted)]">
+              <div className="col-span-5">Category</div>
+              <div className="col-span-2 text-right">Floor</div>
+              <div className="col-span-1 text-right">Listed</div>
+              <div className="col-span-1 text-right">Total</div>
+              <div className="col-span-2 text-right">Owners</div>
+              <div className="col-span-1" />
+            </div>
           </div>
-        ) : (
-          categories.map((c) => (
-            <CategoryRow key={c.slug} metrics={c} />
-          ))
-        )}
-      </div>
+          <div className="flex flex-col divide-y divide-[var(--nv-border)] bg-[var(--nv-bg)]">
+            {populated.map((c) => (
+              <CategoryRow key={c.slug} metrics={c} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function CategoryRow({
-  metrics,
-}: {
-  metrics: CategoryMetrics;
-}) {
+function CategoryRow({ metrics }: { metrics: CategoryMetrics }) {
   return (
     <Link
       href={`/categories/${metrics.slug}`}
-      className="grid grid-cols-12 gap-4 items-center px-3 py-4 border-b border-[var(--nv-border)] hover:bg-[var(--nv-panel-elevated)] transition-colors"
+      className="group grid grid-cols-12 items-center gap-4 px-4 py-4 transition-colors hover:bg-[var(--nv-panel-elevated)]"
     >
-      <div className="col-span-1 text-[var(--nv-muted)]">★</div>
-      <div className="col-span-5">
-        <div className="font-medium">{metrics.name}</div>
-        <div className="text-xs text-[var(--nv-muted)] line-clamp-1">{metrics.description}</div>
+      <div className="col-span-12 flex items-center gap-3 md:col-span-5">
+        <StarIcon
+          size={14}
+          weight="duotone"
+          className="text-[var(--nv-green)] transition-transform group-hover:scale-110"
+        />
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-semibold tracking-tight text-[var(--nv-text)]">
+            {metrics.name}
+          </span>
+          <span className="truncate text-xs text-[var(--nv-muted)]">{metrics.description}</span>
+        </div>
       </div>
-      <div className="col-span-2 text-right text-sm nv-mono">
+      <div className="col-span-6 text-right text-sm nv-mono md:col-span-2">
         {formatPrice(metrics.floorPriceEth)}
       </div>
-      <div className="col-span-1 text-right text-sm nv-mono">
+      <div className="col-span-3 text-right text-sm nv-mono md:col-span-1">
         {metrics.listedCount.toLocaleString()}
       </div>
-      <div className="col-span-1 text-right text-sm nv-mono">
+      <div className="col-span-3 text-right text-sm nv-mono text-[var(--nv-muted)] md:col-span-1 md:text-[var(--nv-text)]">
         {metrics.memberSupply.toLocaleString()}
       </div>
-      <div className="col-span-2 text-right text-sm nv-mono">
+      <div className="col-span-12 text-right text-sm nv-mono md:col-span-2">
         {metrics.owners.toLocaleString()}
+      </div>
+      <div className="col-span-12 hidden justify-end md:col-span-1 md:flex">
+        <ArrowR
+          size={14}
+          weight="bold"
+          className="text-[var(--nv-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--nv-green)]"
+        />
       </div>
     </Link>
   );

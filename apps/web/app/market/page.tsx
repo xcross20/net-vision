@@ -11,6 +11,7 @@ import { TokenRow } from '@/components/TokenRow';
 import { DataFreshnessBadge } from '@/components/DataFreshnessBadge';
 import { getMarketSource } from '@/lib/market';
 import type { Token } from '@/lib/market';
+import { FilterIcon } from '@/components/icons';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -23,37 +24,41 @@ export default async function MarketPage() {
   const freshness = await getMarketSource().getFreshness();
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-2">
+    <div className="flex flex-col gap-8">
+      <header className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
-          <span className="text-[var(--nv-green)] text-xs uppercase tracking-[0.18em]">
-            Market
-          </span>
+          <span className="nv-eyebrow">Market</span>
           <DataFreshnessBadge freshness={freshness} />
         </div>
-        <h1 className="text-2xl md:text-3xl font-semibold">Every listing</h1>
-        <p className="text-[var(--nv-muted)]">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <h1 className="nv-display text-3xl md:text-5xl">Every active listing</h1>
+          <span className="nv-label inline-flex items-center gap-1.5">
+            <FilterIcon size={12} weight="bold" />
+            {tokens.length} live
+          </span>
+        </div>
+        <p className="nv-body">
           {tokens.length === 0
             ? 'Live listings are unavailable while the OpenSea indexer warms up.'
-            : `${tokens.length} active listings on Robinhood Chain.`}
+            : 'Active asks on Button Presser, ordered by the live OpenSea orderbook. Connect a wallet to buy or make an offer.'}
         </p>
       </header>
 
       {tokens.length > 0 ? (
         <>
-          <div className="hidden md:grid grid-cols-12 gap-4 px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--nv-muted)] border-y border-[var(--nv-border)]">
+          <div className="hidden grid-cols-12 gap-4 border-y border-[var(--nv-border)] px-3 py-2 text-[10px] uppercase tracking-wider text-[var(--nv-muted)] md:grid">
             <div className="col-span-1">Token</div>
             <div className="col-span-4">Image</div>
             <div className="col-span-3">Traits</div>
             <div className="col-span-2 text-right">Price</div>
             <div className="col-span-2 text-right">Owner</div>
           </div>
-          <div className="hidden md:flex flex-col">
+          <div className="hidden flex-col md:flex">
             {tokens.map((t: Token) => (
               <TokenRow key={t.tokenId} token={t} />
             ))}
           </div>
-          <div className="md:hidden nv-grid">
+          <div className="nv-grid-tokens md:hidden">
             {tokens.map((t: Token) => (
               <TokenCard key={t.tokenId} token={t} />
             ))}
