@@ -1,6 +1,6 @@
 # ADR 0003: OpenSea Stream for post-bootstrap maintenance
 
-**Status:** Accepted (slice 4; gated on spike)  
+**Status:** Accepted (slice 4 implemented: Stream + REST poll)  
 **Date:** 2026-09-05  
 **Spec:** `docs/data/SPEC_ALWAYS_ON_INDEXER.md` claim 7
 
@@ -49,3 +49,11 @@ Riskiest unknown from the PM spec: whether Stream covers Button Presser on Robin
 ## Revisit if
 
 - Spike shows zero Stream events while REST activity exists → fall back to decision §3 and amend claim 7 test to “events endpoint lag &lt; N minutes” instead of websocket push.
+
+## Implementation (2026-09-05)
+
+- Stream client joins `collection:button-presser` (confirmed).
+- Worker always runs a 45s REST collection-events poll as catch-up.
+- Token-local apply: listed / sold / cancelled / transferred / metadata.
+- Slow listing + metadata loops remain drift/bootstrap.
+- Health: `maintenance.{mode,streamConnected,eventsLast15m,restLastPollAt}`.

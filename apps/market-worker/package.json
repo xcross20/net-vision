@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@net-vision/web": "*",
+    "@opensea/sdk": "^12.1.0",
     "tsx": "^4.19.4"
   },
   "engines": {

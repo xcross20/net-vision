@@ -63,6 +63,7 @@ import {
   writeListing,
   writeWorkerCheckpoint,
 } from '@/lib/index/store';
+import { startMarketMaintenance } from '@/lib/index/maintenance';
 import { PRIORITY_TOKEN_IDS, startBackgroundIndexer } from '@/lib/index/worker';
 import {
   applyListedPercentage,
@@ -308,6 +309,7 @@ class OpenSeaMarketSource implements MarketSource {
         }
       },
     );
+    startMarketMaintenance(this.client);
   }
 
   private hydrateFromIndex(): void {

@@ -20,6 +20,7 @@
     "@net-vision/taxonomy": "*",
     "@net-vision/transaction-policy": "*",
     "@net-vision/ui": "*",
+    "@opensea/sdk": "^12.1.0",
     "@phosphor-icons/react": "^2.1.10",
     "@tailwindcss/postcss": "^4.3.3",
     "@tanstack/react-query": "^5.102.8",

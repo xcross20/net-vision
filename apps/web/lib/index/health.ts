@@ -6,11 +6,13 @@ import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import { databaseUrl } from './pg';
 import {
   countVerifiedMetadataInRange,
+  maintenanceState,
   metadataCheckpoint,
   metadataRetryQueue,
   restoredFrom,
   workerCheckpoint,
 } from './store';
+import { eventsInWindow } from './market-event';
 import { BRASS_EXPECTED, isIndexerRunning, isMetadataBootstrapRunning } from './worker';
 
 export const WORKER_HEARTBEAT_STALE_MS = 60_000;
@@ -66,6 +68,17 @@ export type IndexerHealthReport = {
   workerHeartbeatAt: number | null;
   heartbeatAgeMs: number | null;
   embeddedIndexerAllowed: boolean;
+  maintenance: {
+    mode: 'stream+rest' | 'rest';
+    streamConnected: boolean;
+    streamLastEventAt: number | null;
+    streamEventsTotal: number;
+    restLastEventAt: number | null;
+    restEventsTotal: number;
+    restLastPollAt: number | null;
+    eventsLast15m: number;
+    lastError: string | null;
+  };
 };
 
 function progressPercent(cursor: number, total: number): number {
@@ -101,6 +114,7 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
   const embedded = process.env.INDEXER_EMBEDDED === 'true';
   const listingRunning = embedded ? isIndexerRunning() : workerOnline;
   const metadataRunning = embedded ? isMetadataBootstrapRunning() : workerOnline;
+  const maint = maintenanceState();
 
   return {
     workerOnline,
@@ -148,5 +162,16 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
     workerHeartbeatAt: heartbeatAt,
     heartbeatAgeMs,
     embeddedIndexerAllowed: embedded,
+    maintenance: {
+      mode: maint.mode,
+      streamConnected: maint.streamConnected,
+      streamLastEventAt: maint.streamLastEventAt,
+      streamEventsTotal: maint.streamEventsTotal,
+      restLastEventAt: maint.restLastEventAt,
+      restEventsTotal: maint.restEventsTotal,
+      restLastPollAt: maint.restLastPollAt,
+      eventsLast15m: eventsInWindow(maint.eventTimestamps, now),
+      lastError: maint.lastError,
+    },
   };
 }

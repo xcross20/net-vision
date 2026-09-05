@@ -46,4 +46,11 @@ describe('indexer health report', () => {
     expect(report.brassComplete).toBe(false);
     expect(report.listingCursor).toBe(0);
   });
+
+  it('exposes maintenance counters defaulting to rest-only', () => {
+    const report = buildIndexerHealthReport();
+    expect(report.maintenance.mode).toBe('rest');
+    expect(report.maintenance.streamConnected).toBe(false);
+    expect(report.maintenance.eventsLast15m).toBe(0);
+  });
 });
