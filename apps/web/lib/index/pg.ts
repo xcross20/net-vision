@@ -14,7 +14,7 @@ import type { FloorSnapshot, SaleAttribution } from '../market/engine';
 import type { TokenFacet } from '@net-vision/taxonomy';
 
 const BLOB_ID = 'market-index';
-const WORKER_ID = 'web-indexer';
+const WORKER_ID = 'market-worker';
 
 /** Inlined so Next/Nixpacks never lose schema.sql at runtime. */
 const SCHEMA_SQL = `

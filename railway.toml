@@ -4,13 +4,20 @@ builder = "NIXPACKS"
 # because Railway bind-mounts it (removing it is EBUSY).
 buildCommand = "rm -rf apps/web/.next/server apps/web/.next/static apps/web/.next/standalone apps/web/.next/types && cd apps/web && npm run build"
 
+# Default service = web. Add a second Railway service for the indexer:
+#   startCommand = "npm run start --workspace=apps/market-worker"
+#   replicas = 1
+# See docs/deploy/RAILWAY_MARKET_WORKER.md (ADR 0002).
 [deploy]
 startCommand = "npm run start --workspace=apps/web"
+# /api/health is OpenSea-free (local index only). Safe for Railway probes.
 healthcheckPath = "/api/health"
-healthcheckTimeout = 60
+healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
 # Railway sets $PORT to 8080 by default; Next.js must bind to it.
 [env]
 PORT = "8080"
+# Production web must NOT embed the indexer (worker service owns writes).
+INDEXER_EMBEDDED = "false"

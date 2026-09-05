@@ -1,16 +1,36 @@
 import { NextResponse } from 'next/server';
 import { getMarketSource } from '@/lib/market';
-import { workerCheckpoint } from '@/lib/index/store';
-import { isIndexerRunning } from '@/lib/index/worker';
+import {
+  metadataCheckpoint,
+  refreshIndexFromPostgres,
+  workerCheckpoint,
+} from '@/lib/index/store';
+import { isIndexerRunning, isMetadataBootstrapRunning } from '@/lib/index/worker';
+import { buildIndexerHealthReport } from '@/lib/index/health';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  try {
+    await refreshIndexFromPostgres();
+  } catch {
+    /* fall through to in-memory / local JSON */
+  }
   const categories = await getMarketSource().listCategories();
   const worker = workerCheckpoint();
+  const metadataWorker = metadataCheckpoint();
+  const indexer = buildIndexerHealthReport();
   return NextResponse.json({
     indexerRunning: isIndexerRunning(),
+    metadataBootstrapRunning: isMetadataBootstrapRunning(),
+    workerOnline: indexer.workerOnline,
     worker,
+    metadataWorker,
+    brassMetadataVerified: indexer.brassMetadataVerified,
+    brassExpected: indexer.brassExpected,
+    retriesQueued: indexer.retriesQueued,
+    /** Prefer /api/v1/health/indexer for the full operator surface. */
+    indexerHealthPath: '/api/v1/health/indexer',
     categories: categories.map((c) => ({
       slug: c.slug,
       memberCount: c.memberSupply,

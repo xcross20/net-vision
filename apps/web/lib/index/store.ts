@@ -246,6 +246,28 @@ export async function hydrateIndexFromPostgres(): Promise<HydrateSource> {
   return 'empty';
 }
 
+/**
+ * Read-only refresh for operator health. Loads Postgres into memory without
+ * bumping snapshotRevision / dual-writing (web must not fight the worker).
+ */
+export async function refreshIndexFromPostgres(): Promise<HydrateSource> {
+  try {
+    const { databaseUrl, loadSnapshotFromPg } = await import('./pg');
+    if (databaseUrl()) {
+      const fromPg = await loadSnapshotFromPg();
+      if (fromPg && snapshotHasProgress(fromPg)) {
+        memory = coerceSnapshot({ ...fromPg, restoredFrom: 'postgres' });
+        return 'postgres';
+      }
+    }
+  } catch {
+    /* keep current memory */
+  }
+  const local = loadIndex();
+  if (snapshotHasProgress(local)) return local.restoredFrom === 'postgres' ? 'postgres' : 'json';
+  return 'empty';
+}
+
 export function resetIndexForTests(snapshot?: IndexSnapshot): void {
   memory = snapshot ?? emptySnapshot();
 }
