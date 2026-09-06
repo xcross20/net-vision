@@ -25,8 +25,13 @@ import {
 } from '../market/listing-state';
 import {
   walkerPaceMs,
+  WALKER_COOLDOWN_PACE_MS,
 } from './walker-pace';
 import {
+  recordWalkerTick,
+} from './walker-metrics';
+import {
+  countVerifiedListings,
   countVerifiedMetadataInRange,
   dueMetadataRetries,
   enqueueMetadataRetry,
@@ -232,11 +237,19 @@ export async function runIndexerPass(
     await reconcileOne(tokenId, lookup, options.sink);
     cursor += 1;
     processed += 1;
+    const newProcessedTotal = checkpoint.processedTotal + processed;
     writeWorkerCheckpoint({
       cursor,
-      processedTotal: checkpoint.processedTotal + processed,
+      processedTotal: newProcessedTotal,
       phase: cursor >= queue.length ? 'hot-refresh' : 'bootstrap',
       lastError: null,
+    });
+    // Walker throughput sample. countVerifiedListings() reads the
+    // persisted index, which was just updated by reconcileOne ->
+    // applyObservation -> writeListing.
+    recordWalkerTick({
+      processedTotal: newProcessedTotal,
+      verifiedCount: countVerifiedListings(),
     });
     if (processed % SAVE_EVERY === 0) saveIndex();
     if (options.sleepMs && options.sleepMs > 0) {

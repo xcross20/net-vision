@@ -60,4 +60,21 @@ describe('indexer health report', () => {
     expect(report.maintenance.streamConnected).toBe(false);
     expect(report.maintenance.eventsLast15m).toBe(0);
   });
+
+  it('reports walker throughput and coverage rise rate from the rolling window', async () => {
+    const { recordWalkerTick, resetWalkerMetricsForTests } = await import('./walker-metrics');
+    resetWalkerMetricsForTests();
+    // No samples yet: both metrics are null.
+    expect(buildIndexerHealthReport().walkerTokensPerMinute).toBeNull();
+    expect(buildIndexerHealthReport().coverageRisePercentPerHour).toBeNull();
+
+    const t0 = Date.now();
+    recordWalkerTick({ processedTotal: 0, verifiedCount: 0 }, t0);
+    recordWalkerTick({ processedTotal: 30, verifiedCount: 30 }, t0 + 60_000);
+
+    const report = buildIndexerHealthReport(t0 + 60_000);
+    expect(report.walkerTokensPerMinute).toBe(30);
+    expect(report.coverageRisePercentPerHour).not.toBeNull();
+    expect(report.coverageRisePercentPerHour!).toBeGreaterThan(0);
+  });
 });

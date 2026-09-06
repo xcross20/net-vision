@@ -18,6 +18,7 @@ import { eventsInWindow } from './market-event';
 import { deriveStreamHealth } from './stream-health';
 import type { StreamHealth } from './store';
 import { BRASS_EXPECTED, isIndexerRunning, isMetadataBootstrapRunning } from './worker';
+import { coverageRisePercentPerHour, walkerTokensPerMinute } from './walker-metrics';
 
 export const WORKER_HEARTBEAT_STALE_MS = 60_000;
 
@@ -88,6 +89,10 @@ export type IndexerHealthReport = {
     eventsLast15m: number;
     lastError: string | null;
   };
+  /** Walker tokens processed per minute, averaged over the last 5 min. */
+  walkerTokensPerMinute: number | null;
+  /** Verified-listing coverage rise, percent-per-hour, last 5 min. */
+  coverageRisePercentPerHour: number | null;
 };
 
 function progressPercent(cursor: number, total: number): number {
@@ -195,5 +200,7 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
       eventsLast15m: restEventsLast15m,
       lastError: maint.lastError,
     },
+    walkerTokensPerMinute: walkerTokensPerMinute(now),
+    coverageRisePercentPerHour: coverageRisePercentPerHour(now),
   };
 }

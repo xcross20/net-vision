@@ -481,6 +481,16 @@ export function countMissingTokens(): number {
   return Object.values(loadIndex().tokens).filter((row) => row.exists === false).length;
 }
 
+/** LISTED + UNLISTED_VERIFIED listing records. STALE and UNKNOWN excluded. */
+export function countVerifiedListings(): number {
+  const listings = loadIndex().listings;
+  let count = 0;
+  for (const record of Object.values(listings)) {
+    if (record.state === 'LISTED' || record.state === 'UNLISTED_VERIFIED') count += 1;
+  }
+  return count;
+}
+
 export function persistMetadataMissing(tokenId: string, reason: string): void {
   upsertToken({
     tokenId,
