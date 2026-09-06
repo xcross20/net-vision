@@ -36,6 +36,10 @@ export type WorkerCheckpoint = {
   workerStartedAt: number | null;
   workerHeartbeatAt: number | null;
   lastSuccessAt: number | null;
+  /** Walker tokens/min, last 5 min. Computed in worker, persisted so web can read it. */
+  walkerTokensPerMinute: number | null;
+  /** Verified-coverage rise, percent per hour, last 5 min. */
+  coverageRisePercentPerHour: number | null;
 };
 
 /** Resumable Plate/NFT metadata bootstrap (separate from listing scan). */
@@ -126,6 +130,8 @@ function emptySnapshot(): IndexSnapshot {
       workerStartedAt: null,
       workerHeartbeatAt: null,
       lastSuccessAt: null,
+      walkerTokensPerMinute: null,
+      coverageRisePercentPerHour: null,
     },
     metadataWorker: {
       phase: 'brass-priority',

@@ -61,20 +61,16 @@ describe('indexer health report', () => {
     expect(report.maintenance.eventsLast15m).toBe(0);
   });
 
-  it('reports walker throughput and coverage rise rate from the rolling window', async () => {
-    const { recordWalkerTick, resetWalkerMetricsForTests } = await import('./walker-metrics');
-    resetWalkerMetricsForTests();
-    // No samples yet: both metrics are null.
+  it('reports walker throughput and coverage rise rate from the persisted checkpoint', () => {
+    // Walker metrics are computed in the worker process and persisted
+    // into WorkerCheckpoint, so the web's health report surfaces them
+    // through workerCheckpoint(), not via the walker-metrics ring buffer.
     expect(buildIndexerHealthReport().walkerTokensPerMinute).toBeNull();
     expect(buildIndexerHealthReport().coverageRisePercentPerHour).toBeNull();
 
-    const t0 = Date.now();
-    recordWalkerTick({ processedTotal: 0, verifiedCount: 0 }, t0);
-    recordWalkerTick({ processedTotal: 30, verifiedCount: 30 }, t0 + 60_000);
-
-    const report = buildIndexerHealthReport(t0 + 60_000);
+    writeWorkerCheckpoint({ walkerTokensPerMinute: 30, coverageRisePercentPerHour: 1.2 });
+    const report = buildIndexerHealthReport();
     expect(report.walkerTokensPerMinute).toBe(30);
-    expect(report.coverageRisePercentPerHour).not.toBeNull();
-    expect(report.coverageRisePercentPerHour!).toBeGreaterThan(0);
+    expect(report.coverageRisePercentPerHour).toBe(1.2);
   });
 });

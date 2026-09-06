@@ -28,7 +28,9 @@ import {
   WALKER_COOLDOWN_PACE_MS,
 } from './walker-pace';
 import {
+  coverageRisePercentPerHour,
   recordWalkerTick,
+  walkerTokensPerMinute as currentWalkerTokensPerMinute,
 } from './walker-metrics';
 import {
   countVerifiedListings,
@@ -238,18 +240,20 @@ export async function runIndexerPass(
     cursor += 1;
     processed += 1;
     const newProcessedTotal = checkpoint.processedTotal + processed;
-    writeWorkerCheckpoint({
-      cursor,
-      processedTotal: newProcessedTotal,
-      phase: cursor >= queue.length ? 'hot-refresh' : 'bootstrap',
-      lastError: null,
-    });
     // Walker throughput sample. countVerifiedListings() reads the
     // persisted index, which was just updated by reconcileOne ->
     // applyObservation -> writeListing.
     recordWalkerTick({
       processedTotal: newProcessedTotal,
       verifiedCount: countVerifiedListings(),
+    });
+    writeWorkerCheckpoint({
+      cursor,
+      processedTotal: newProcessedTotal,
+      phase: cursor >= queue.length ? 'hot-refresh' : 'bootstrap',
+      lastError: null,
+      walkerTokensPerMinute: currentWalkerTokensPerMinute(Date.now()),
+      coverageRisePercentPerHour: coverageRisePercentPerHour(Date.now()),
     });
     if (processed % SAVE_EVERY === 0) saveIndex();
     if (options.sleepMs && options.sleepMs > 0) {

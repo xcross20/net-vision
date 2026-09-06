@@ -18,7 +18,6 @@ import { eventsInWindow } from './market-event';
 import { deriveStreamHealth } from './stream-health';
 import type { StreamHealth } from './store';
 import { BRASS_EXPECTED, isIndexerRunning, isMetadataBootstrapRunning } from './worker';
-import { coverageRisePercentPerHour, walkerTokensPerMinute } from './walker-metrics';
 
 export const WORKER_HEARTBEAT_STALE_MS = 60_000;
 
@@ -200,7 +199,7 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
       eventsLast15m: restEventsLast15m,
       lastError: maint.lastError,
     },
-    walkerTokensPerMinute: walkerTokensPerMinute(now),
-    coverageRisePercentPerHour: coverageRisePercentPerHour(now),
+    walkerTokensPerMinute: listing.walkerTokensPerMinute ?? null,
+    coverageRisePercentPerHour: listing.coverageRisePercentPerHour ?? null,
   };
 }
