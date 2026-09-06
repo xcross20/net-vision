@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm test --workspace=@net-vision/transaction-policy
+      - run: npm audit --audit-level=high
+        continue-on-error: true
+      - name: Secret scan
+        uses: trufflesecurity/trufflehog@v3.88.29
+        with:
+          extra_args: --only-verified
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCart } from '@/lib/cart/CartProvider';
+import { cartDraftFromToken } from '@/lib/cart/listing-snapshot';
 import type { Token } from '@/lib/market';
 import { payment } from '@/lib/format';
 
@@ -11,20 +12,21 @@ export function SelectionBar({
   tokens: Token[];
   onClear: () => void;
 }) {
-  const { addMany, open } = useCart();
+  const { addMany, open, requestReview } = useCart();
   if (tokens.length === 0) return null;
   const total = tokens.reduce((sum, token) => sum + (token.listingPrice ?? 0), 0);
   const currency = tokens[0]?.currency ?? 'USDG';
+  const drafts = tokens.map(cartDraftFromToken);
 
   const addSelected = () => {
-    addMany(
-      tokens.map((token) => ({
-        token,
-        displayedPriceDecimal: token.listingPrice?.toString() ?? null,
-        currencySymbol: token.currency,
-      })),
-    );
+    addMany(drafts);
     open();
+  };
+
+  const buySelected = () => {
+    addMany(drafts);
+    open();
+    requestReview();
   };
 
   return (
@@ -49,7 +51,7 @@ export function SelectionBar({
           <button type="button" onClick={addSelected} className="nv-button nv-button-ghost">
             {typeof window !== 'undefined' && window.innerWidth < 768 ? 'Cart' : 'Add to Cart'}
           </button>
-          <button type="button" onClick={addSelected} className="nv-button">
+          <button type="button" onClick={buySelected} className="nv-button">
             Buy {tokens.length}
           </button>
         </div>

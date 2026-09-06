@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ShoppingBag, Check, Warning } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import { useCart } from '@/lib/cart/CartProvider';
+import { cartDraftFromToken } from '@/lib/cart/listing-snapshot';
 import type { CartItemDraft } from '@/lib/cart/types';
 
 type Variant = 'primary' | 'ghost' | 'compact';
@@ -40,7 +41,7 @@ export function AddToCartButton({
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      const result = add(draft);
+      const result = add({ ...cartDraftFromToken(draft.token), ...draft });
       if (result.ok) {
         setFeedback('success');
         setReason(null);

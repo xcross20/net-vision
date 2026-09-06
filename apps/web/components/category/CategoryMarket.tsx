@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CategoryMetrics, Token } from '@/lib/market';
+import { useLiveCategory } from '@/lib/market/use-live-metrics';
 import { CategoryHero } from './CategoryHero';
 import { CategoryMetricsStrip } from './CategoryMetrics';
 import { CategoryTabs, type CategoryTab } from './CategoryTabs';
@@ -24,6 +25,7 @@ export function CategoryMarket({
   initialTokens: Token[];
   initialTotal?: number;
 }) {
+  const liveMetrics = useLiveCategory(metrics, 8_000);
   const [tab, setTab] = useState<CategoryTab>('listings');
   const [selected, setSelected] = useState<Record<string, Token>>({});
   const [query, setQuery] = useState('');
@@ -131,19 +133,19 @@ export function CategoryMarket({
 
   return (
     <div className="flex flex-col gap-10 pb-24">
-      <CategoryHero metrics={metrics} />
-      <CategoryMetricsStrip metrics={metrics} />
+      <CategoryHero metrics={liveMetrics} />
+      <CategoryMetricsStrip metrics={liveMetrics} />
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CategoryTabs value={tab} onChange={setTab} listedCount={metrics.listedCount} />
+          <CategoryTabs value={tab} onChange={setTab} listedCount={liveMetrics.listedCount} />
           {tab === 'listings' ? (
             <button
               type="button"
               className="nv-button nv-button-ghost"
               onClick={() => setSweepOpen(true)}
-              disabled={metrics.marketStatus === 'syncing'}
+              disabled={liveMetrics.marketStatus === 'syncing'}
             >
-              Sweep {metrics.name}
+              Sweep {liveMetrics.name}
             </button>
           ) : null}
         </div>
@@ -185,15 +187,15 @@ export function CategoryMarket({
             <p className="text-xs text-[var(--color-text-tertiary)]">
               Showing {visible.length.toLocaleString()}
               {total > 0 ? ` of ${total.toLocaleString()}` : ''} verified listings
-              {metrics.listedCount > total ? ` · metric ${metrics.listedCount.toLocaleString()}` : ''}
+              {liveMetrics.listedCount > total ? ` · metric ${liveMetrics.listedCount.toLocaleString()}` : ''}
             </p>
             <CategoryListings
               tokens={visible}
               selectedIds={new Set(Object.keys(selected))}
               onToggle={toggle}
-              syncing={metrics.marketStatus === 'syncing'}
-              memberSupply={metrics.memberSupply}
-              verifiedCount={metrics.verifiedCount}
+              syncing={liveMetrics.marketStatus === 'syncing'}
+              memberSupply={liveMetrics.memberSupply}
+              verifiedCount={liveMetrics.verifiedCount}
             />
             <div ref={sentinelRef} className="flex min-h-10 items-center justify-center py-4">
               {loadingMore ? (
@@ -215,9 +217,9 @@ export function CategoryMarket({
             ) : null}
           </div>
         ) : null}
-        {tab === 'sales' ? <CategorySales slug={metrics.slug} metrics={metrics} /> : null}
+        {tab === 'sales' ? <CategorySales slug={metrics.slug} metrics={liveMetrics} /> : null}
         {tab === 'offers' ? <CategoryOffers slug={metrics.slug} /> : null}
-        {tab === 'analytics' ? <CategoryAnalytics slug={metrics.slug} metrics={metrics} /> : null}
+        {tab === 'analytics' ? <CategoryAnalytics slug={metrics.slug} metrics={liveMetrics} /> : null}
       </div>
       <SelectionBar tokens={selectedTokens} onClear={() => setSelected({})} />
       <SweepDrawer
@@ -226,7 +228,7 @@ export function CategoryMarket({
         slug={metrics.slug}
         name={metrics.name}
         tokens={tokens}
-        enabled={metrics.marketStatus === 'live'}
+        enabled={liveMetrics.marketStatus === 'live'}
       />
     </div>
   );

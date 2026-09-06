@@ -35,7 +35,11 @@ export function CategoryHero({ metrics }: { metrics: CategoryMetrics }) {
             <LiveIndicator
               tone={isSyncing ? 'amber' : 'green'}
               size={6}
-              label={isSyncing ? 'Syncing market data' : 'Live'}
+              label={
+                isSyncing
+                  ? `Verified ${metrics.verifiedCount.toLocaleString()} / ${metrics.memberSupply.toLocaleString()}`
+                  : 'Live'
+              }
             />
           </div>
           <h1 className="text-display text-[clamp(2.5rem,5.5vw,4.25rem)] text-[var(--color-text-primary)]">

@@ -18,6 +18,7 @@
 
 import {
   BUTTON_PRESSER_COLLECTION,
+  PAYMENT_TOKENS,
   ROBINHOOD_CHAIN,
 } from '@net-vision/chain-config';
 import {
@@ -46,24 +47,27 @@ import {
 import { isMissingOpenSeaResource, isOpenSeaRateLimited } from './opensea-errors';
 import {
   allAttributions,
-  allListingRecords,
   allSales,
   appendFloorSnapshot,
   floorHistory as storedFloorHistory,
   historyStartedAt,
   ingestSales,
   hydrateIndexFromPostgres,
+  indexWriterEnabled,
   listingRecord,
   loadIndex,
   metadataCheckpoint,
   persistNftMetadata,
+  refreshIndexFromPostgres,
   saveIndex,
+  snapshotRevision,
   tokenFacets,
   workerCheckpoint,
   writeListing,
   writeWorkerCheckpoint,
 } from '@/lib/index/store';
 import { startMarketMaintenance } from '@/lib/index/maintenance';
+import { rehydrateCatalogFromIndex } from './rehydrate-catalog';
 import { PRIORITY_TOKEN_IDS, startBackgroundIndexer } from '@/lib/index/worker';
 import {
   applyListedPercentage,
@@ -98,6 +102,8 @@ import type {
   SalesWindow,
 } from './source';
 import { DEFAULT_PAYMENT_CURRENCY } from './types';
+import { baseCollectionSnapshot, collectionFacts } from './collection-facts';
+import { guardCollectionSnapshot } from './impossible-states';
 
 type Env = {
   OPENSEA_API_KEY?: string;
@@ -273,7 +279,11 @@ class OpenSeaMarketSource implements MarketSource {
       maxTokenId: BUTTON_PRESSER_COLLECTION.maxTokenId,
     });
     this.hydrateFromIndex();
-    void hydrateIndexFromPostgres()
+    // Web is a read replica. Worker boot calls hydrateIndexFromPostgres (writable).
+    const hydrate = indexWriterEnabled()
+      ? hydrateIndexFromPostgres()
+      : refreshIndexFromPostgres();
+    void hydrate
       .then((source) => {
         if (source === 'postgres') this.hydrateFromIndex();
       })
@@ -309,18 +319,42 @@ class OpenSeaMarketSource implements MarketSource {
         }
       },
     );
-    startMarketMaintenance(this.client);
+    startMarketMaintenance(this.client, (tokenId) => this.lookupListingObservation(tokenId));
   }
 
+  private catalogHydratedRevision: number | null = null;
+
   private hydrateFromIndex(): void {
-    const snap = loadIndex();
-    for (const record of allListingRecords()) {
-      this.catalog.hydrateListingRecord(record);
+    rehydrateCatalogFromIndex(this.catalog);
+    this.catalogHydratedRevision = snapshotRevision();
+  }
+
+  /**
+   * Pull worker Postgres into this process when the blob revision moved.
+   * Does not saveIndex — web must not fight the worker dual-write.
+   */
+  async syncMarketSnapshot(): Promise<boolean> {
+    let remote = snapshotRevision();
+    try {
+      const { peekSnapshotRevisionFromPg } = await import('@/lib/index/pg');
+      const peeked = await peekSnapshotRevisionFromPg();
+      if (peeked != null) remote = peeked;
+    } catch {
+      /* local snapshot is enough when PG is unset */
     }
-    for (const [tokenId, facets] of Object.entries(snap.tokenFacets ?? {})) {
-      this.catalog.attachFacets(tokenId, facets);
+    if (
+      this.catalogHydratedRevision != null &&
+      remote <= this.catalogHydratedRevision
+    ) {
+      return false;
     }
-    this.catalog.ingestSales(snap.sales ?? []);
+    if (remote > snapshotRevision()) {
+      await refreshIndexFromPostgres();
+    }
+    this.hydrateFromIndex();
+    this.categories.clear();
+    this.tokenPages.clear();
+    return true;
   }
 
   private async lookupListingObservation(tokenId: string): Promise<ListingObservation> {
@@ -482,6 +516,7 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   async listTokens(filter?: ListTokensFilter): Promise<ListTokensPage> {
+    await this.syncMarketSnapshot();
     const key = JSON.stringify(filter ?? {});
     const cached = this.tokenPages.get(key);
     if (isFresh(cached)) return cached.value;
@@ -518,7 +553,11 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   private async ensurePipeline(): Promise<void> {
+    await this.syncMarketSnapshot();
     this.catalog.classify();
+    // Request-path OpenSea orderbook ingest is a competing writer against
+    // market-worker. Only the index writer process may mutate + persist.
+    if (!indexWriterEnabled()) return;
     const chain = await this.ensureChain();
     if (!chain) return;
     if (this.isCoolingDown()) return;
@@ -644,6 +683,7 @@ class OpenSeaMarketSource implements MarketSource {
     options: { force?: boolean } = {},
   ): Promise<void> {
     if (tokenIds.length === 0 || this.isCoolingDown()) return;
+    if (!indexWriterEnabled()) return;
     const pending = options.force
       ? tokenIds
       : tokenIds.filter((tokenId) => !this.catalog.isScanned(tokenId));
@@ -784,31 +824,35 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   async getCollectionSnapshot(): Promise<CollectionSnapshot> {
-    if (isFresh(this.collectionCache)) return this.collectionCache.value;
+    await this.syncMarketSnapshot();
+    const facts = collectionFacts(this.catalog);
+    const fromIndex = {
+      totalSupply: facts.totalSupply,
+      listedCount: facts.listedCount,
+      staleListedCount: facts.staleListedCount,
+      listingCoverage: facts.listingCoverage,
+      marketStatus: facts.marketStatus,
+      floorPrice: facts.floorPrice,
+      snapshotRevision: snapshotRevision(),
+    };
+    if (isFresh(this.collectionCache)) {
+      return guardCollectionSnapshot({
+        ...this.collectionCache.value,
+        ...fromIndex,
+        refreshedAt: Date.now(),
+      });
+    }
     await this.ensurePipeline();
     const chain = await this.ensureChain();
-    const fallback: CollectionSnapshot = {
-      name: BUTTON_PRESSER_COLLECTION.name,
-      slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-      contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
-      chainId: ROBINHOOD_CHAIN.id,
+    const fallback = baseCollectionSnapshot({
+      ...fromIndex,
       openseaChainSlug: chain?.chain ?? '',
-      totalSupply: 0,
-      owners: 0,
-      listedCount: 0,
-      currency: DEFAULT_PAYMENT_CURRENCY,
-      floorPrice: null,
-      volume24hNative: 0,
-      volume7dNative: 0,
-      sales24h: 0,
-      sales7d: 0,
-      topSalePrice: null,
-      topOfferPrice: null,
       refreshedAt: Date.now(),
-    };
+    });
     if (!chain) {
-      this.collectionCache = { value: fallback, fetchedAt: Date.now() };
-      return fallback;
+      const guardedFallback = guardCollectionSnapshot(fallback);
+      this.collectionCache = { value: guardedFallback, fetchedAt: Date.now() };
+      return guardedFallback;
     }
 
     const statsResult = await Promise.allSettled([
@@ -817,25 +861,28 @@ class OpenSeaMarketSource implements MarketSource {
     const stats = statsResult[0]?.status === 'fulfilled' ? statsResult[0].value : undefined;
     if (!stats) {
       console.error(`OpenSea collection stats failed: ${statsResult[0]?.status === 'rejected' ? String(statsResult[0].reason) : 'unknown error'}`);
+      const guardedFallback = guardCollectionSnapshot(fallback);
+      this.collectionCache = { value: guardedFallback, fetchedAt: Date.now() };
+      return guardedFallback;
     }
 
-    const oneDay = stats?.intervals?.find((interval) => interval.interval === 'one_day');
-    const sevenDays = stats?.intervals?.find((interval) => interval.interval === 'seven_day');
+    const oneDay = stats.intervals?.find((interval) => interval.interval === 'one_day');
+    const sevenDays = stats.intervals?.find((interval) => interval.interval === 'seven_day');
+    const ownersRaw = stats.total.num_owners;
     const snapshot: CollectionSnapshot = {
       ...fallback,
-      totalSupply: stats?.total.total_supply ?? stats?.total.num_items ?? 0,
-      owners: stats?.total.num_owners ?? 0,
-      listedCount: this.catalog.listedCount,
-      currency: stats?.total.floor_price_symbol ?? DEFAULT_PAYMENT_CURRENCY,
-      floorPrice: stats?.total.floor_price ?? null,
-      volume24hNative: oneDay?.volume ?? 0,
-      volume7dNative: sevenDays?.volume ?? 0,
-      sales24h: oneDay?.sales ?? 0,
-      sales7d: sevenDays?.sales ?? 0,
+      ...fromIndex,
+      owners: ownersRaw && ownersRaw > 0 ? ownersRaw : null,
+      currency: stats.total.floor_price_symbol ?? DEFAULT_PAYMENT_CURRENCY,
+      volume24hNative: oneDay?.volume ?? null,
+      volume7dNative: sevenDays?.volume ?? null,
+      sales24h: oneDay?.sales ?? null,
+      sales7d: sevenDays?.sales ?? null,
       refreshedAt: Date.now(),
     };
-    this.collectionCache = { value: snapshot, fetchedAt: Date.now() };
-    return snapshot;
+    const guarded = guardCollectionSnapshot(snapshot);
+    this.collectionCache = { value: guarded, fetchedAt: Date.now() };
+    return guarded;
   }
 
   private async composeCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
@@ -916,6 +963,7 @@ class OpenSeaMarketSource implements MarketSource {
       filteredMemberSupply: memberSupply,
       totalSupply: snapshot.totalSupply,
       listedCount: totals.listedCount,
+      staleListedCount: totals.staleListedCount,
       listedPercentage: stats.listedPercentage,
       verifiedCount,
       unknownCount,
@@ -926,6 +974,7 @@ class OpenSeaMarketSource implements MarketSource {
       owners: stats.owners,
       currency: snapshot.currency,
       floorPrice: liveFloor,
+      lastKnownFloorPrice: totals.lastKnownFloorPrice,
       ceilingPrice: readiness.marketStatus === 'syncing' ? null : stats.highestAsk,
       medianAsk: readiness.marketStatus === 'syncing' ? null : stats.medianAsk,
       lastSalePrice: stats.highestSale?.price ?? totals.lastSalePrice,
@@ -960,6 +1009,7 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   async getCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
+    await this.syncMarketSnapshot();
     const cached = this.categories.get(slug);
     if (isFresh(cached)) return cached.value;
     await this.ensurePipeline();
@@ -1041,9 +1091,10 @@ class OpenSeaMarketSource implements MarketSource {
 
   async getTokenOffers(tokenId: string): Promise<Offer[]> {
     const cached = this.tokenOffers.get(tokenId);
+    const staleOffers = cached ? cached.value : [];
     if (isFresh(cached)) return cached.value;
     const chain = await this.ensureChain();
-    if (!chain) return [];
+    if (!chain) return staleOffers;
     try {
       const [pageOffers, best] = await Promise.all([
         this.client.getNftOffers({
@@ -1069,8 +1120,7 @@ class OpenSeaMarketSource implements MarketSource {
       console.error(
         `OpenSea token offers failed for ${tokenId}: ${err instanceof Error ? err.message : String(err)}`,
       );
-      this.tokenOffers.set(tokenId, { value: [], fetchedAt: Date.now() });
-      return [];
+      return staleOffers;
     }
   }
 
@@ -1194,13 +1244,16 @@ class OpenSeaMarketSource implements MarketSource {
   }
 
   async getFreshness(): Promise<DataFreshness> {
-    if (!this.collectionCache) await this.getCollectionSnapshot();
-    const refreshedAt = this.collectionCache?.fetchedAt ?? null;
-    const fresh = this.resolvedChain !== undefined && refreshedAt !== null && Date.now() - refreshedAt < TTL_MS;
+    await this.syncMarketSnapshot();
+    const facts = collectionFacts(this.catalog);
+    const heartbeat = workerCheckpoint().workerHeartbeatAt;
+    const heartbeatFresh =
+      heartbeat != null && Date.now() - heartbeat < 2 * 60_000;
+    const refreshedAt = heartbeat ?? this.collectionCache?.fetchedAt ?? null;
     return {
-      fresh: Boolean(fresh),
+      fresh: heartbeatFresh && facts.marketStatus === 'live',
       refreshedAt,
-      source: this.resolvedChain ? 'opensea' : 'fixture',
+      source: this.resolvedChain ? 'opensea' : 'cache',
       resolvedChainSlug: this.resolvedChain?.chain ?? null,
     };
   }
@@ -1300,6 +1353,10 @@ function catalogListingToToken(
   storedImageUrl: string | null = null,
   storedName: string | null = null,
 ): Token {
+  const decimals = PAYMENT_TOKENS.USDG.decimals;
+  const raw = Number.isFinite(listing.price)
+    ? Math.round(listing.price * 10 ** decimals).toString()
+    : null;
   return {
     tokenId: listing.tokenId,
     contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
@@ -1308,6 +1365,11 @@ function catalogListingToToken(
     name: storedName ?? `#${listing.tokenId}`,
     listingPrice: listing.price,
     currency: listing.currency,
+    listingOrderHash: listing.orderHash,
+    listingPriceRaw: raw,
+    listingCurrencyAddress: PAYMENT_TOKENS.USDG.contractAddress,
+    listingCurrencyDecimals: decimals,
+    listingExpiresAt: null,
     lastSalePrice: null,
     ownerAddress: listing.ownerAddress,
     traits,
@@ -1517,25 +1579,7 @@ export function startStandaloneMarketIndexer(): void {
 class FailingMarketSource implements MarketSource {
   constructor(private readonly reason: string) {}
   async getCollectionSnapshot(): Promise<CollectionSnapshot> {
-    return {
-      name: BUTTON_PRESSER_COLLECTION.name,
-      slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-      contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
-      chainId: ROBINHOOD_CHAIN.id,
-      openseaChainSlug: '',
-      totalSupply: 0,
-      owners: 0,
-      listedCount: 0,
-      currency: DEFAULT_PAYMENT_CURRENCY,
-      floorPrice: null,
-      volume24hNative: 0,
-      volume7dNative: 0,
-      sales24h: 0,
-      sales7d: 0,
-      topSalePrice: null,
-      topOfferPrice: null,
-      refreshedAt: 0,
-    };
+    return baseCollectionSnapshot();
   }
   async getToken(): Promise<Token | null> {
     return null;

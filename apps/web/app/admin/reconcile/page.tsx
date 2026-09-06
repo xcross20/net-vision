@@ -36,7 +36,7 @@ export default async function ReconcilePage() {
 
       <section className="rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] p-6">
         <div className="mb-4 flex items-center justify-between gap-4">
-          <h2 className="text-eyebrow">Indexer</h2>
+          <h2 className="text-eyebrow">Market health</h2>
           <span
             className="text-sm font-medium"
             style={{ color: online ? 'var(--color-text-primary)' : 'var(--color-danger, #c44)' }}
@@ -44,6 +44,31 @@ export default async function ReconcilePage() {
             {online ? '● WORKER ONLINE' : '○ WORKER OFFLINE'}
           </span>
         </div>
+        <dl className="mb-6 grid gap-3 sm:grid-cols-2 text-sm">
+          <div>
+            <dt className="text-eyebrow-muted">Stream</dt>
+            <dd className="text-numeral uppercase">{health.maintenance.streamHealth}</dd>
+          </div>
+          <div>
+            <dt className="text-eyebrow-muted">REST</dt>
+            <dd>{ageLabel(health.maintenance.restLastPollAt, now)}</dd>
+          </div>
+          <div>
+            <dt className="text-eyebrow-muted">Last Stream event</dt>
+            <dd>{ageLabel(health.maintenance.streamLastEventAt, now)}</dd>
+          </div>
+          <div>
+            <dt className="text-eyebrow-muted">Events / 15m</dt>
+            <dd className="text-numeral">{health.maintenance.eventsLast15m}</dd>
+          </div>
+          <div>
+            <dt className="text-eyebrow-muted">Official supply</dt>
+            <dd className="text-numeral">
+              {health.tokensExisting.toLocaleString()} exist · {health.tokensMissing.toLocaleString()} missing ·{' '}
+              {health.officialExistingSupply.toLocaleString()} official
+            </dd>
+          </div>
+        </dl>
         <dl className="grid gap-3 sm:grid-cols-2 text-sm">
           <div>
             <dt className="text-eyebrow-muted">Listing bootstrap</dt>
@@ -146,7 +171,21 @@ export default async function ReconcilePage() {
             </tr>
           </thead>
           <tbody>
-            {categories.map((c) => (
+            {categories
+              .filter((c) =>
+                ['digits-3', 'material-brass', 'material-steel', 'palindrome', 'repdigit'].includes(
+                  c.slug,
+                ),
+              )
+              .concat(
+                categories.filter(
+                  (c) =>
+                    !['digits-3', 'material-brass', 'material-steel', 'palindrome', 'repdigit'].includes(
+                      c.slug,
+                    ),
+                ),
+              )
+              .map((c) => (
               <tr key={c.slug} className="border-b border-[var(--color-border-subtle)]">
                 <td className="px-4 py-3">{c.name}</td>
                 <td className="px-4 py-3 text-right text-numeral">{c.memberSupply}</td>

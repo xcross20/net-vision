@@ -111,6 +111,17 @@ describe('TokenCatalog', () => {
     expect(catalog.categoryTotals('digits-1').floorPrice).toBeNull();
   });
 
+  it('collection listedCount matches listings map and ignores STALE floor', () => {
+    const catalog = new TokenCatalog(RANGE);
+    catalog.ingestListings([listing('121', 12), listing('628', 5)]);
+    catalog.confirmScan('121', null);
+    expect(catalog.listingState('121')).toBe('STALE');
+    expect(catalog.listedCount).toBe(catalog.listedIds().length);
+    expect(catalog.listedCount).toBe(1);
+    expect(catalog.collectionFloorPrice()).toBe(5);
+    expect(catalog.staleListedCount).toBe(1);
+  });
+
   it('lists category ids cheapest-first so the grid matches the floor metric', () => {
     const catalog = new TokenCatalog(RANGE);
     catalog.ingestListings([
@@ -142,6 +153,9 @@ describe('TokenCatalog', () => {
     catalog.confirmScan('628', null);
     expect(catalog.isListed('628')).toBe(false);
     expect(catalog.listingState('628')).toBe('STALE');
+    expect(catalog.categoryTotals('digits-3').listedCount).toBe(0);
+    expect(catalog.categoryTotals('digits-3').staleListedCount).toBe(1);
+    expect(catalog.categoryTotals('digits-3').lastKnownFloorPrice).toBe(560);
     catalog.confirmScan('628', null);
     catalog.confirmScan('628', null);
     expect(catalog.isConfirmedUnlisted('628')).toBe(true);

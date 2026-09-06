@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { MarketView } from '@/components/ui/MarketView';
-import { listTokens } from '@/lib/data/tokens';
 import { getMarketSource } from '@/lib/market';
 
 export const dynamic = 'force-dynamic';
@@ -11,12 +10,16 @@ export const metadata = {
 };
 
 export default async function MarketPage() {
-  const [tokens, freshness] = await Promise.all([
-    listTokens({ listedOnly: true, limit: 60 }),
-    getMarketSource().getFreshness(),
+  const source = getMarketSource();
+  const [page, snapshot, freshness] = await Promise.all([
+    source.listTokens({ listedOnly: true, limit: 60 }),
+    source.getCollectionSnapshot(),
+    source.getFreshness(),
   ]);
-
-  const listedCount = tokens.length;
+  const tokens = page.tokens;
+  const listedCount = snapshot.listedCount;
+  const syncing = snapshot.marketStatus === 'syncing';
+  const live = snapshot.marketStatus === 'live' && freshness.fresh;
 
   return (
     <div className="flex flex-col gap-10">
@@ -24,9 +27,9 @@ export default async function MarketPage() {
         <div className="flex items-center gap-3">
           <span className="text-eyebrow">Market</span>
           <LiveIndicator
-            tone={freshness.fresh ? 'green' : 'amber'}
+            tone={live ? 'green' : 'amber'}
             size={6}
-            label={freshness.fresh ? 'Live' : 'Warming'}
+            label={live ? 'Live' : 'Syncing'}
           />
         </div>
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
@@ -34,13 +37,15 @@ export default async function MarketPage() {
             Every active listing
           </h1>
           <span className="text-eyebrow-muted">
-            {listedCount.toLocaleString()} live
+            {listedCount.toLocaleString()} {syncing ? 'known listed' : 'listed'}
           </span>
         </div>
         <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
           {listedCount === 0
-            ? 'Live listings are warming up. The OpenSea indexer will surface active asks as soon as the collection finishes syncing.'
-            : 'Active asks on Button Presser, ordered by the live OpenSea orderbook. Connect a wallet to buy or make an offer.'}
+            ? 'Verified listings are still syncing. Unknown tokens are not treated as unlisted.'
+            : syncing
+              ? 'Known verified asks from the worker index. Coverage is still below live threshold — this is not a complete book.'
+              : 'Active verified asks on Button Presser. Connect a wallet to buy or make an offer.'}
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <Link href="/categories" className="nv-button nv-button-ghost">

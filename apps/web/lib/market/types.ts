@@ -26,6 +26,13 @@ export type Token = {
   /** Payment-token price. null = no active ask. */
   listingPrice: number | null;
   currency: string;
+  /** OpenSea order hash for the ask the UI is showing. */
+  listingOrderHash?: string | null;
+  /** Smallest-unit price string for the displayed ask (e.g. 6-dec USDG). */
+  listingPriceRaw?: string | null;
+  listingCurrencyAddress?: string | null;
+  listingCurrencyDecimals?: number | null;
+  listingExpiresAt?: number | null;
   /** Most recent recorded payment-token sale. null = no recorded sale. */
   lastSalePrice: number | null;
   ownerAddress: string | null;
@@ -60,6 +67,7 @@ export type CategoryMetrics = {
   filteredMemberSupply: number;
   totalSupply: number;
   listedCount: number;
+  staleListedCount: number;
   listedPercentage: number;
   /** Members whose listing state is LISTED or UNLISTED_VERIFIED. */
   verifiedCount: number;
@@ -84,6 +92,7 @@ export type CategoryMetrics = {
   owners: number;
   currency: string;
   floorPrice: number | null;
+  lastKnownFloorPrice: number | null;
   /** Highest active ask in this category. null when nothing is listed. */
   ceilingPrice: number | null;
   medianAsk: number | null;
@@ -131,16 +140,24 @@ export type CollectionSnapshot = {
   contractAddress: string;
   chainId: number;
   openseaChainSlug: string;
+  /** Official existing supply (Plate). Never OpenSea num_items / never 0. */
   totalSupply: number;
-  owners: number;
+  /** OpenSea num_owners when present; null when upstream omitted the field. */
+  owners: number | null;
+  /** LISTED asks only from the worker index. */
   listedCount: number;
+  staleListedCount: number;
+  listingCoverage: number;
+  marketStatus: 'syncing' | 'live';
+  snapshotRevision: number;
   currency: string;
+  /** Min LISTED ask from the worker index. */
   floorPrice: number | null;
-  /** Native-chain volume, denominated in ETH on Robinhood Chain. */
-  volume24hNative: number;
-  volume7dNative: number;
-  sales24h: number;
-  sales7d: number;
+  /** OpenSea interval volume when present; null when stats are missing. */
+  volume24hNative: number | null;
+  volume7dNative: number | null;
+  sales24h: number | null;
+  sales7d: number | null;
   topSalePrice: number | null;
   topOfferPrice: number | null;
   /** epoch milliseconds when the snapshot was produced. */

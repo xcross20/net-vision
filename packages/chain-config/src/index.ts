@@ -25,7 +25,13 @@ export const BUTTON_PRESSER_COLLECTION = {
    * membership. Update `maxTokenId` if the on-chain supply grows.
    */
   minTokenId: 1,
+  /**
+   * Discovery envelope for scans. Not the official existing supply —
+   * two ids in this range do not exist on-chain (OpenSea/Plate total 62093).
+   */
   maxTokenId: 62095,
+  /** Sum of official Plate expected supplies. Use for coverage denominators. */
+  officialExistingSupply: 62093,
 } as const;
 
 /**

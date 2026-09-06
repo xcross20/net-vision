@@ -111,7 +111,10 @@ export function CategoryRow({
           unit={metrics.marketStatus === 'syncing' ? undefined : metrics.currency}
           emphasis
         />
-        <Cell label="Listed" value={metrics.listedCount.toLocaleString()} />
+        <Cell
+          label={metrics.marketStatus === 'syncing' ? 'Known listed' : 'Listed'}
+          value={metrics.listedCount.toLocaleString()}
+        />
         <Cell label="Sales" value={metrics.sales24h.toLocaleString()} />
         <Cell label="Members" value={metrics.memberSupply.toLocaleString()} />
       </div>

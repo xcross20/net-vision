@@ -146,8 +146,11 @@ export function coveragePercent(verifiedCount: number, memberCount: number): num
   return verifiedCount / memberCount;
 }
 
+/** Coverage required before any surface may present LIVE. */
+export const LIVE_COVERAGE_THRESHOLD = 0.95;
+
 export function marketStatus(coverage: number): 'syncing' | 'live' {
-  return coverage >= 0.95 ? 'live' : 'syncing';
+  return coverage >= LIVE_COVERAGE_THRESHOLD ? 'live' : 'syncing';
 }
 
 /**

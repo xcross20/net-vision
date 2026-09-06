@@ -53,12 +53,15 @@ export type CatalogSale = {
 export type CategoryTotals = {
   slug: string;
   memberSupply: number;
+  /** LISTED asks only — never STALE. */
   listedCount: number;
+  staleListedCount: number;
   verifiedCount: number;
   unknownCount: number;
   coveragePercent: number;
   marketStatus: 'syncing' | 'live';
   floorPrice: number | null;
+  lastKnownFloorPrice: number | null;
   ceilingPrice: number | null;
   owners: number;
   lastSalePrice: number | null;
@@ -121,7 +124,36 @@ export class TokenCatalog {
   }
 
   get listedCount(): number {
-    return this.listings.size;
+    return [...this.market.values()].filter((row) => row.state === 'LISTED').length;
+  }
+
+  get staleListedCount(): number {
+    return [...this.market.values()].filter((row) => row.state === 'STALE' && row.price != null)
+      .length;
+  }
+
+  /** LISTED + UNLISTED_VERIFIED. STALE and UNKNOWN are not verified. */
+  get verifiedCount(): number {
+    return [...this.market.values()].filter(
+      (row) => row.state === 'LISTED' || row.state === 'UNLISTED_VERIFIED',
+    ).length;
+  }
+
+  /** Lowest LISTED ask across the collection. STALE last-known prices excluded. */
+  collectionFloorPrice(): number | null {
+    let floor: number | null = null;
+    for (const listing of this.listings.values()) {
+      if (floor == null || listing.price < floor) floor = listing.price;
+    }
+    return floor;
+  }
+
+  /** Drop live listing/sale maps so a worker snapshot can replace them. */
+  resetLiveMarket(): void {
+    this.listings.clear();
+    this.market.clear();
+    this.salesByToken.clear();
+    this.allSales.length = 0;
   }
 
   private recordFor(tokenId: string): ListingRecord {
@@ -207,9 +239,9 @@ export class TokenCatalog {
 
   hydrateListingRecord(record: ListingRecord): void {
     this.market.set(record.tokenId, record);
-    // Keep last-known asks visible while STALE so a single flaky OpenSea
-    // 404 cannot blank the floor from the category grid.
-    if ((record.state === 'LISTED' || record.state === 'STALE') && record.price != null) {
+    // Authoritative listings map is LISTED only. STALE last-known asks
+    // stay on `market` for last-known floor, but must not inflate LISTED.
+    if (record.state === 'LISTED' && record.price != null) {
       this.listings.set(record.tokenId, {
         tokenId: record.tokenId,
         price: record.price,
@@ -333,12 +365,18 @@ export class TokenCatalog {
 
   categoryTotals(slug: string, facets?: string[]): CategoryTotals {
     const members = this.memberIds(slug, facets);
-    const listed = members
+    const listed = members.filter((tokenId) => this.listingState(tokenId) === 'LISTED');
+    const listedRows = listed
       .map((tokenId) => this.listings.get(tokenId))
       .filter((listing): listing is CatalogListing => listing !== undefined);
-    const prices = listed.map((listing) => listing.price);
+    const staleCount = members.filter((tokenId) => this.listingState(tokenId) === 'STALE').length;
+    const prices = listedRows.map((listing) => listing.price);
+    const stalePrices = members
+      .map((tokenId) => this.market.get(tokenId))
+      .filter((row) => row?.state === 'STALE' && row.price != null)
+      .map((row) => row!.price!);
     const owners = new Set(
-      listed
+      listedRows
         .map((listing) => listing.ownerAddress?.toLowerCase() ?? '')
         .filter(Boolean),
     );
@@ -354,11 +392,13 @@ export class TokenCatalog {
       slug,
       memberSupply: members.length,
       listedCount: listed.length,
+      staleListedCount: staleCount,
       verifiedCount,
       unknownCount,
       coveragePercent: coverage,
       marketStatus: marketStatus(coverage),
       floorPrice: prices.length > 0 ? Math.min(...prices) : null,
+      lastKnownFloorPrice: stalePrices.length > 0 ? Math.min(...stalePrices) : null,
       ceilingPrice: prices.length > 0 ? Math.max(...prices) : null,
       owners: owners.size,
       lastSalePrice: memberSales[0]?.price ?? null,

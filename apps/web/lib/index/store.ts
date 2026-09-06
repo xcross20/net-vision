@@ -59,7 +59,11 @@ export type MetadataRetryItem = {
   enqueuedAt: number;
 };
 
+export type StreamHealth = 'initializing' | 'connected' | 'degraded' | 'disconnected';
+
 export type MaintenanceState = {
+  streamHealth: StreamHealth;
+  streamSubscribed: boolean;
   streamConnected: boolean;
   streamLastEventAt: number | null;
   streamEventsTotal: number;
@@ -135,6 +139,8 @@ function emptySnapshot(): IndexSnapshot {
     },
     metadataRetryQueue: [],
     maintenance: {
+      streamHealth: 'disconnected',
+      streamSubscribed: false,
       streamConnected: false,
       streamLastEventAt: null,
       streamEventsTotal: 0,
@@ -243,8 +249,21 @@ export function scheduleSaveIndex(delayMs = 2_000): void {
   }
 }
 
+/**
+ * Only the always-on market-worker (or INDEXER_EMBEDDED debug) may persist
+ * the index. The web process is a read replica of Postgres.
+ */
+export function indexWriterEnabled(): boolean {
+  if (process.env.MARKET_INDEX_WRITER === 'false') return false;
+  if (process.env.MARKET_INDEX_WRITER === 'true') return true;
+  if (process.env.INDEXER_EMBEDDED === 'true') return true;
+  if (process.env.VITEST) return true;
+  return false;
+}
+
 export function saveIndex(): void {
   if (!memory) return;
+  if (!indexWriterEnabled()) return;
   // Bump revision *before* scheduling the async PG write so a slower
   // older payload cannot overwrite a newer one (WHERE revision < …).
   memory.snapshotRevision = (memory.snapshotRevision ?? 0) + 1;
@@ -452,6 +471,14 @@ export function countVerifiedMetadataInRange(fromId: number, toId: number): numb
     if (row?.metadataVerifiedAt) count += 1;
   }
   return count;
+}
+
+export function countExistingTokens(): number {
+  return Object.values(loadIndex().tokens).filter((row) => row.exists).length;
+}
+
+export function countMissingTokens(): number {
+  return Object.values(loadIndex().tokens).filter((row) => row.exists === false).length;
 }
 
 export function persistMetadataMissing(tokenId: string, reason: string): void {

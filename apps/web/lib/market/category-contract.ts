@@ -1,6 +1,6 @@
 import type { CategoryMetrics } from './types';
 
-export function categoryResponse(metrics: CategoryMetrics) {
+export function categoryResponse(metrics: CategoryMetrics, snapshotRevision?: number) {
   return {
     slug: metrics.slug,
     name: metrics.name,
@@ -8,16 +8,20 @@ export function categoryResponse(metrics: CategoryMetrics) {
     source: metrics.source,
     members: metrics.memberSupply,
     verifiedMarketMembers: metrics.verifiedCount,
+    unknownCount: metrics.unknownCount,
+    staleListedCount: metrics.staleListedCount,
     coveragePercent: metrics.coveragePercent,
     membershipCoverage: metrics.membershipCoverage,
     marketCoverage: metrics.marketCoverage,
     marketStatus: metrics.marketStatus,
+    snapshotRevision,
     trackedSince: metrics.trackedSince,
     description: metrics.description,
     market: {
       floor: metrics.marketStatus === 'syncing' ? null : metrics.floorPrice,
       listed: metrics.listedCount,
       listedPercentage: metrics.listedPercentage,
+      lastKnownFloor: metrics.lastKnownFloorPrice,
       owners: metrics.owners,
       bestOffer: metrics.topOfferPrice,
       offerCount: metrics.offerCount,

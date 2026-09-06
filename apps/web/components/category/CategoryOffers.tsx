@@ -7,16 +7,27 @@ import { payment, relative } from '@/lib/format';
 
 export function CategoryOffers({ slug }: { slug: string }) {
   const [offers, setOffers] = useState<Offer[]>([]);
-  const [aggregate, setAggregate] = useState(0);
+  const [aggregate, setAggregate] = useState<number | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
     void fetch(`/api/categories/${encodeURIComponent(slug)}/offers`)
-      .then((res) => res.json())
-      .then((body: { offers?: Offer[]; aggregateOfferValue?: number }) => {
-        setOffers(body.offers ?? []);
-        setAggregate(body.aggregateOfferValue ?? 0);
+      .then((res) => {
+        if (!res.ok) throw new Error(`offers ${res.status}`);
+        return res.json();
       })
-      .catch(() => setOffers([]));
+      .then((body: { offers?: Offer[]; aggregateOfferValue?: number }) => {
+        setUnavailable(false);
+        setOffers(body.offers ?? []);
+        setAggregate(
+          typeof body.aggregateOfferValue === 'number' ? body.aggregateOfferValue : null,
+        );
+      })
+      .catch(() => {
+        setUnavailable(true);
+        setOffers([]);
+        setAggregate(null);
+      });
   }, [slug]);
 
   return (
@@ -27,14 +38,20 @@ export function CategoryOffers({ slug }: { slug: string }) {
       <div className="grid grid-cols-2 gap-6">
         <div>
           <span className="text-eyebrow-muted">Offers</span>
-          <div className="text-numeral text-xl">{offers.length.toLocaleString()}</div>
+          <div className="text-numeral text-xl">
+            {unavailable ? '—' : offers.length.toLocaleString()}
+          </div>
         </div>
         <div>
           <span className="text-eyebrow-muted">Aggregate</span>
           <div className="text-numeral text-xl">{payment(aggregate, 'USDG')}</div>
         </div>
       </div>
-      {offers.length === 0 ? (
+      {unavailable ? (
+        <p className="text-sm text-[var(--color-text-tertiary)]">
+          Offers unavailable — not the same as zero bids.
+        </p>
+      ) : offers.length === 0 ? (
         <p className="text-sm text-[var(--color-text-tertiary)]">No item offers indexed yet.</p>
       ) : (
         <div className="flex flex-col divide-y divide-[var(--color-border-subtle)]">

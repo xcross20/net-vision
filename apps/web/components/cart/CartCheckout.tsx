@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useAccount, useChainId, useSendTransaction, useSwitchChain } from 'wagmi';
+import { useAccount, useChainId, usePublicClient, useSendTransaction, useSwitchChain } from 'wagmi';
 import { SpinnerIcon, WarnIcon, CheckIcon } from '@/components/icons';
 import { cn } from '@/lib/cn';
 import { useCart } from '@/lib/cart/CartProvider';
 import type { CartItem, CheckoutItem } from '@/lib/cart/types';
 import { ROBINHOOD_CHAIN } from '@net-vision/chain-config';
+import { payment } from '@/lib/format';
 
 type PrepareSuccess = {
   listing: {
@@ -42,11 +43,13 @@ type RevalidateItem =
   | { tokenId: string; state: 'error'; cartItem: CartItem; message: string };
 
 export function CartCheckout() {
-  const { items, phase, setPhase, removeConfirmed } = useCart();
+  const { items, phase, setPhase, removeConfirmed, consumeReviewRequest } = useCart();
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChainAsync, isPending: switching } = useSwitchChain();
   const { sendTransactionAsync } = useSendTransaction();
+  const publicClient = usePublicClient();
+  const [acceptedPriceDrift, setAcceptedPriceDrift] = useState(false);
 
   const onReview = useCallback(async () => {
     if (!address) {
@@ -141,6 +144,13 @@ export function CartCheckout() {
           data: (tx.data ?? '0x') as `0x${string}`,
           value: tx.value ? BigInt(tx.value) : BigInt(0),
         });
+        if (!publicClient) {
+          throw new Error('No RPC client — cannot wait for confirmation.');
+        }
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        if (receipt.status !== 'success') {
+          throw new Error(`Transaction reverted (${hash})`);
+        }
         confirmed.push(it.tokenId);
         setPhase({
           kind: 'executing',
@@ -148,12 +158,6 @@ export function CartCheckout() {
           currentIndex: i + 1,
           confirmedTokenIds: confirmed,
         });
-        if (hash) {
-          // Receipt confirmation is handled by the wallet adapter; the
-          // hash is the canonical "submitted" signal. We remove the
-          // item from the cart optimistically so the user can keep
-          // browsing while the chain finalizes.
-        }
       } catch (err) {
         setPhase({
           kind: 'complete',
@@ -178,15 +182,21 @@ export function CartCheckout() {
       confirmed: validItems,
       failed: [],
     });
-  }, [address, phase, removeConfirmed, sendTransactionAsync, setPhase]);
+  }, [address, phase, publicClient, removeConfirmed, sendTransactionAsync, setPhase]);
 
-  // Reset to browsing when items change meaningfully.
   useEffect(() => {
     if (phase.kind === 'browsing') return;
     if (items.length === 0 && phase.kind !== 'complete') {
       setPhase({ kind: 'browsing' });
     }
   }, [items.length, phase, setPhase]);
+
+  useEffect(() => {
+    if (phase.kind !== 'browsing') return;
+    if (!consumeReviewRequest()) return;
+    if (items.length === 0) return;
+    void onReview();
+  }, [consumeReviewRequest, items.length, onReview, phase.kind]);
 
   if (phase.kind === 'browsing') {
     return (
@@ -235,44 +245,86 @@ export function CartCheckout() {
   }
 
   if (phase.kind === 'review') {
-    const validCount = phase.items.filter((it) => it.state === 'valid').length;
-    const unavailableCount = phase.items.length - validCount;
-    const priceChanged = phase.items.filter(
-      (it): it is Extract<CheckoutItem, { state: 'valid' }> =>
-        it.state === 'valid' && it.priceChanged,
-    ).length;
+    const validItems = phase.items.filter(
+      (it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid',
+    );
+    const validCount = validItems.length;
+    const unavailable = phase.items.filter((it) => it.state !== 'valid');
+    const drifted = validItems.filter((it) => it.priceChanged);
+    const originalTotal = validItems.reduce((sum, it) => {
+      const snap = Number(it.cartItem.displayedPriceDecimal ?? it.livePriceDecimal);
+      return sum + (Number.isFinite(snap) ? snap : it.livePriceDecimal);
+    }, 0);
+    const currentTotal = validItems.reduce((sum, it) => sum + it.livePriceDecimal, 0);
+    const currency = validItems[0]?.liveCurrency ?? 'USDG';
+    const canBuy = validCount > 0 && (drifted.length === 0 || acceptedPriceDrift);
     return (
       <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
-          <div className="flex items-center justify-between">
-            <span>Available to buy</span>
-            <span className="text-numeral text-[var(--color-text-primary)]">{validCount}</span>
+        <ul className="flex max-h-56 flex-col gap-2 overflow-y-auto text-[12px]">
+          {phase.items.map((it) => {
+            if (it.state !== 'valid') {
+              return (
+                <li key={it.tokenId} className="flex items-center justify-between text-[var(--color-danger)]">
+                  <span>#{it.tokenId}</span>
+                  <span>✕ {it.state === 'unavailable' ? it.reason.replace('_', ' ') : 'error'}</span>
+                </li>
+              );
+            }
+            const was = it.cartItem.displayedPriceDecimal;
+            return (
+              <li key={it.tokenId} className="flex items-center justify-between gap-2">
+                <span>#{it.tokenId}</span>
+                <span className={it.priceChanged ? 'text-[var(--color-warning)]' : 'text-[var(--color-net-green)]'}>
+                  {it.priceChanged && was
+                    ? `${was} → ${payment(it.livePriceDecimal, it.liveCurrency)}`
+                    : payment(it.livePriceDecimal, it.liveCurrency)}
+                  {it.priceChanged ? ' ⚠' : ' ✓'}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="flex flex-col gap-1 border-t border-[var(--color-border-subtle)] pt-2 text-[12px] text-[var(--color-text-secondary)]">
+          <div className="flex justify-between">
+            <span>Original total</span>
+            <span className="text-numeral">{payment(originalTotal, currency)}</span>
           </div>
-          {unavailableCount > 0 ? (
-            <div className="flex items-center justify-between text-[var(--color-danger)]">
-              <span>No longer listed</span>
-              <span className="text-numeral">{unavailableCount}</span>
-            </div>
-          ) : null}
-          {priceChanged > 0 ? (
-            <div className="flex items-center justify-between text-[var(--color-warning)]">
-              <span>Price changed</span>
-              <span className="text-numeral">{priceChanged}</span>
+          <div className="flex justify-between">
+            <span>Current total</span>
+            <span className="text-numeral text-[var(--color-text-primary)]">{payment(currentTotal, currency)}</span>
+          </div>
+          {unavailable.length > 0 ? (
+            <div className="flex justify-between text-[var(--color-danger)]">
+              <span>Removed</span>
+              <span className="text-numeral">{unavailable.length}</span>
             </div>
           ) : null}
         </div>
+        {drifted.length > 0 ? (
+          <label className="flex items-start gap-2 text-[12px] text-[var(--color-text-primary)]">
+            <input
+              type="checkbox"
+              checked={acceptedPriceDrift}
+              onChange={(e) => setAcceptedPriceDrift(e.target.checked)}
+            />
+            I accept updated prices ({drifted.length} changed)
+          </label>
+        ) : null}
         <div className="flex flex-col gap-2">
           <button
             type="button"
-            disabled={validCount === 0}
+            disabled={!canBuy}
             onClick={onCheckout}
-            className={cn('nv-button w-full', validCount === 0 && 'cursor-not-allowed opacity-50')}
+            className={cn('nv-button w-full', !canBuy && 'cursor-not-allowed opacity-50')}
           >
             {validCount === 0 ? 'Nothing to buy' : `Buy ${validCount} item${validCount === 1 ? '' : 's'}`}
           </button>
           <button
             type="button"
-            onClick={() => setPhase({ kind: 'browsing' })}
+            onClick={() => {
+              setAcceptedPriceDrift(false);
+              setPhase({ kind: 'browsing' });
+            }}
             className="text-[12px] text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-primary)]"
           >
             Back to cart
@@ -298,8 +350,8 @@ export function CartCheckout() {
         <p className="flex items-start gap-2 text-[12px] text-[var(--color-net-green)]">
           <CheckIcon size={14} weight="duotone" />
           <span>
-            {phase.confirmed.length} purchase{phase.confirmed.length === 1 ? '' : 's'} submitted.
-            Confirmations stream in as the chain finalizes.
+            {phase.confirmed.length} purchase{phase.confirmed.length === 1 ? '' : 's'} confirmed
+            on-chain.
           </span>
         </p>
         <button

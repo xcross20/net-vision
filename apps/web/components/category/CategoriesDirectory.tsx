@@ -6,6 +6,7 @@ import { CategoryRow } from '@/components/ui/CategoryRow';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { EmptyState } from '@/components/ui/EmptyState';
 import type { CategoryMetrics } from '@/lib/market';
+import { useLiveCategories } from '@/lib/market/use-live-metrics';
 import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
 import { cn } from '@/lib/cn';
 
@@ -30,10 +31,11 @@ export function CategoriesDirectory({ categories }: { categories: CategoryMetric
   const [sort, setSort] = useState<SortKey>('trending');
   const [query, setQuery] = useState('');
   const { isWatchingCategory } = useWatchlist();
-  const syncing = categories.some((c) => c.marketStatus === 'syncing');
+  const live = useLiveCategories(categories, 10_000);
+  const syncing = live.some((c) => c.marketStatus === 'syncing');
 
   const rows = useMemo(() => {
-    let next = categories.filter((c) => c.memberSupply > 0 || c.source === 'metadata');
+    let next = live.filter((c) => c.memberSupply > 0 || c.source === 'metadata');
     if (family !== 'all') next = next.filter((c) => c.family === family);
     if (query) {
       const q = query.toLowerCase();
@@ -48,7 +50,7 @@ export function CategoriesDirectory({ categories }: { categories: CategoryMetric
       return (b.highestSale?.price ?? 0) - (a.highestSale?.price ?? 0);
     });
     return next;
-  }, [categories, family, sort, query]);
+  }, [live, family, sort, query]);
 
   return (
     <div className="flex flex-col gap-10">
