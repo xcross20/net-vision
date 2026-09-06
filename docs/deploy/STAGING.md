@@ -40,12 +40,32 @@ Staging may use the real OpenSea key and Button Presser Stream for indexing.
 
 ## Spike (required before staging worker stays up)
 
-Compare rendered `DATABASE_URL` hostnames:
+`postgres.railway.internal` is the **same DNS name in every environment** and is not isolation evidence. Compare **volume instances**:
 
-- production web vs staging web
-- production worker vs staging worker
+```
+parent volume postgres-volume c4c01710-…
+  production instance a9d369af-…  ~1407 MB
+  staging    instance bc0f046a-…  ~134 MB
 
-If any staging host equals a production host: **stop**. Provision a new Postgres plugin in staging and rewrite the variable. Do not start the staging worker.
+parent volume web-volume 378e8731-…
+  production instance 2b766ce4-…  ~192 MB
+  staging    instance f66d295f-…  ~4 MB
+```
+
+Instance IDs and sizes differ → isolated disks. If instance IDs were equal, stop and provision a new volume; do not start the staging worker.
+
+Railway environment:
+
+| | ID |
+| --- | --- |
+| production | `138cf108-b3f7-4393-b9f1-0d6e4e83ab7d` |
+| staging | `5110f64d-9cf8-4203-993f-63651631259e` |
+
+Staging web domain: `web-staging-46e2.up.railway.app`
+
+Duplicate-from-production auto-started deploys from `main`. Those were cancelled. Staging `market-worker` stays down / `INDEXER_V2_ENABLED=false` until A1 is on `staging` and production OpenSea quota is not contended.
+
+Do **not** `railway environment delete staging` while diagnosing volume IDs — parent volume IDs are shared even when instances are isolated; deleting the wrong object is a production-data risk.
 
 ## Forbidden
 

@@ -39,11 +39,11 @@ Risk = probability × cost × **invisibility**. Ranked scenarios, not categories
 
 ## Staging
 
-6. **Staging `DATABASE_URL` resolves to production Postgres; staging worker writes Gear-era schema or empty rebuilds into production.**  
+6. **Staging `DATABASE_URL` / volume appears to be production Postgres.**  
    P:M on naive duplicate Cost:H Invisibility:H  
-   Mitigation: after env create, compare hostname of staging vs production `DATABASE_URL`; refuse to deploy worker if equal.  
-   Test: manual spike (ops), recorded in `docs/deploy/STAGING.md`.  
-   Tripwire: same hostname → stop, provision new plugin.
+   Mitigation: `postgres.railway.internal` is the same DNS label in every env — compare **volume instance IDs and sizes**, not hostnames. Verified 2026-09-06: postgres instances `a9d369af` (prod, ~1407MB) vs `bc0f046a` (staging, ~134MB).  
+   Test: spike recorded in `docs/deploy/STAGING.md`.  
+   Tripwire: equal volume **instance** IDs → stop worker, do not delete the environment (parent volume IDs are shared by design).
 
 7. **`connect-service-source(branch=staging)` retargets production web/worker off `main`.**  
    P:M Cost:H Invisibility:M  
