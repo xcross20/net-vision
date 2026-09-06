@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { MarketView } from '@/components/ui/MarketView';
-import { listTokens } from '@/lib/data/tokens';
 import { getMarketSource } from '@/lib/market';
 
 export const dynamic = 'force-dynamic';
@@ -11,12 +10,12 @@ export const metadata = {
 };
 
 export default async function MarketPage() {
-  const [tokens, freshness] = await Promise.all([
-    listTokens({ listedOnly: true, limit: 60 }),
+  const [page, freshness] = await Promise.all([
+    getMarketSource().listTokens({ listedOnly: true, limit: 60 }),
     getMarketSource().getFreshness(),
   ]);
-
-  const listedCount = tokens.length;
+  const tokens = page.tokens;
+  const listedCount = page.total;
 
   return (
     <div className="flex flex-col gap-10">

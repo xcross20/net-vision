@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { listCategoryTokenPage } from '@/lib/data/categories';
+import { snapshotRevision } from '@/lib/index/store';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,5 +59,6 @@ export async function GET(
     limit,
     offset,
     nextOffset,
+    snapshotRevision: snapshotRevision(),
   });
 }

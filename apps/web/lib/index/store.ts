@@ -249,8 +249,21 @@ export function scheduleSaveIndex(delayMs = 2_000): void {
   }
 }
 
+/**
+ * Only the always-on market-worker (or INDEXER_EMBEDDED debug) may persist
+ * the index. The web process is a read replica of Postgres.
+ */
+export function indexWriterEnabled(): boolean {
+  if (process.env.MARKET_INDEX_WRITER === 'false') return false;
+  if (process.env.MARKET_INDEX_WRITER === 'true') return true;
+  if (process.env.INDEXER_EMBEDDED === 'true') return true;
+  if (process.env.VITEST) return true;
+  return false;
+}
+
 export function saveIndex(): void {
   if (!memory) return;
+  if (!indexWriterEnabled()) return;
   // Bump revision *before* scheduling the async PG write so a slower
   // older payload cannot overwrite a newer one (WHERE revision < …).
   memory.snapshotRevision = (memory.snapshotRevision ?? 0) + 1;

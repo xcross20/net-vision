@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import { VIRTUAL_COLLECTION_CATALOG } from '@net-vision/taxonomy';
 import { cartDraftFromToken } from '../cart/listing-snapshot';
+import { baseCollectionSnapshot } from './collection-facts';
 import type { Token } from './types';
 
 describe('official token universe', () => {
@@ -16,6 +17,12 @@ describe('official token universe', () => {
     expect(BUTTON_PRESSER_COLLECTION.officialExistingSupply).toBe(62093);
     expect(BUTTON_PRESSER_COLLECTION.maxTokenId).toBe(62095);
     expect(sum).not.toBe(BUTTON_PRESSER_COLLECTION.maxTokenId);
+  });
+
+  it('collection Items authority is officialExistingSupply, not discovery max', () => {
+    expect(baseCollectionSnapshot().totalSupply).toBe(
+      BUTTON_PRESSER_COLLECTION.officialExistingSupply,
+    );
   });
 
   it('Brass / Steel / 3-digit gates are the documented membership sizes', () => {

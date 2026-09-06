@@ -140,16 +140,24 @@ export type CollectionSnapshot = {
   contractAddress: string;
   chainId: number;
   openseaChainSlug: string;
+  /** Official existing supply (Plate). Never OpenSea num_items / never 0. */
   totalSupply: number;
-  owners: number;
+  /** OpenSea num_owners when present; null when upstream omitted the field. */
+  owners: number | null;
+  /** LISTED asks only from the worker index. */
   listedCount: number;
+  staleListedCount: number;
+  listingCoverage: number;
+  marketStatus: 'syncing' | 'live';
+  snapshotRevision: number;
   currency: string;
+  /** Min LISTED ask from the worker index. */
   floorPrice: number | null;
-  /** Native-chain volume, denominated in ETH on Robinhood Chain. */
-  volume24hNative: number;
-  volume7dNative: number;
-  sales24h: number;
-  sales7d: number;
+  /** OpenSea interval volume when present; null when stats are missing. */
+  volume24hNative: number | null;
+  volume7dNative: number | null;
+  sales24h: number | null;
+  sales7d: number | null;
   topSalePrice: number | null;
   topOfferPrice: number | null;
   /** epoch milliseconds when the snapshot was produced. */

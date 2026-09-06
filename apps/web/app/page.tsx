@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { ArrowRight, ArrowUpRight } from '@phosphor-icons/react/dist/ssr';
 import { LayeredHeroArt } from '@/components/ui/LayeredHeroArt';
-import { MetricStrip } from '@/components/ui/MetricStrip';
+import { CollectionPulse } from '@/components/ui/CollectionPulse';
 import { CategoryCard } from '@/components/ui/CategoryCard';
 import { AssetCard } from '@/components/ui/AssetCard';
 import { AssetSkeleton } from '@/components/ui/Skeleton';
@@ -16,46 +16,41 @@ import {
   listTokens,
 } from '@/lib/data/tokens';
 import { getMarketSource } from '@/lib/market';
+import { baseCollectionSnapshot } from '@/lib/market/collection-facts';
 import type { CategoryMetrics } from '@/lib/market';
 
 export const dynamic = 'force-dynamic';
 
+async function settle<T>(promise: Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
+  try {
+    return { ok: true, value: await promise };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export default async function HomePage() {
-  const [snapshotRaw, tokens, categories, freshness, sales, offers] = await Promise.all([
-    getCollectionSnapshot().catch(() => null),
-    listTokens({ listedOnly: true, limit: 8 }).catch(() => []),
-    listCategories().catch(() => []),
-    getMarketSource()
-      .getFreshness()
-      .catch(() => ({
-        fresh: false,
-        refreshedAt: null as number | null,
-        source: 'opensea' as const,
-        resolvedChainSlug: null as string | null,
-      })),
-    getRecentSales(8).catch(() => []),
-    // Offers are best-effort — never take down the homepage on OpenSea 429.
-    getRecentOffers(8).catch(() => []),
-  ]);
-  const snapshot = snapshotRaw ?? {
-    name: 'Button Presser',
-    slug: 'button-presser',
-    contractAddress: '0xE5143de9D3CcBc31Ffb4e7Fc66d8320e0E2693D2',
-    chainId: 1311,
-    openseaChainSlug: '',
-    totalSupply: 0,
-    owners: 0,
-    listedCount: 0,
-    currency: 'USDG',
-    floorPrice: null,
-    volume24hNative: 0,
-    volume7dNative: 0,
-    sales24h: 0,
-    sales7d: 0,
-    topSalePrice: null,
-    topOfferPrice: null,
-    refreshedAt: 0,
-  };
+  const [snapshotRaw, tokensLoad, categoriesLoad, freshness, salesLoad, offersLoad] =
+    await Promise.all([
+      getCollectionSnapshot().catch(() => null),
+      settle(listTokens({ listedOnly: true, limit: 8 })),
+      settle(listCategories()),
+      getMarketSource()
+        .getFreshness()
+        .catch(() => ({
+          fresh: false,
+          refreshedAt: null as number | null,
+          source: 'cache' as const,
+          resolvedChainSlug: null as string | null,
+        })),
+      settle(getRecentSales(8)),
+      settle(getRecentOffers(8)),
+    ]);
+  const snapshot = snapshotRaw ?? baseCollectionSnapshot();
+  const tokens = tokensLoad.ok ? tokensLoad.value : [];
+  const categories = categoriesLoad.ok ? categoriesLoad.value : [];
+  const sales = salesLoad.ok ? salesLoad.value : [];
+  const offers = offersLoad.ok ? offersLoad.value : [];
 
   const featuredCategories = [...categories]
     .sort((a, b) => b.trendingScore - a.trendingScore)
@@ -66,11 +61,16 @@ export default async function HomePage() {
     <div className="flex flex-col gap-20 md:gap-28">
       <HeroSection tokens={heroTokens} snapshot={snapshot} freshness={freshness} />
 
-      <TrendingCategoriesSection categories={featuredCategories} />
+      <TrendingCategoriesSection
+        categories={featuredCategories}
+        unavailable={!categoriesLoad.ok}
+      />
 
-      <MarketActivitySection tokens={tokens} />
+      <MarketActivitySection tokens={tokens} unavailable={!tokensLoad.ok} />
 
       <SalesOffersSection
+        salesUnavailable={!salesLoad.ok}
+        offersUnavailable={!offersLoad.ok}
         sales={sales.map((s) => ({
           kind: 'sale' as const,
           tokenId: s.tokenId,
@@ -111,9 +111,9 @@ function HeroSection({
         <div className="flex items-center gap-3">
           <span className="text-eyebrow">{snapshot.name}</span>
           <LiveIndicator
-            tone={freshness.fresh ? 'green' : 'amber'}
+            tone={snapshot.marketStatus === 'live' && freshness.fresh ? 'green' : 'amber'}
             size={6}
-            label={freshness.fresh ? 'Live' : 'Warming'}
+            label={snapshot.marketStatus === 'live' && freshness.fresh ? 'Live' : 'Syncing'}
           />
         </div>
 
@@ -147,7 +147,7 @@ function HeroSection({
           </a>
         </div>
 
-        <MetricStrip snapshot={snapshot} freshness={freshness} />
+        <CollectionPulse snapshot={snapshot} freshness={freshness} />
       </div>
 
       <div className="relative md:col-span-5">
@@ -157,7 +157,13 @@ function HeroSection({
   );
 }
 
-function TrendingCategoriesSection({ categories }: { categories: CategoryMetrics[] }) {
+function TrendingCategoriesSection({
+  categories,
+  unavailable,
+}: {
+  categories: CategoryMetrics[];
+  unavailable?: boolean;
+}) {
   return (
     <section className="flex flex-col gap-8">
       <SectionHeader
@@ -176,8 +182,12 @@ function TrendingCategoriesSection({ categories }: { categories: CategoryMetrics
 
       {categories.length === 0 ? (
         <EmptyState
-          title="Categories light up once the indexer is warm"
-          body="Trait categories are computed deterministically from each token's number and recompute as live listings arrive."
+          title={unavailable ? 'Categories unavailable' : 'Categories light up once the indexer is warm'}
+          body={
+            unavailable
+              ? 'The category read model could not be loaded. This is not an empty market.'
+              : 'Trait categories are computed deterministically from each token\'s number and recompute as live listings arrive.'
+          }
           tone="warming"
         />
       ) : (
@@ -193,8 +203,10 @@ function TrendingCategoriesSection({ categories }: { categories: CategoryMetrics
 
 function MarketActivitySection({
   tokens,
+  unavailable,
 }: {
   tokens: Awaited<ReturnType<typeof listTokens>>;
+  unavailable?: boolean;
 }) {
   return (
     <section className="flex flex-col gap-8">
@@ -214,8 +226,12 @@ function MarketActivitySection({
 
       {tokens.length === 0 ? (
         <EmptyState
-          title="Live listings are warming up"
-          body="The OpenSea indexer has not yet surfaced active listings for Button Presser. Pull in a few minutes, or browse categories to discover trait combinations."
+          title={unavailable ? 'Listings unavailable' : 'Live listings are warming up'}
+          body={
+            unavailable
+              ? 'The listing read model could not be loaded. This is not proof that nothing is listed.'
+              : 'The indexer has not yet surfaced active listings for Button Presser. Pull in a few minutes, or browse categories.'
+          }
           tone="warming"
           action={
             <Link href="/categories" className="nv-button nv-button-ghost">
@@ -237,9 +253,13 @@ function MarketActivitySection({
 function SalesOffersSection({
   sales,
   offers,
+  salesUnavailable,
+  offersUnavailable,
 }: {
   sales: SaleOrOfferEntry[];
   offers: SaleOrOfferEntry[];
+  salesUnavailable?: boolean;
+  offersUnavailable?: boolean;
 }) {
   return (
     <section className="grid grid-cols-1 gap-12 lg:grid-cols-2">
@@ -248,14 +268,22 @@ function SalesOffersSection({
         type="sale"
         viewAllHref="/activity"
         entries={sales}
-        empty="No sales have cleared yet. Trades will appear here as soon as the orderbook settles a fill."
+        empty={
+          salesUnavailable
+            ? 'Sales tape unavailable — not the same as zero trades.'
+            : 'No sales have cleared yet. Trades will appear here as soon as the orderbook settles a fill.'
+        }
       />
       <SalesOffersList
         title="Open offers"
         type="offer"
         viewAllHref="/activity?type=offer"
         entries={offers}
-        empty="No open offers right now. Watch a category to be notified when a collector makes a move."
+        empty={
+          offersUnavailable
+            ? 'Offers unavailable — not the same as an empty book.'
+            : 'No open offers right now. Watch a category to be notified when a collector makes a move.'
+        }
       />
     </section>
   );

@@ -68,7 +68,7 @@ function fallbackCategoryMetrics(slug: string): CategoryMetrics | null {
     description: meta.description,
     memberSupply,
     filteredMemberSupply: memberSupply,
-    totalSupply: BUTTON_PRESSER_COLLECTION.maxTokenId,
+    totalSupply: BUTTON_PRESSER_COLLECTION.officialExistingSupply,
     listedCount: 0,
     staleListedCount: 0,
     listedPercentage: 0,

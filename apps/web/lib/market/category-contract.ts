@@ -1,6 +1,6 @@
 import type { CategoryMetrics } from './types';
 
-export function categoryResponse(metrics: CategoryMetrics) {
+export function categoryResponse(metrics: CategoryMetrics, snapshotRevision?: number) {
   return {
     slug: metrics.slug,
     name: metrics.name,
@@ -14,6 +14,7 @@ export function categoryResponse(metrics: CategoryMetrics) {
     membershipCoverage: metrics.membershipCoverage,
     marketCoverage: metrics.marketCoverage,
     marketStatus: metrics.marketStatus,
+    snapshotRevision,
     trackedSince: metrics.trackedSince,
     description: metrics.description,
     market: {

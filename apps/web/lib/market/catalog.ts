@@ -132,6 +132,22 @@ export class TokenCatalog {
       .length;
   }
 
+  /** LISTED + UNLISTED_VERIFIED. STALE and UNKNOWN are not verified. */
+  get verifiedCount(): number {
+    return [...this.market.values()].filter(
+      (row) => row.state === 'LISTED' || row.state === 'UNLISTED_VERIFIED',
+    ).length;
+  }
+
+  /** Lowest LISTED ask across the collection. STALE last-known prices excluded. */
+  collectionFloorPrice(): number | null {
+    let floor: number | null = null;
+    for (const listing of this.listings.values()) {
+      if (floor == null || listing.price < floor) floor = listing.price;
+    }
+    return floor;
+  }
+
   /** Drop live listing/sale maps so a worker snapshot can replace them. */
   resetLiveMarket(): void {
     this.listings.clear();

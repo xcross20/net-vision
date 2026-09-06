@@ -63,6 +63,21 @@ describe('listing reconciliation worker', () => {
     saveIndex();
     expect(snapshotRevision()).toBe(2);
   });
+
+  it('does not persist or bump revision when the process is not an index writer', async () => {
+    const { indexWriterEnabled } = await import('./store');
+    const previous = process.env.MARKET_INDEX_WRITER;
+    process.env.MARKET_INDEX_WRITER = 'false';
+    try {
+      expect(indexWriterEnabled()).toBe(false);
+      expect(snapshotRevision()).toBe(0);
+      saveIndex();
+      expect(snapshotRevision()).toBe(0);
+    } finally {
+      if (previous === undefined) delete process.env.MARKET_INDEX_WRITER;
+      else process.env.MARKET_INDEX_WRITER = previous;
+    }
+  });
 });
 
 describe('Plate metadata bootstrap', () => {

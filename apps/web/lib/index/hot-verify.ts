@@ -1,7 +1,11 @@
 /**
- * Hot listing verification. OpenSea REST events do not include cancels,
- * so missed Stream cancellations would stick as LISTED until the slow
- * 62k walk. This queue re-checks current asks, cheapest first.
+ * Recovery owner: Stream misses cancel.
+ * Detection: this hot queue (LISTED + STALE, cheapest / oldest first).
+ * Recovery: best-listing lookup via reconcileOne.
+ * SLA: HOT_VERIFY_INTERVAL_MS (90s) per batch of HOT_VERIFY_BATCH.
+ *
+ * OpenSea REST events do not include cancels, so missed Stream
+ * cancellations would stick as LISTED until the slow 62k walk.
  */
 import { isOpenSeaRateLimited } from '../market/opensea-errors';
 import type { BestListingLookup } from './worker';

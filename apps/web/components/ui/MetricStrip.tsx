@@ -15,18 +15,17 @@ export function MetricStrip({
   snapshot: CollectionSnapshot;
   freshness: DataFreshness;
 }) {
-  const freshLabel = freshness.fresh
+  const live = snapshot.marketStatus === 'live' && freshness.fresh;
+  const freshLabel = live
     ? 'Live'
-    : freshness.source === 'fixture'
-      ? 'Cached'
+    : snapshot.marketStatus === 'syncing'
+      ? 'Syncing'
       : freshness.refreshedAt
         ? 'Cached'
         : 'Warming';
-  const tone = freshness.fresh
-    ? 'green'
-    : freshness.source === 'fixture'
-      ? 'muted'
-      : 'amber';
+  const tone = live ? 'green' : 'amber';
+  const listedLabel =
+    snapshot.marketStatus === 'syncing' ? 'known listed' : 'listed';
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2 text-eyebrow-muted">
@@ -37,7 +36,7 @@ export function MetricStrip({
         <Metric
           label="Items"
           value={compact(snapshot.totalSupply)}
-          sub={`${snapshot.listedCount.toLocaleString()} listed`}
+          sub={`${snapshot.listedCount.toLocaleString()} ${listedLabel}`}
         />
         <Metric
           label="Floor"
@@ -47,7 +46,11 @@ export function MetricStrip({
         <Metric
           label="Volume 24h"
           value={payment(snapshot.volume24hNative, 'ETH')}
-          sub={`${snapshot.sales24h.toLocaleString()} sales`}
+          sub={
+            snapshot.sales24h == null
+              ? undefined
+              : `${snapshot.sales24h.toLocaleString()} sales`
+          }
         />
         <Metric
           label="Owners"

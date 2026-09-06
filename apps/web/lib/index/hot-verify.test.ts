@@ -12,7 +12,7 @@ describe('hot listing verify', () => {
     resetIndexForTests();
   });
 
-  it('prefers stale listed tokens and unlists a cancelled floor ask', async () => {
+  it('recovery path: missed cancel is picked as STALE/LISTED and unverified by best-listing', async () => {
     const listed = applyObservation(listingRecord('966'), {
       kind: 'ask',
       price: 650,

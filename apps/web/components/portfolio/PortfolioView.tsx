@@ -18,14 +18,24 @@ export function PortfolioView() {
   const { address, isConnected } = useAccount();
   const [tab, setTab] = useState<Tab>('inventory');
   const [tokens, setTokens] = useState<Token[]>([]);
+  const [unavailable, setUnavailable] = useState(false);
   const { tokens: watchedIds, categories: watchedCategories } = useWatchlist();
 
   useEffect(() => {
     if (!address) return;
     void fetch(`/api/v1/account/${address}/nfts`)
-      .then((res) => res.json())
-      .then((body: { tokens?: Token[] }) => setTokens(body.tokens ?? []))
-      .catch(() => setTokens([]));
+      .then((res) => {
+        if (!res.ok) throw new Error(`nfts ${res.status}`);
+        return res.json();
+      })
+      .then((body: { tokens?: Token[] }) => {
+        setUnavailable(false);
+        setTokens(body.tokens ?? []);
+      })
+      .catch(() => {
+        setUnavailable(true);
+        setTokens([]);
+      });
   }, [address]);
 
   const listed = tokens.filter((t) => t.listingPrice !== null);
@@ -68,7 +78,9 @@ export function PortfolioView() {
         <span className="text-eyebrow">Portfolio</span>
         <h1 className="text-display text-[clamp(2.25rem,5vw,3.5rem)]">Your Buttons</h1>
         <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
-          {tokens.length} total · Estimated context value {payment(contextValue, 'USDG')}
+          {unavailable
+            ? 'Inventory unavailable — not the same as an empty wallet.'
+            : `${tokens.length} total · Estimated context value ${payment(contextValue, 'USDG')}`}
         </p>
       </header>
 

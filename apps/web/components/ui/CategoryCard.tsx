@@ -67,7 +67,10 @@ export function CategoryCard({
         </div>
 
         <div className="mt-auto grid grid-cols-2 gap-4 border-t border-[var(--color-border-subtle)] pt-4">
-          <MicroStat label="Listed" value={compact(metrics.listedCount)} />
+          <MicroStat
+            label={metrics.marketStatus === 'syncing' ? 'Known listed' : 'Listed'}
+            value={compact(metrics.listedCount)}
+          />
           <MicroStat
             label="7d move"
             value={movementLabel ?? '—'}
@@ -76,7 +79,11 @@ export function CategoryCard({
         </div>
 
         <div className="flex items-center justify-between text-[11px] text-[var(--color-text-tertiary)]">
-          <LiveIndicator tone="green" size={5} label="Live" />
+          <LiveIndicator
+            tone={metrics.marketStatus === 'live' ? 'green' : 'amber'}
+            size={5}
+            label={metrics.marketStatus === 'live' ? 'Live' : 'Syncing'}
+          />
           <ArrowRight
             size={12}
             weight="bold"
