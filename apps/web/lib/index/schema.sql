@@ -101,3 +101,9 @@ CREATE INDEX IF NOT EXISTS idx_token_categories_slug
   ON token_categories (category_slug);
 CREATE INDEX IF NOT EXISTS idx_sales_occurred
   ON sales (occurred_at DESC);
+
+-- Schema V2 (ADR 0004 A1) is applied by ensureSchema() from schema-v2.ts.
+-- That module interpolates @net-vision/chain-config (supply, chain, contract).
+-- Do not duplicate the V2 DDL here — drift would create a second schema truth.
+-- V2 is additive: collection_id columns, ecosystems/collections/market_events,
+-- composite unique indexes. token_id primary keys and index_blob stay.

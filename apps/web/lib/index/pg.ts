@@ -1,10 +1,10 @@
 /**
  * Postgres persistence for the market index.
  *
- * Dual-write companion to the JSON snapshot: the in-memory IndexSnapshot
- * remains the request-path source of truth. When DATABASE_URL is set we
- * also persist the full blob + normalized tables so redeploys and
- * multi-replica boots can recover without OpenSea re-sync.
+ * Request path (until ADR 0004 A4–A6): in-memory IndexSnapshot loaded from
+ * index_blob. Schema V2 (A1) adds collection identity + market_events but
+ * does not switch reads. Hot path still blob-only; normalized rebuild is
+ * off the tick (see scheduleSaveSnapshotToPg).
  */
 import { Pool, type PoolClient } from 'pg';
 import type { IndexSnapshot, TokenRow, WorkerCheckpoint } from './store';
@@ -12,6 +12,7 @@ import type { ListingRecord } from '../market/listing-state';
 import type { CatalogSale } from '../market/catalog';
 import type { FloorSnapshot, SaleAttribution } from '../market/engine';
 import type { TokenFacet } from '@net-vision/taxonomy';
+import { SCHEMA_V2_SQL } from './schema-v2';
 
 const BLOB_ID = 'market-index';
 const WORKER_ID = 'market-worker';
@@ -137,6 +138,7 @@ export async function ensureSchema(): Promise<boolean> {
   if (!db) return false;
   if (schemaReady) return true;
   await db.query(SCHEMA_SQL);
+  await db.query(SCHEMA_V2_SQL);
   schemaReady = true;
   return true;
 }
