@@ -24,6 +24,9 @@ import {
   type ListingRecord,
 } from '../market/listing-state';
 import {
+  walkerPaceMs,
+} from './walker-pace';
+import {
   countVerifiedMetadataInRange,
   dueMetadataRetries,
   enqueueMetadataRetry,
@@ -51,12 +54,18 @@ export const BRASS_EXPECTED = 999;
 const BRASS_MAX = 999;
 const STEEL_MAX = 4999;
 const ANODISED_MAX = 19999;
-/** Slow enough to leave headroom for page-path OpenSea calls. */
-const PACE_MS = 2_500;
-/** When Stream is connected, the listing walk is drift detection only. */
-const DRIFT_PACE_MS = 15_000;
+/**
+ * Listing walker pacing is owned by `./walker-pace`. The previous
+ *   `DRIFT_PACE_MS = 15_000` special case (Stream connected → slow
+ *   walker) conflated two distinct budgets (best-listing REST and
+ *   Stream events) and left coverage at ~4 tokens/min. See
+ *   `walker-pace.ts` for the budget rationale and the impossible-state
+ *   floor (`WALKER_MIN_PACE_MS`).
+ */
 const METADATA_PACE_MS = 3_000;
 const RATE_LIMIT_SLEEP_MS = 5 * 60_000;
+const WALKER_HOT_REFRESH_PAUSE_MS = 5 * 60_000;
+const WALKER_ERROR_BACKOFF_MS = 10_000;
 const SAVE_EVERY = 10;
 const HEARTBEAT_MS = 15_000;
 export const METADATA_RETRY_BACKOFF_MS = [10_000, 30_000, 120_000, 600_000, 1_800_000] as const;
@@ -419,7 +428,7 @@ export function startBackgroundIndexer(
   const listingLoop = async () => {
     try {
       if (recentlyRateLimited()) {
-        await new Promise((resolve) => setTimeout(resolve, 30_000));
+        await new Promise((resolve) => setTimeout(resolve, WALKER_COOLDOWN_PACE_MS));
       } else {
         await runIndexerPass(lookup, { maxTokens: 1, sink, sleepMs: 0 });
         const checkpoint = workerCheckpoint();
@@ -427,9 +436,11 @@ export function startBackgroundIndexer(
         if (checkpoint.cursor >= queue.length) {
           writeWorkerCheckpoint({ phase: 'hot-refresh', cursor: 0 });
           saveIndex();
-          await new Promise((resolve) => setTimeout(resolve, 5 * 60 * 1000));
+          await new Promise((resolve) => setTimeout(resolve, WALKER_HOT_REFRESH_PAUSE_MS));
         } else {
-          const pace = maintenanceState().streamConnected ? DRIFT_PACE_MS : PACE_MS;
+          // No streamConnected branch: the helper owns the budget. See
+          // ./walker-pace for the rationale and the floor invariant.
+          const pace = walkerPaceMs({ recentlyRateLimited: false });
           await new Promise((resolve) => setTimeout(resolve, pace));
         }
       }
@@ -439,7 +450,7 @@ export function startBackgroundIndexer(
         saveIndex();
         await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_SLEEP_MS));
       } else {
-        await new Promise((resolve) => setTimeout(resolve, PACE_MS * 4));
+        await new Promise((resolve) => setTimeout(resolve, WALKER_ERROR_BACKOFF_MS));
       }
     }
     if (running) void listingLoop();
@@ -468,7 +479,7 @@ export function startBackgroundIndexer(
           saveIndex();
           await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_SLEEP_MS));
         } else {
-          await new Promise((resolve) => setTimeout(resolve, METADATA_PACE_MS * 4));
+          await new Promise((resolve) => setTimeout(resolve, WALKER_ERROR_BACKOFF_MS));
         }
       }
       if (running && metadataRunning) void metadataLoop();
