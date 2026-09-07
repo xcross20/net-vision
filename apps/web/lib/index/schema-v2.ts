@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS collections (
   contract_address TEXT NOT NULL,
   asset_type TEXT NOT NULL DEFAULT 'nft',
   official_supply INTEGER NOT NULL,
+  -- Discovery envelope. A4 reads use official_supply, never COUNT(token_market_state).
   max_token_id INTEGER,
   opensea_slug TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
