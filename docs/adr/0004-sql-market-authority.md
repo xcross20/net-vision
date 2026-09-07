@@ -120,3 +120,51 @@ Not: mutate snapshot → serialize 62k tokens → optional full normalized rebui
 - Source of V2 DDL: `apps/web/lib/index/schema-v2.ts` (inlined SQL, same reason as `pg.ts`: Nixpacks must not lose a loose `.sql` at runtime).
 - `apps/web/lib/index/schema.sql` is the operator-readable copy.
 - Production `main` does not receive A1 until staging applies it and the worker stays healthy.
+
+---
+
+## Amendment 1 — A2 invariants (event-local writers)
+
+**Status:** Accepted (A2 spec addendum: `docs/data/SPEC_MARKET_DATA_ARCHITECTURE_V2_A2.md`)
+**Date:** 2026-09-06
+**Supersedes in part:** the “Event-local writes (A2, not A1)” stub in §Decision above, the implicit assumption in `pg.ts::upsertNormalized` that DELETE-then-insert is an acceptable write pattern, and the in-memory `MarketEvent.id` constructed independently by `restEventToMarketEvent` and `streamMessageToMarketEvent`.
+
+### Context (what A1 left open)
+
+The existing event-local reducer (`apps/web/lib/index/apply-event.ts`) already applies a single OpenSea event to a single token without walking the rest of the collection. A1 added the `market_events` journal table. What A1 did **not** do:
+
+- Persist events to `market_events` as part of the apply path — the table exists but is never written.
+- Make `applyMarketEvent` atomic with the SQL projection — `rememberMarketEvent` then `writeListing` then `upsertToken` then `ingestSales` are independent in-memory writes with no rollback.
+- Normalize Stream vs REST to one canonical source event identity — `restEventToMarketEvent.id` and `streamMessageToMarketEvent.id` are constructed with different suffixes, so the same upstream order arrives as two different in-memory dedup keys.
+- Reject out-of-order events — `applyObservation` blindly applies the new observation, so a REST replay with an older listing arriving after a Stream cancel will resurrect the cancelled ask.
+- Stop calling `upsertNormalized` (`DELETE FROM token_categories` / `token_facets` / `floor_history` then full rebuild) from the hot path. Today this is mostly shielded by `scheduleSaveSnapshotToPg({normalized: false})`, but `importSnapshot` and any future caller can still trigger it.
+
+### Decision — eight invariants for A2
+
+These invariants bind every code path that writes market state from A2 onward. They are enforced by the repository contract in the A2 spec addendum, by the audit gate at the end of A2, and by code review.
+
+1. **Event ingest and state projection are atomic.** One event ⇒ one transaction that contains (a) `INSERT market_events ON CONFLICT (source, source_event_id) DO NOTHING`, (b) the conditional projection writes (token, facets, market state, sale, attribution, worker state), and (c) the commit. A crash anywhere in the path leaves either the full effect or no effect — never an event recorded without its projection, or a projection without an event row.
+
+2. **Stream and REST representations of the same OpenSea event dedupe to one canonical source event identity.** The canonical identity is `(source, source_event_id)` where `source = 'opensea'` (single canonical source across transports) and `source_event_id` is the upstream-stable OpenSea event identity (order hash when present, transaction hash + log index otherwise). The in-memory `MarketEvent.id` continues to exist for legacy dedup but is **derived** from `(transport, source_event_id, kind, occurredAt)` — never the canonical key. Stream `item_listed` and REST `listing` for the same upstream order MUST resolve to the same `(source, source_event_id)` and therefore the same `market_events` row.
+
+3. **Older or out-of-order market events cannot overwrite newer market state.** `token_market_state` carries `state_event_at` (the `occurred_at` of the event whose projection is currently in state) and `state_event_id` (deterministic tie-breaker for equal timestamps). A new event is applied to projection only if `(new.occurred_at, new.source_event_id)` is strictly newer than the stored `(state_event_at, state_event_id)`. A reconciliation that has *fresh live verification* (a successful REST best-listing lookup with `verifiedAt` strictly newer than the stored `state_event_at`) may override; otherwise it is rejected. This is the only legal override.
+
+4. **Reconciliation may override event state only with a fresher authoritative verification timestamp.** A REST best-listing lookup that returned a current ask (or a confirmed 404 series) carries its own `verifiedAt`. If `verifiedAt > token_market_state.state_event_at`, reconciliation may set state regardless of event ordering. If not, the lookup is treated as stale and recorded but does not override. No override is allowed for any other reason (operator push, “looks wrong”, time-based decay).
+
+5. **A2 performs event-local / incremental SQL writes only. Full normalized-table rebuilds are not called from hot paths.** `pg.ts::upsertNormalized` (the `DELETE FROM token_categories / token_facets / floor_history` then full rebuild) is moved out of the apply pipeline. It remains available **only** to admin scripts (e.g. `scripts/import-market-index.ts`) and only behind an explicit `--rebuild-normalized` flag, and it is the responsibility of the caller to ensure no A2 writers are racing the rebuild. A2 introduces no new callers of the full-rebuild path.
+
+6. **`token_facets` remains canonical membership; `token_categories` is rebuildable only.** A2 never writes to `token_categories` from the hot path. Reads in A4 will join `token_facets ⋈ token_market_state`. `token_categories` is re-populated only by the A4 maintenance job that materializes the lookup from `token_facets`; the row count is allowed to drift between maintenance runs.
+
+7. **All mutations are collection-scoped.** Every INSERT / UPDATE carries an explicit `collection_id` (resolved from `BUTTON_PRESSER_COLLECTION_ID` or the future collection registry, not from caller-supplied strings). Composite uniqueness uses `(collection_id, token_id, ...)` — never `token_id` alone. The old `ON CONFLICT (token_id)` PKs in `pg.ts` are flagged as a **technical debt note** in A2; they are NOT dropped until A5 (per A1’s “dropping PKs before A2 is a P0” recall) and the A2 code is written to be collection-aware so the eventual PK drop is a constraint-only migration.
+
+8. **Existing `index_blob` writes continue temporarily for shadow comparison and recovery.** `scheduleSaveSnapshotToPg` keeps saving the blob on the hot path with the existing revision-guard. A2 does not switch any read path. A2 adds SQL writes alongside the blob writes; A3 introduces a shadow parity verifier that compares the two; the blob is retired in A7.
+
+### Riskiest unknown (A2)
+
+Whether the existing `applyMarketEvent` path, which currently mutates the in-memory `IndexSnapshot` directly, can be refactored into a transactional SQL write without changing observable behavior during the dual-write window. Mitigation: A2 keeps the in-memory mutation as the source of the *next* `saveIndex()` blob write, and the SQL write is the durable record. Tests assert that after the SQL transaction completes, the next `saveIndex()` produces a blob whose snapshot, when re-loaded, agrees with the SQL state on the affected tokens.
+
+### Revisit if (A2)
+
+- Staging shadow parity (A3) shows systematic disagreement on out-of-order events, meaning the rejection rule is too strict or too loose.
+- An OpenSea event is observed in the wild whose canonical `source_event_id` cannot be derived from `order_hash` or `transaction_hash` (e.g. metadata updates without an order hash). Then widen the canonical identity to include a tuple of `(chain, contract, token_id, kind, occurred_at)` as a fallback.
+- Worker memory or DB write rate exceeds the budget once both blob and SQL writes happen per event. Then compress the blob write frequency on hot ticks (already true: `SAVE_EVERY` gate) and consider coalescing market_state writes per token.
