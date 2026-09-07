@@ -70,6 +70,22 @@ describe('indexer health report', () => {
     expect(buildIndexerHealthReport().sqlWriter.enabled).toBe(false);
     expect(buildIndexerHealthReport().sqlWriter.marketEventInserts).toBe(0);
 
+    writeWorkerCheckpoint({
+      sqlWriter: {
+        enabled: true,
+        marketEventInserts: 12,
+        marketEventDuplicates: 3,
+        outOfOrderEventsIgnored: 1,
+        eventProjectionFailures: 0,
+        reconciliationOverrides: 4,
+        reconciliationSkipped: 0,
+        sqlWriteLatencyP50Ms: 8,
+        sqlWriteLatencyP95Ms: 20,
+      },
+    });
+    expect(buildIndexerHealthReport().sqlWriter.marketEventInserts).toBe(12);
+    expect(buildIndexerHealthReport().sqlWriter.enabled).toBe(true);
+
     writeWorkerCheckpoint({ walkerTokensPerMinute: 30, coverageRisePercentPerHour: 1.2 });
     const report = buildIndexerHealthReport();
     expect(report.walkerTokensPerMinute).toBe(30);

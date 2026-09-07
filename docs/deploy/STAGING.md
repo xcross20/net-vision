@@ -63,7 +63,7 @@ Railway environment:
 
 Staging web domain: `web-staging-46e2.up.railway.app`
 
-Duplicate-from-production auto-started deploys from `main`. Those were cancelled. Staging `market-worker` stays down / `INDEXER_V2_ENABLED=false` until A2 writers are on `staging` and production OpenSea quota is not contended. Do not start the worker as part of A2 code merge.
+Duplicate-from-production auto-started deploys from `main`. Those were cancelled. Staging `market-worker` is the A3 shadow writer: SQL writes on, SQL reads off, production unchanged. Pace listing/metadata REST via `WALKER_PACE_MS` / `METADATA_PACE_MS` so staging does not run a second full-speed walker against the shared OpenSea key.
 
 Do **not** `railway environment delete staging` while diagnosing volume IDs — parent volume IDs are shared even when instances are isolated; deleting the wrong object is a production-data risk.
 
@@ -109,7 +109,7 @@ Requires GitHub Actions secret `RAILWAY_TOKEN` (Railway account or project token
 ## Open (ops)
 
 1. Add GitHub secret `RAILWAY_TOKEN` so staging auto-deploy can run. Create the token in Railway → Account → Tokens. Store it at GitHub → Settings → Secrets and variables → Actions → `RAILWAY_TOKEN`.
-2. Leave staging `INDEXER_V2_ENABLED=false` / market-worker undeployed until production OpenSea quota is quiet.
+2. Staging worker: `INDEXER_V2_ENABLED=true`, `MARKET_SQL_WRITER=1`, `MARKET_SQL_REBUILD_DESTRUCTIVE=0`, `MARKET_READ_MODEL=blob`, slower `WALKER_PACE_MS` than production.
 3. A2–A7 are not this slice. A1 schema is already applied on staging Postgres (`schema_migrations.id = a1-schema-v2`).
 
 Branch protection (done): rulesets `protect-main` and `protect-staging` — PR required, CI job `check` required, no force-push, no deletion. Feature branches are unrestricted.
