@@ -27,6 +27,19 @@ describe('walkerPaceMs', () => {
     );
   });
 
+  it('WALKER_PACE_MS env may slow the walker but cannot beat the floor', () => {
+    const previous = process.env.WALKER_PACE_MS;
+    try {
+      process.env.WALKER_PACE_MS = '15000';
+      expect(walkerPaceMs({ recentlyRateLimited: false })).toBe(15_000);
+      process.env.WALKER_PACE_MS = '100';
+      expect(walkerPaceMs({ recentlyRateLimited: false })).toBe(WALKER_MIN_PACE_MS);
+    } finally {
+      if (previous === undefined) delete process.env.WALKER_PACE_MS;
+      else process.env.WALKER_PACE_MS = previous;
+    }
+  });
+
   it('treats streamConnected as irrelevant (regression: DRIFT_PACE_MS removed)', () => {
     // Previously the worker branched on maintenanceState().streamConnected
     // and slowed to 15s when Stream was up. That special case must not

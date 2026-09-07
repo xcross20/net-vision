@@ -42,10 +42,17 @@ export type WalkerPaceInput = {
   recentlyRateLimited: boolean;
 };
 
+function configuredSteadyPaceMs(): number {
+  const raw = process.env.WALKER_PACE_MS?.trim();
+  if (!raw) return WALKER_PACE_MS;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return WALKER_PACE_MS;
+  // Env may slow the walker (staging vs production quota) but cannot
+  // go faster than the REST budget floor.
+  return Math.max(WALKER_MIN_PACE_MS, n);
+}
+
 export function walkerPaceMs(input: WalkerPaceInput): number {
   if (input.recentlyRateLimited) return WALKER_COOLDOWN_PACE_MS;
-  // Floor guards any future caller from accidentally pacing faster
-  // than the budget allows. If a future feature needs a faster pace,
-  // lower this constant with intent, not by accident.
-  return Math.max(WALKER_MIN_PACE_MS, WALKER_PACE_MS);
+  return configuredSteadyPaceMs();
 }

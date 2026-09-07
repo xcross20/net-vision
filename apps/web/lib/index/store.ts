@@ -41,6 +41,18 @@ export type WorkerCheckpoint = {
   walkerTokensPerMinute: number | null;
   /** Verified-coverage rise, percent per hour, last 5 min. */
   coverageRisePercentPerHour: number | null;
+  /** SQL writer counters from the worker process (web reads the blob). */
+  sqlWriter: {
+    enabled: boolean;
+    marketEventInserts: number;
+    marketEventDuplicates: number;
+    outOfOrderEventsIgnored: number;
+    eventProjectionFailures: number;
+    reconciliationOverrides: number;
+    reconciliationSkipped: number;
+    sqlWriteLatencyP50Ms: number | null;
+    sqlWriteLatencyP95Ms: number | null;
+  } | null;
 };
 
 /** Resumable Plate/NFT metadata bootstrap (separate from listing scan). */
@@ -133,6 +145,7 @@ function emptySnapshot(): IndexSnapshot {
       lastSuccessAt: null,
       walkerTokensPerMinute: null,
       coverageRisePercentPerHour: null,
+      sqlWriter: null,
     },
     metadataWorker: {
       phase: 'brass-priority',

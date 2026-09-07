@@ -213,7 +213,7 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
     },
     walkerTokensPerMinute: listing.walkerTokensPerMinute ?? null,
     coverageRisePercentPerHour: listing.coverageRisePercentPerHour ?? null,
-    sqlWriter: {
+    sqlWriter: listing.sqlWriter ?? {
       enabled: sqlWriterEnabled(),
       ...sqlWriterMetrics(),
     },
