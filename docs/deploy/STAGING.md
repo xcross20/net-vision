@@ -85,12 +85,34 @@ Still required. Staging PASS is not a substitute.
 5. Known listing still listed
 6. Trading remains gated unless explicitly enabled
 
-## Open (ops, not A1 code)
+## Staging auto-deploy (GitHub Actions, not Railway GitHub source)
 
-1. In the Railway dashboard, staging environment only: set web and `market-worker` deploy branch to `staging`. Do **not** use `connect-service-source` / `serviceInstanceUpdate` for this — those apply to all non-fork environments and would retarget production.
-2. Bring up staging Postgres, then web. Domain: `web-staging-46e2.up.railway.app`.
-3. Leave staging `INDEXER_V2_ENABLED=false` until production `last429At` is quiet; then enable the staging worker so A1 `ensureSchema()` can run.
-4. A2–A7 are not this slice.
+Do **not** use `railway__connect-service-source` / `railway service source connect --branch staging`. Those apply to all non-fork environments and would retarget production off `main`.
+
+Staging web deploys from `.github/workflows/ci.yml` job `deploy-staging-web`:
+
+```
+push to staging
+  → job check (typecheck, test, build)
+  → job deploy-staging-web
+      GraphQL serviceInstanceDeployV2(
+        environmentId = staging,
+        serviceId     = web,
+        commitSha     = GITHUB_SHA
+      )
+```
+
+`market-worker` is **not** in that job. Keep it off until A2/A3 needs a staging indexer.
+
+Requires GitHub Actions secret `RAILWAY_TOKEN` (Railway account or project token). Without it the deploy job fails closed and production is untouched.
+
+## Open (ops)
+
+1. Add GitHub secret `RAILWAY_TOKEN` so staging auto-deploy can run. Create the token in Railway → Account → Tokens. Store it at GitHub → Settings → Secrets and variables → Actions → `RAILWAY_TOKEN`.
+2. Leave staging `INDEXER_V2_ENABLED=false` / market-worker undeployed until production OpenSea quota is quiet.
+3. A2–A7 are not this slice. A1 schema is already applied on staging Postgres (`schema_migrations.id = a1-schema-v2`).
+
+Branch protection (done): rulesets `protect-main` and `protect-staging` — PR required, CI job `check` required, no force-push, no deletion. Feature branches are unrestricted.
 
 ## Rollback
 
