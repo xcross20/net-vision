@@ -67,6 +67,8 @@ describe('indexer health report', () => {
     // through workerCheckpoint(), not via the walker-metrics ring buffer.
     expect(buildIndexerHealthReport().walkerTokensPerMinute).toBeNull();
     expect(buildIndexerHealthReport().coverageRisePercentPerHour).toBeNull();
+    expect(buildIndexerHealthReport().sqlWriter.enabled).toBe(false);
+    expect(buildIndexerHealthReport().sqlWriter.marketEventInserts).toBe(0);
 
     writeWorkerCheckpoint({ walkerTokensPerMinute: 30, coverageRisePercentPerHour: 1.2 });
     const report = buildIndexerHealthReport();

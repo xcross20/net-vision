@@ -27,6 +27,7 @@ import {
   walkerPaceMs,
   WALKER_COOLDOWN_PACE_MS,
 } from './walker-pace';
+import { enqueueSqlReconciliation } from './sql-writer';
 import {
   coverageRisePercentPerHour,
   recordWalkerTick,
@@ -220,6 +221,7 @@ export async function reconcileOne(
   }
   const next = applyObservation(current, observation);
   writeListing(next);
+  enqueueSqlReconciliation(next);
   writeWorkerCheckpoint({ lastSuccessAt: Date.now(), lastError: null });
   sink?.(next);
   return next;

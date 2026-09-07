@@ -107,3 +107,5 @@ CREATE INDEX IF NOT EXISTS idx_sales_occurred
 -- Do not duplicate the V2 DDL here — drift would create a second schema truth.
 -- V2 is additive: collection_id columns, ecosystems/collections/market_events,
 -- composite unique indexes. token_id primary keys and index_blob stay.
+-- A2 adds token_market_state.state_event_at / state_event_id / state_source
+-- (nullable) and migration id a2-event-local-writers. Still applied from schema-v2.ts.

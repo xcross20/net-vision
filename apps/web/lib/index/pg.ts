@@ -2,9 +2,9 @@
  * Postgres persistence for the market index.
  *
  * Request path (until ADR 0004 A4–A6): in-memory IndexSnapshot loaded from
- * index_blob. Schema V2 (A1) adds collection identity + market_events but
- * does not switch reads. Hot path still blob-only; normalized rebuild is
- * off the tick (see scheduleSaveSnapshotToPg).
+ * index_blob. A2 event-local writers live in sql-writer.ts. This module
+ * still dual-writes the blob. Full-table normalized rebuild is admin-only
+ * (MARKET_SQL_REBUILD_DESTRUCTIVE=1).
  */
 import { Pool, type PoolClient } from 'pg';
 import type { IndexSnapshot, TokenRow, WorkerCheckpoint } from './store';
@@ -13,6 +13,7 @@ import type { CatalogSale } from '../market/catalog';
 import type { FloorSnapshot, SaleAttribution } from '../market/engine';
 import type { TokenFacet } from '@net-vision/taxonomy';
 import { SCHEMA_V2_SQL } from './schema-v2';
+import { destructiveNormalizedRebuildEnabled } from './sql-writer-flags';
 
 const BLOB_ID = 'market-index';
 const WORKER_ID = 'market-worker';
@@ -207,7 +208,9 @@ async function upsertNormalized(client: PoolClient, snap: IndexSnapshot): Promis
     );
   }
 
-  await client.query(`DELETE FROM token_categories`);
+  if (destructiveNormalizedRebuildEnabled()) {
+    await client.query(`DELETE FROM token_categories`);
+  }
   for (const [slug, members] of Object.entries(snap.categories ?? {})) {
     for (const tokenId of members) {
       await client.query(
@@ -219,7 +222,9 @@ async function upsertNormalized(client: PoolClient, snap: IndexSnapshot): Promis
     }
   }
 
-  await client.query(`DELETE FROM token_facets`);
+  if (destructiveNormalizedRebuildEnabled()) {
+    await client.query(`DELETE FROM token_facets`);
+  }
   for (const [tokenId, facets] of Object.entries(snap.tokenFacets ?? {})) {
     for (const facet of facets as TokenFacet[]) {
       await client.query(
@@ -311,7 +316,9 @@ async function upsertNormalized(client: PoolClient, snap: IndexSnapshot): Promis
     );
   }
 
-  await client.query(`DELETE FROM floor_history`);
+  if (destructiveNormalizedRebuildEnabled()) {
+    await client.query(`DELETE FROM floor_history`);
+  }
   for (const [slug, series] of Object.entries(snap.floorHistory ?? {})) {
     for (const point of series as FloorSnapshot[]) {
       await client.query(
@@ -409,7 +416,7 @@ export type ImportStats = {
 };
 
 export async function importSnapshot(snap: IndexSnapshot): Promise<ImportStats> {
-  await saveSnapshotToPg(snap);
+  await saveSnapshotToPg(snap, { normalized: false });
   return {
     tokens: Object.keys(snap.tokens ?? {}).length,
     listings: Object.keys(snap.listings ?? {}).length,
