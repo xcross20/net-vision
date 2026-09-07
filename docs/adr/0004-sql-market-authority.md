@@ -1,6 +1,6 @@
 # ADR 0004: Promote normalized Postgres to market authority
 
-**Status:** Accepted (A1 implementing; A2–A7 planned)  
+**Status:** Accepted (A1 applied on staging; A2 implementing; A3–A7 planned)  
 **Date:** 2026-09-06  
 **Spec:** `docs/data/SPEC_MARKET_DATA_ARCHITECTURE_V2.md`  
 **Supersedes in part:** ADR 0002 §2 (“PostgreSQL authoritative for worker cursors… JSON remains local/dev fallback”) — the *tables* were built, but the *request path* remained the blob. This ADR completes that intent.
@@ -114,6 +114,19 @@ Not: mutate snapshot → serialize 62k tokens → optional full normalized rebui
 - Staging parity (A3) shows systematic SQL/blob disagreement that is not a bug in one side — then stop cutover and re-open ownership.
 - Postgres query p95 for category grids exceeds the A4 budget after real volume — then consider materialized category stats, still not Redis.
 - A second collection is scheduled before A2 lands — **block the collection**, do not insert under `token_id` PK.
+
+## Amendment 1 — A2 invariants (event-local writers)
+
+A2 does not switch reads. Blob remains the request-path authority.
+
+1. Token identity for every write is `(collection_id, token_id)`.
+2. Event identity is `UNIQUE (source, source_event_id)` with `source = 'opensea'`. Transport is payload, not identity.
+3. Journal insert and projection are one transaction. `ON CONFLICT` → no-op, no projection.
+4. `token_market_state.state_event_at` / `state_event_id` / `state_source` prevent older events from overwriting newer state.
+5. Reconciliation may override only when `verified_at >= state_event_at`.
+6. Full-table `DELETE FROM token_facets` / `token_categories` / `floor_history` is not on the hot path. Admin rebuild requires `MARKET_SQL_REBUILD_DESTRUCTIVE=1`.
+7. `token_id` primary keys stay until a second collection is written; incremental `ON CONFLICT` targets the collection-scoped unique indexes.
+8. `token_facets` remains canonical; `token_categories` is rebuilt per token from facets.
 
 ## A1 implementation notes
 
