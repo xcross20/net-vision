@@ -13,6 +13,7 @@ import type { FloorSnapshot, SaleAttribution } from '../market/engine';
 import type { ListingRecord, ListingState } from '../market/listing-state';
 import { decayIfStale, emptyListingRecord } from '../market/listing-state';
 import type { MarketEvent } from './market-event';
+import { enqueueSqlMetadataFacets } from './sql-writer';
 
 export type TokenRow = {
   tokenId: string;
@@ -551,6 +552,7 @@ export function persistNftMetadata(
   });
   const facets = facetsForToken(tokenId, { traits: nft.traits, name: nft.name });
   setTokenFacets(tokenId, facets);
+  enqueueSqlMetadataFacets(tokenId, nft);
   return facets;
 }
 

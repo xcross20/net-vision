@@ -67,6 +67,7 @@ import {
   writeWorkerCheckpoint,
 } from '@/lib/index/store';
 import { startMarketMaintenance } from '@/lib/index/maintenance';
+import { enqueueSqlReconciliation } from '@/lib/index/sql-writer';
 import { rehydrateCatalogFromIndex } from './rehydrate-catalog';
 import { PRIORITY_TOKEN_IDS, startBackgroundIndexer } from '@/lib/index/worker';
 import {
@@ -628,6 +629,7 @@ class OpenSeaMarketSource implements MarketSource {
         listedAt: listing.listedAt,
       });
       writeListing(next);
+      enqueueSqlReconciliation(next);
       this.catalog.hydrateListingRecord(next);
     }
     saveIndex();
@@ -709,6 +711,7 @@ class OpenSeaMarketSource implements MarketSource {
             listedAt: catalogListing.listedAt,
           });
           writeListing(next);
+          enqueueSqlReconciliation(next);
           this.catalog.hydrateListingRecord(next);
         } else if (!options.force) {
           // Force re-checks are ask-only. OpenSea's best-listing endpoint
@@ -717,6 +720,7 @@ class OpenSeaMarketSource implements MarketSource {
           this.catalog.confirmScan(tokenId, null);
           const next = applyObservation(listingRecord(tokenId), { kind: 'no-ask' });
           writeListing(next);
+          enqueueSqlReconciliation(next);
           this.catalog.hydrateListingRecord(next);
         }
       } catch (err) {

@@ -15,6 +15,7 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const schemaSql = readFileSync(join(here, 'schema.sql'), 'utf8');
 const pgSource = readFileSync(join(here, 'pg.ts'), 'utf8');
+const repoSource = readFileSync(join(here, 'market-repository.ts'), 'utf8');
 
 describe('tokenIdentity', () => {
   it('scopes token ids to a collection so Button #68 ≠ Gear #68', () => {
@@ -106,7 +107,7 @@ describe('SCHEMA_V2_SQL (A1)', () => {
   });
 });
 
-describe('A1 residual: old token_id PKs stay until A2', () => {
+describe('A1 residual: old token_id PKs stay (A2 does not drop them)', () => {
   it('v1 schema.sql still declares token_id PRIMARY KEY (expand, not contract)', () => {
     expect(schemaSql).toMatch(/CREATE TABLE IF NOT EXISTS tokens\s*\(\s*token_id INTEGER PRIMARY KEY/s);
     expect(schemaSql).toMatch(
@@ -114,7 +115,7 @@ describe('A1 residual: old token_id PKs stay until A2', () => {
     );
   });
 
-  it('pg.ts dual-write still ON CONFLICT (token_id) — PK drop would crash this', () => {
+  it('legacy snapshot upsert still ON CONFLICT (token_id); PK drop would crash that path', () => {
     expect(pgSource).toContain('ON CONFLICT (token_id) DO UPDATE SET');
     expect(pgSource).toContain('normalized: false');
   });
@@ -123,5 +124,37 @@ describe('A1 residual: old token_id PKs stay until A2', () => {
     expect(pgSource).toContain('SCHEMA_V2_SQL');
     expect(pgSource).toMatch(/await db\.query\(SCHEMA_SQL\)/);
     expect(pgSource).toMatch(/await db\.query\(SCHEMA_V2_SQL\)/);
+  });
+});
+
+describe('SCHEMA_V2_SQL (A2 ordering columns)', () => {
+  it('adds state_event_at / state_event_id / state_source without dropping index_blob', () => {
+    expect(SCHEMA_V2_SQL).toContain('ADD COLUMN IF NOT EXISTS state_event_at TIMESTAMPTZ');
+    expect(SCHEMA_V2_SQL).toContain('ADD COLUMN IF NOT EXISTS state_event_id TEXT');
+    expect(SCHEMA_V2_SQL).toContain('ADD COLUMN IF NOT EXISTS state_source TEXT');
+    expect(SCHEMA_V2_SQL).toContain("'a2-event-local-writers'");
+    expect(SCHEMA_V2_SQL).not.toMatch(/DROP\s+TABLE/i);
+  });
+});
+
+describe('A2 hot path does not full-table DELETE', () => {
+  it('pg.ts wraps token_facets / token_categories / floor_history DELETE behind MARKET_SQL_REBUILD_DESTRUCTIVE', () => {
+    expect(pgSource).toContain('MARKET_SQL_REBUILD_DESTRUCTIVE');
+    expect(pgSource).toMatch(/if \(destructiveNormalizedRebuildEnabled\(\)\) \{[\s\S]*DELETE FROM token_categories/);
+    expect(pgSource).toMatch(/if \(destructiveNormalizedRebuildEnabled\(\)\) \{[\s\S]*DELETE FROM token_facets/);
+    expect(pgSource).toMatch(/if \(destructiveNormalizedRebuildEnabled\(\)\) \{[\s\S]*DELETE FROM floor_history/);
+  });
+
+  it('importSnapshot is blob-only (normalized rebuild is not the import default)', () => {
+    expect(pgSource).toContain('saveSnapshotToPg(snap, { normalized: false })');
+  });
+
+  it('incremental repository upserts on (collection_id, token_id) and deletes facets per token', () => {
+    expect(repoSource).toContain('ON CONFLICT (collection_id, token_id) DO UPDATE SET');
+    expect(repoSource).toContain(
+      'DELETE FROM token_facets WHERE collection_id = $1 AND token_id = $2',
+    );
+    expect(repoSource).not.toMatch(/DELETE FROM token_facets\s*;/);
+    expect(repoSource).not.toMatch(/DELETE FROM token_categories\s*;/);
   });
 });

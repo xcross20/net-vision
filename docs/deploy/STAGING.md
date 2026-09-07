@@ -63,7 +63,7 @@ Railway environment:
 
 Staging web domain: `web-staging-46e2.up.railway.app`
 
-Duplicate-from-production auto-started deploys from `main`. Those were cancelled. Staging `market-worker` stays down / `INDEXER_V2_ENABLED=false` until A1 is on `staging` and production OpenSea quota is not contended.
+Duplicate-from-production auto-started deploys from `main`. Those were cancelled. Staging `market-worker` stays down / `INDEXER_V2_ENABLED=false` until A2 writers are on `staging` and production OpenSea quota is not contended. Do not start the worker as part of A2 code merge.
 
 Do **not** `railway environment delete staging` while diagnosing volume IDs — parent volume IDs are shared even when instances are isolated; deleting the wrong object is a production-data risk.
 

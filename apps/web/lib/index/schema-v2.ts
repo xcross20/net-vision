@@ -153,4 +153,20 @@ COMMENT ON TABLE market_events IS
 
 INSERT INTO schema_migrations (id) VALUES ('a1-schema-v2')
 ON CONFLICT (id) DO NOTHING;
+
+-- A2: event-ordering columns. Nullable so A1 rows remain valid.
+ALTER TABLE token_market_state ADD COLUMN IF NOT EXISTS state_event_at TIMESTAMPTZ;
+ALTER TABLE token_market_state ADD COLUMN IF NOT EXISTS state_event_id TEXT;
+ALTER TABLE token_market_state ADD COLUMN IF NOT EXISTS state_source TEXT;
+ALTER TABLE token_market_state ADD COLUMN IF NOT EXISTS state_updated_at TIMESTAMPTZ;
+
+COMMENT ON COLUMN token_market_state.state_event_at IS
+  'Occurred-at of the ingest event that last mutated listing state. Older events must not overwrite.';
+COMMENT ON COLUMN token_market_state.state_event_id IS
+  'Canonical market_events.source_event_id that last mutated listing state.';
+COMMENT ON COLUMN token_market_state.state_source IS
+  'opensea (event projection) or reconciliation (walker / hot-verify / orderbook).';
+
+INSERT INTO schema_migrations (id) VALUES ('a2-event-local-writers')
+ON CONFLICT (id) DO NOTHING;
 `;
