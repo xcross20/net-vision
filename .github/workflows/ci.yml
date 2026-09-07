@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
 
 jobs:
@@ -28,3 +28,29 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
+
+  # Per-environment deploy. Does not change Railway GitHub source (that
+  # would retarget production). Deploys this SHA to staging web only.
+  # market-worker stays off until A2/A3 needs it.
+  deploy-staging-web:
+    name: deploy-staging-web
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Deploy commit to Railway staging web
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "::error::Add GitHub Actions secret RAILWAY_TOKEN (Railway account or project token). Staging web will not auto-deploy until this exists."
+            exit 1
+          fi
+          npm install -g @railway/cli
+          railway api --compact \
+            'mutation($e:String!,$s:String!,$c:String){ serviceInstanceDeployV2(environmentId:$e, serviceId:$s, commitSha:$c) }' \
+            --raw-var e=5110f64d-9cf8-4203-993f-63651631259e \
+            --raw-var s=213d9499-c2e1-4915-90d4-c1eede9fd641 \
+            --raw-var c="${GITHUB_SHA}"
