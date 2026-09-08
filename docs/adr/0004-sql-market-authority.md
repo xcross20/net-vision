@@ -128,6 +128,33 @@ A2 does not switch reads. Blob remains the request-path authority.
 7. `token_id` primary keys stay until a second collection is written; incremental `ON CONFLICT` targets the collection-scoped unique indexes.
 8. `token_facets` remains canonical; `token_categories` is rebuilt per token from facets.
 
+## Amendment 2 — A3 PASS (2026-09-08)
+
+Staging soak ~27.8h after the legacy-snapshot seed. Founder-authorized PASS.
+
+| Gate | Result |
+|---|---|
+| `eventProjectionFailures` | 0 |
+| Staging worker | online; Stream connected |
+| SQL write p95 | 27 ms (budget 250 ms) |
+| Universe | 62,095 `token_market_state` rows; only #62094 and #62095 above `official_supply=62093` (discovery envelope) |
+| Production `sqlWriter` | absent |
+
+Production Postgres disk-full PANIC at 12:32 UTC (volume 5 GB → 20 GB, recovered 14:11 UTC) is an infra incident, not an A3 fail. Blob remains request-path authority until A5.
+
+A3 proved SQL writers hold the canonical universe. It did not prove the Categories UI: staging still uses `MARKET_READ_MODEL=blob`.
+
+## Amendment 3 — A4 SQL read-model invariants
+
+A4 implements flagged SQL reads. Staging and production stay `MARKET_READ_MODEL=blob`. Do not flip staging to `sql` in A4 (that is A5).
+
+1. Category/collection reads join `token_facets ⋈ token_market_state ⋈ collections` with `t.token_id <= c.official_supply`. Never `COUNT(token_market_state)` as supply. #62094/#62095 never enter listed/floor.
+2. Split `marketStatus` into bootstrap coverage, realtime health, and per-state freshness. Aging `UNLISTED_VERIFIED` / `STALE` must not revert a seeded universe to bootstrap Syncing.
+3. `listedCount` is `LISTED` only. Floor is the lowest current LISTED ask whenever one exists. STALE-with-price is `lastKnownFloor`, never Live floor.
+4. One event updates one `token_market_state` row; SQL reads must reflect that without rehydrating the 62k blob.
+5. Blob `categoryReadiness` / 95% TTL coverage math stays on the blob path until A5.
+6. Worker ingest still uses the OpenSea source; `MARKET_READ_MODEL` only selects the **read** implementation.
+
 ## A1 implementation notes
 
 - Source of V2 DDL: `apps/web/lib/index/schema-v2.ts` (inlined SQL, same reason as `pg.ts`: Nixpacks must not lose a loose `.sql` at runtime).
