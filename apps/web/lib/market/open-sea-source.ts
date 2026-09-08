@@ -67,7 +67,7 @@ import {
   writeWorkerCheckpoint,
 } from '@/lib/index/store';
 import { startMarketMaintenance } from '@/lib/index/maintenance';
-import { marketReadModel } from '@/lib/index/sql-read-flags';
+import { isNextProductionBuild, marketReadModel } from '@/lib/index/sql-read-flags';
 import { getSqlMarketSourceOrFail } from './sql-market-source';
 import { enqueueSqlReconciliation } from '@/lib/index/sql-writer';
 import { rehydrateCatalogFromIndex } from './rehydrate-catalog';
@@ -1561,6 +1561,9 @@ function createOpenSeaMarketSource(): OpenSeaMarketSource {
 export function getMarketSource(): MarketSource {
   if (singleton) return singleton;
   if (marketReadModel() === 'sql') {
+    if (isNextProductionBuild()) {
+      return failingSource('sql read model skipped during next build (no private DNS)');
+    }
     singleton = getSqlMarketSourceOrFail();
     return singleton;
   }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { marketReadModel } from './sql-read-flags';
+import { isNextProductionBuild, marketReadModel } from './sql-read-flags';
 
 describe('marketReadModel', () => {
   const previous = process.env.MARKET_READ_MODEL;
@@ -17,5 +17,14 @@ describe('marketReadModel', () => {
   it('selects sql only when explicitly set', () => {
     process.env.MARKET_READ_MODEL = 'sql';
     expect(marketReadModel()).toBe('sql');
+  });
+
+  it('detects next production build so SQL reads do not hit Postgres during prerender', () => {
+    const prev = process.env.NEXT_PHASE;
+    process.env.NEXT_PHASE = 'phase-production-build';
+    expect(isNextProductionBuild()).toBe(true);
+    if (prev === undefined) delete process.env.NEXT_PHASE;
+    else process.env.NEXT_PHASE = prev;
+    expect(isNextProductionBuild()).toBe(false);
   });
 });

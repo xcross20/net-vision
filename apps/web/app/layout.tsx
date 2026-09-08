@@ -23,6 +23,8 @@ const geistMono = Geist_Mono({
   weight: ['400', '500', '600'],
 });
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Net Vision — Button Presser Market Terminal',
   description:
