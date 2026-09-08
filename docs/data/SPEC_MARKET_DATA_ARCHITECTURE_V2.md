@@ -65,8 +65,8 @@ Promote normalized Postgres tables from recovery/dual-write storage to the autho
 | --- | --- | --- |
 | A1 | Schema V2 | Identity + events tables exist; production request path unchanged |
 | A2 | Incremental SQL writer | Event-local upserts; blob still written in parallel |
-| A3 | Shadow parity verifier | Blob vs SQL for collection + five named categories |
-| A4 | SQL read model + `MARKET_READ_MODEL` | Flagged reads; production stays `blob` |
+| A3 | Shadow parity verifier | **PASS 2026-09-08.** SQL universe seeded; soak ~28h; `eventProjectionFailures=0`. UI still blob. |
+| A4 | SQL read model + `MARKET_READ_MODEL` | Flagged reads; production and staging stay `blob` until A5 |
 | A5 | Staging cutover | Staging `MARKET_READ_MODEL=sql` + Release Readiness |
 | A6 | Production cutover | Production reads SQL; blob is checkpoint |
 | A7 | Legacy read-path retirement | No request-path catalog hydration |

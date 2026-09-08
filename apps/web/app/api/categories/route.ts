@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { listCategories } from '@/lib/data/categories';
 import { snapshotRevision } from '@/lib/index/store';
 import { categoryResponse } from '@/lib/market/category-contract';
+import { marketReadModel } from '@/lib/index/sql-read-flags';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,10 @@ export async function GET() {
   const revision = snapshotRevision();
   return NextResponse.json({
     snapshotRevision: revision,
-    categories: categories.map((c) => categoryResponse(c, revision)),
+    categories: categories.map((c) =>
+      categoryResponse(c, revision, {
+        includeFloorWhileSyncing: marketReadModel() === 'sql',
+      }),
+    ),
   });
 }

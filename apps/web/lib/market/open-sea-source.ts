@@ -67,6 +67,8 @@ import {
   writeWorkerCheckpoint,
 } from '@/lib/index/store';
 import { startMarketMaintenance } from '@/lib/index/maintenance';
+import { marketReadModel } from '@/lib/index/sql-read-flags';
+import { getSqlMarketSourceOrFail } from './sql-market-source';
 import { enqueueSqlReconciliation } from '@/lib/index/sql-writer';
 import { rehydrateCatalogFromIndex } from './rehydrate-catalog';
 import { PRIORITY_TOKEN_IDS, startBackgroundIndexer } from '@/lib/index/worker';
@@ -1537,25 +1539,36 @@ function matchesCategoryFilter(
 
 let singleton: MarketSource | null = null;
 let singletonError: string | null = null;
+let openseaSingleton: OpenSeaMarketSource | null = null;
+
+function createOpenSeaMarketSource(): OpenSeaMarketSource {
+  if (openseaSingleton) return openseaSingleton;
+  const env = readEnv();
+  if (!env.OPENSEA_API_KEY) {
+    throw new Error(
+      'OPENSEA_API_KEY is not set; live market data is unavailable. Set it in the server environment.',
+    );
+  }
+  const client = createOpenSeaClient({
+    OPENSEA_API_KEY: env.OPENSEA_API_KEY,
+    OPENSEA_BASE_URL: env.OPENSEA_BASE_URL,
+    OPENSEA_CHAIN: env.OPENSEA_CHAIN,
+  });
+  openseaSingleton = new OpenSeaMarketSource(client);
+  return openseaSingleton;
+}
 
 export function getMarketSource(): MarketSource {
   if (singleton) return singleton;
+  if (marketReadModel() === 'sql') {
+    singleton = getSqlMarketSourceOrFail();
+    return singleton;
+  }
   if (singletonError) {
     return failingSource(singletonError);
   }
   try {
-    const env = readEnv();
-    if (!env.OPENSEA_API_KEY) {
-      singletonError =
-        'OPENSEA_API_KEY is not set; live market data is unavailable. Set it in the server environment.';
-      return failingSource(singletonError);
-    }
-    const client = createOpenSeaClient({
-      OPENSEA_API_KEY: env.OPENSEA_API_KEY,
-      OPENSEA_BASE_URL: env.OPENSEA_BASE_URL,
-      OPENSEA_CHAIN: env.OPENSEA_CHAIN,
-    });
-    singleton = new OpenSeaMarketSource(client);
+    singleton = createOpenSeaMarketSource();
     return singleton;
   } catch (err) {
     singletonError = err instanceof Error ? err.message : String(err);
@@ -1565,19 +1578,20 @@ export function getMarketSource(): MarketSource {
 
 /**
  * Boot helper for the standalone market-worker process.
- * Constructs the live source (if needed) and starts indexer loops
- * without requiring INDEXER_EMBEDDED.
+ * Constructs the live OpenSea source (if needed) and starts indexer loops
+ * without requiring INDEXER_EMBEDDED. Independent of MARKET_READ_MODEL.
  */
 export function startStandaloneMarketIndexer(): void {
-  const source = getMarketSource();
-  if (source instanceof OpenSeaMarketSource) {
+  try {
+    const source = createOpenSeaMarketSource();
     source.startIndexerLoops();
-    return;
+  } catch (err) {
+    throw new Error(
+      err instanceof Error
+        ? err.message
+        : 'Cannot start market indexer: OpenSea market source is unavailable',
+    );
   }
-  throw new Error(
-    singletonError ??
-      'Cannot start market indexer: OpenSea market source is unavailable',
-  );
 }
 
 class FailingMarketSource implements MarketSource {

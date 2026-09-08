@@ -170,4 +170,10 @@ COMMENT ON COLUMN token_market_state.state_source IS
 
 INSERT INTO schema_migrations (id) VALUES ('a2-event-local-writers')
 ON CONFLICT (id) DO NOTHING;
+
+COMMENT ON INDEX idx_token_market_state_listed_price IS
+  'A4 category floor/listed queries filter LISTED by collection via token_market_state_collection_token_uidx plus this partial index.';
+
+INSERT INTO schema_migrations (id) VALUES ('a4-sql-read-model')
+ON CONFLICT (id) DO NOTHING;
 `;

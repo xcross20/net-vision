@@ -147,4 +147,26 @@ export class MemoryMarketRepository implements MarketRepository {
   facets(collectionId: string, tokenId: number): TokenFacet[] {
     return this.state.facets.get(tokenKey(collectionId, tokenId)) ?? [];
   }
+
+  marketRows(collectionId: string): SqlTokenMarketState[] {
+    return [...this.state.market.values()].filter((row) => row.collectionId === collectionId);
+  }
+
+  tokenRows(collectionId: string): TokenUpsert[] {
+    return [...this.state.tokens.values()].filter((row) => row.collectionId === collectionId);
+  }
+
+  facetRows(collectionId: string): Array<{ tokenId: number; facets: TokenFacet[] }> {
+    const rows: Array<{ tokenId: number; facets: TokenFacet[] }> = [];
+    for (const [key, facets] of this.state.facets) {
+      const [cid, id] = key.split(':');
+      if (cid !== collectionId) continue;
+      rows.push({ tokenId: Number(id), facets: [...facets] });
+    }
+    return rows;
+  }
+
+  saleRows(collectionId: string): SaleInsert[] {
+    return [...this.state.sales.values()].filter((row) => row.collectionId === collectionId);
+  }
 }

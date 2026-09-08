@@ -1,6 +1,11 @@
 import type { CategoryMetrics } from './types';
 
-export function categoryResponse(metrics: CategoryMetrics, snapshotRevision?: number) {
+export function categoryResponse(
+  metrics: CategoryMetrics,
+  snapshotRevision?: number,
+  options?: { includeFloorWhileSyncing?: boolean },
+) {
+  const hideFloor = metrics.marketStatus === 'syncing' && !options?.includeFloorWhileSyncing;
   return {
     slug: metrics.slug,
     name: metrics.name,
@@ -18,7 +23,7 @@ export function categoryResponse(metrics: CategoryMetrics, snapshotRevision?: nu
     trackedSince: metrics.trackedSince,
     description: metrics.description,
     market: {
-      floor: metrics.marketStatus === 'syncing' ? null : metrics.floorPrice,
+      floor: hideFloor ? null : metrics.floorPrice,
       listed: metrics.listedCount,
       listedPercentage: metrics.listedPercentage,
       lastKnownFloor: metrics.lastKnownFloorPrice,
