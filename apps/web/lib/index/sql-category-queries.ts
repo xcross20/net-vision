@@ -88,3 +88,42 @@ WHERE c.id = $1
 ORDER BY m.best_price_decimal ASC NULLS LAST, t.token_id ASC
 LIMIT $3 OFFSET $4
 `;
+
+export const SQL_RECENT_SALES = `
+SELECT
+  s.token_id, s.price, s.currency, s.occurred_at, s.order_hash, s.buyer, s.seller
+FROM collections c
+JOIN sales s ON s.collection_id = c.id
+WHERE c.id = $1
+  AND s.token_id >= 1 AND s.token_id <= c.official_supply
+ORDER BY s.occurred_at DESC
+LIMIT $2
+`;
+
+export const SQL_TOKEN_SALES = `
+SELECT
+  s.token_id, s.price, s.currency, s.occurred_at, s.order_hash, s.buyer, s.seller
+FROM collections c
+JOIN sales s ON s.collection_id = c.id
+WHERE c.id = $1
+  AND s.token_id = $2
+  AND s.token_id >= 1 AND s.token_id <= c.official_supply
+ORDER BY s.occurred_at DESC
+LIMIT $3
+`;
+
+export const SQL_CATEGORY_SALES = `
+SELECT
+  s.token_id, s.price, s.currency, s.occurred_at, s.order_hash, s.buyer, s.seller
+FROM collections c
+JOIN sale_attributions a ON a.collection_id = c.id
+JOIN sales s
+  ON s.collection_id = a.collection_id
+ AND s.sale_event_id = a.sale_event_id
+WHERE c.id = $1
+  AND a.category_slug = $2
+  AND s.token_id >= 1 AND s.token_id <= c.official_supply
+  AND ($3::timestamptz IS NULL OR s.occurred_at >= $3)
+ORDER BY s.occurred_at DESC
+LIMIT $4
+`;

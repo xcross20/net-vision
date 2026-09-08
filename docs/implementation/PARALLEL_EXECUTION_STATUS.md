@@ -23,7 +23,7 @@ Source precedence: (1) verified repo invariants (2) dual-track directive (3) `do
 | Track | branch | base SHA | owner | status | gate | merge dependency |
 |---|---|---|---|---|---|---|
 | A3 closeout | `staging` | `5e1403e` | architecture | **PASS** | soak + PR #15 | — |
-| A4 SQL reads | `feat/a4-sql-read-model` | `5e1403e` | architecture | **in progress** (code exists, not merged) | tests + no flag flip | A3 PASS |
+| A4 SQL reads | `feat/a4-sql-read-model` | `5e1403e` | architecture | **ready for staging PR** (flag stays blob) | tests + no flag flip | A3 PASS |
 | A5 staging SQL | not created | post-A4 staging | architecture | blocked until A4 merge | existing UI proof | A4 on staging |
 | A6 production SQL | — | — | architecture | blocked | Release Readiness | A5 + Track B on staging |
 | A7 blob retirement | — | — | architecture | blocked | production SQL stable | A6 |

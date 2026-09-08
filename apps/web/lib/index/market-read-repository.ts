@@ -9,7 +9,10 @@ import { BUTTON_PRESSER_COLLECTION_ID } from './schema-v2';
 import {
   SQL_CATEGORY_LISTED_TOKENS,
   SQL_CATEGORY_MARKET_FACTS,
+  SQL_CATEGORY_SALES,
   SQL_COLLECTION_MARKET_FACTS,
+  SQL_RECENT_SALES,
+  SQL_TOKEN_SALES,
 } from './sql-category-queries';
 import type { MemoryMarketRepository } from './memory-market-repository';
 import type { SqlTokenMarketState } from './market-repository';
@@ -57,6 +60,16 @@ export type ReadWorkerHealth = {
   heartbeatAgeMs: number | null;
 };
 
+export type SaleReadRow = {
+  tokenId: number;
+  price: number;
+  currency: string;
+  occurredAt: number;
+  orderHash: string | null;
+  buyer: string | null;
+  seller: string | null;
+};
+
 export interface MarketReadRepository {
   collectionFacts(collectionId: string): Promise<CollectionMarketFacts>;
   categoryFacts(collectionId: string, slug: string): Promise<CategoryMarketFacts | null>;
@@ -67,7 +80,35 @@ export interface MarketReadRepository {
     offset: number,
   ): Promise<ListedTokenRow[]>;
   getMarketState(collectionId: string, tokenId: number): Promise<SqlTokenMarketState | null>;
+  listRecentSales(collectionId: string, limit: number): Promise<SaleReadRow[]>;
+  listTokenSales(collectionId: string, tokenId: number, limit: number): Promise<SaleReadRow[]>;
+  listCategorySales(
+    collectionId: string,
+    slug: string,
+    limit: number,
+    sinceMs: number | null,
+  ): Promise<SaleReadRow[]>;
   workerHealth(): Promise<ReadWorkerHealth>;
+}
+
+function saleReadRow(row: {
+  tokenId: number;
+  price: number;
+  currency: string;
+  occurredAt: number;
+  orderHash: string | null;
+  buyer: string | null;
+  seller: string | null;
+}): SaleReadRow {
+  return {
+    tokenId: row.tokenId,
+    price: row.price,
+    currency: row.currency,
+    occurredAt: row.occurredAt,
+    orderHash: row.orderHash,
+    buyer: row.buyer,
+    seller: row.seller,
+  };
 }
 
 function num(value: unknown): number | null {
@@ -232,6 +273,50 @@ export class MemoryMarketReadRepository implements MarketReadRepository {
     return this.mem.getTokenMarketState(collectionId, tokenId);
   }
 
+  async listRecentSales(collectionId: string, limit: number): Promise<SaleReadRow[]> {
+    return this.mem
+      .saleRows(collectionId)
+      .filter((row) => isOfficialExistingTokenId(row.tokenId))
+      .sort((a, b) => b.occurredAt - a.occurredAt)
+      .slice(0, limit)
+      .map(saleReadRow);
+  }
+
+  async listTokenSales(collectionId: string, tokenId: number, limit: number): Promise<SaleReadRow[]> {
+    if (!isOfficialExistingTokenId(tokenId)) return [];
+    return this.mem
+      .saleRows(collectionId)
+      .filter((row) => row.tokenId === tokenId)
+      .sort((a, b) => b.occurredAt - a.occurredAt)
+      .slice(0, limit)
+      .map(saleReadRow);
+  }
+
+  async listCategorySales(
+    collectionId: string,
+    slug: string,
+    limit: number,
+    sinceMs: number | null,
+  ): Promise<SaleReadRow[]> {
+    const eventIds = new Set(
+      this.mem
+        .attributionRows(collectionId)
+        .filter((row) => row.categorySlug === slug)
+        .map((row) => row.saleEventId),
+    );
+    return this.mem
+      .saleRows(collectionId)
+      .filter(
+        (row) =>
+          eventIds.has(row.saleEventId) &&
+          isOfficialExistingTokenId(row.tokenId) &&
+          (sinceMs == null || row.occurredAt >= sinceMs),
+      )
+      .sort((a, b) => b.occurredAt - a.occurredAt)
+      .slice(0, limit)
+      .map(saleReadRow);
+  }
+
   async workerHealth(): Promise<ReadWorkerHealth> {
     return { ...this.health };
   }
@@ -350,9 +435,52 @@ export class PgMarketReadRepository implements MarketReadRepository {
     };
   }
 
+  async listRecentSales(collectionId: string, limit: number): Promise<SaleReadRow[]> {
+    const result = await this.pool.query(SQL_RECENT_SALES, [collectionId, limit]);
+    return result.rows.map(pgSaleRow);
+  }
+
+  async listTokenSales(collectionId: string, tokenId: number, limit: number): Promise<SaleReadRow[]> {
+    if (!isOfficialExistingTokenId(tokenId)) return [];
+    const result = await this.pool.query(SQL_TOKEN_SALES, [collectionId, tokenId, limit]);
+    return result.rows.map(pgSaleRow);
+  }
+
+  async listCategorySales(
+    collectionId: string,
+    slug: string,
+    limit: number,
+    sinceMs: number | null,
+  ): Promise<SaleReadRow[]> {
+    const since = sinceMs == null ? null : new Date(sinceMs).toISOString();
+    const result = await this.pool.query(SQL_CATEGORY_SALES, [collectionId, slug, since, limit]);
+    return result.rows.map(pgSaleRow);
+  }
+
   async workerHealth(): Promise<ReadWorkerHealth> {
     return { workerOnline: true, streamConnected: true, heartbeatAgeMs: 0 };
   }
+}
+
+function pgSaleRow(row: {
+  token_id: unknown;
+  price: unknown;
+  currency: string;
+  occurred_at: Date | string;
+  order_hash: string | null;
+  buyer: string | null;
+  seller: string | null;
+}): SaleReadRow {
+  const occurred = row.occurred_at instanceof Date ? row.occurred_at.getTime() : new Date(row.occurred_at).getTime();
+  return {
+    tokenId: Number(row.token_id),
+    price: Number(row.price),
+    currency: row.currency,
+    occurredAt: occurred,
+    orderHash: row.order_hash ?? null,
+    buyer: row.buyer ?? null,
+    seller: row.seller ?? null,
+  };
 }
 
 export function defaultCollectionId(): string {

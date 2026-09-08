@@ -169,4 +169,8 @@ export class MemoryMarketRepository implements MarketRepository {
   saleRows(collectionId: string): SaleInsert[] {
     return [...this.state.sales.values()].filter((row) => row.collectionId === collectionId);
   }
+
+  attributionRows(collectionId: string): SaleAttributionInsert[] {
+    return this.state.attributions.filter((row) => row.collectionId === collectionId);
+  }
 }

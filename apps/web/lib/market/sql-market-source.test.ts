@@ -196,6 +196,55 @@ describe('SqlMarketSource', () => {
     expect(snapshot.totalSupply).toBe(BUTTON_PRESSER_COLLECTION.officialExistingSupply);
   });
 
+  it('reads collection and category sales and ignores envelope token sales', async () => {
+    const mem = new MemoryMarketRepository();
+    await seedToken(mem, 1, 'LISTED', 41, ['digits-1']);
+    const now = Date.now();
+    await mem.insertSale({
+      collectionId: CID,
+      saleEventId: 'sale:1',
+      tokenId: 1,
+      price: 80,
+      currency: 'USDG',
+      occurredAt: now,
+      orderHash: '0xsale1',
+      buyer: '0xbuy',
+      seller: '0xsel',
+    });
+    await mem.insertSaleAttributions([
+      {
+        collectionId: CID,
+        saleEventId: 'sale:1',
+        tokenId: 1,
+        categorySlug: 'digits-1',
+        taxonomyVersion: 'taxonomy-test',
+        facetSource: 'derived',
+        attributedPrice: 80,
+        occurredAt: now,
+      },
+    ]);
+    await mem.insertSale({
+      collectionId: CID,
+      saleEventId: 'sale:phantom',
+      tokenId: 62094,
+      price: 1,
+      currency: 'USDG',
+      occurredAt: now,
+      orderHash: null,
+      buyer: null,
+      seller: null,
+    });
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const recent = await source.listRecentSales(10);
+    expect(recent.map((s) => s.tokenId)).toEqual(['1']);
+    expect(recent[0]?.price).toBe(80);
+    const category = await source.listCategorySales('digits-1');
+    expect(category).toHaveLength(1);
+    const metrics = await source.getCategoryMetrics('digits-1');
+    expect(metrics?.lastSalePrice).toBe(80);
+    expect(metrics?.highestSale?.tokenId).toBe('1');
+  });
+
   it('does not use COUNT of market-state rows as collection supply', async () => {
     const mem = new MemoryMarketRepository();
     await seedToken(mem, 1, 'LISTED', 10, ['digits-1']);
