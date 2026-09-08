@@ -10,3 +10,8 @@ export type MarketReadModel = 'blob' | 'sql';
 export function marketReadModel(): MarketReadModel {
   return process.env.MARKET_READ_MODEL === 'sql' ? 'sql' : 'blob';
 }
+
+/** Next.js `next build` prerender cannot reach Railway private DNS. */
+export function isNextProductionBuild(): boolean {
+  return process.env.NEXT_PHASE === 'phase-production-build';
+}
