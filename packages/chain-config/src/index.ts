@@ -35,6 +35,23 @@ export const BUTTON_PRESSER_COLLECTION = {
 } as const;
 
 /**
+ * Canonical market/category/supply universe. Discovery may persist
+ * rows through `maxTokenId` (62094 and 62095 today), but listed counts,
+ * coverage, and Items MUST NOT use COUNT(token_market_state).
+ *
+ * `tokens.exists` is an observation flag (metadata/NFT fetch), not
+ * supply. Filtering `exists=true` would drop official ids that have
+ * not been metadata-verified yet.
+ */
+export function isOfficialExistingTokenId(tokenId: number): boolean {
+  return (
+    Number.isInteger(tokenId) &&
+    tokenId >= BUTTON_PRESSER_COLLECTION.minTokenId &&
+    tokenId <= BUTTON_PRESSER_COLLECTION.officialExistingSupply
+  );
+}
+
+/**
  * Robinhood Chain.
  *
  * NOTE: The numeric chain ID below is the value documented at the time of
