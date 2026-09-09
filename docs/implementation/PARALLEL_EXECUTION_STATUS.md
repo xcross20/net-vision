@@ -1,41 +1,46 @@
 # Parallel Execution Status
 
-Updated: 2026-09-08 after A3 PASS (PR #15 merged).
+Updated: 2026-09-09 after **A5 PASS** (staging SHA `280f73b`).
 
-Source precedence: (1) verified repo invariants (2) dual-track directive (3) `docs/product/parallel-v1/` (4) Fletcher UI spec (5) Fletcher imagery (6) `buttonvision-mvp.zip` historical only.
+Source precedence: (1) verified repo + staging evidence (2) `docs/padp/*` (3) `docs/product/parallel-v1/` (4) Fletcher UI spec (5) Fletcher imagery (6) `buttonvision-mvp.zip` historical only.
 
 **`buttonvision-mvp` is not code to merge.** Do not restore its demo listing provider, per-request market math, prototype schema, or old config.
 
+PADP: `docs/padp/AUTHORITY_MAP.md`, `docs/padp/PARALLEL_EXECUTION_BOARD.md`, `.agent/branch-contracts/`.
+
 ## Verdict
 
-**SAFE TO EXECUTE** Track A (A4 on `feat/a4-sql-read-model`) and Track B **development** from post-A3 staging `5e1403e`.
+**Authority Epoch E2:** Normalized SQL is staging market read authority.
+
+**SAFE TO DEVELOP** product tracks in isolated worktrees from `280f73b`.
 
 **BLOCK**
 
-- merging any Track B branch into staging before **A5 PASS**
-- flipping `MARKET_READ_MODEL=sql` on staging (that is A5) or production (A6)
-- production changes
-- product agents patching Categories “Syncing” on the blob path
+- merging two product tracks in one staging deploy
+- A6 production `MARKET_READ_MODEL=sql` until product proven on staging
+- A7 blob retirement
+- product agents editing frozen SQL/worker/read-model paths
 - “implement everything” in one PR / one agent
+- patching Printed Phenolic `Syncing` as if it were the old TTL defect (it is incomplete metadata coverage)
 
 ## Tracks
 
 | Track | branch | base SHA | owner | status | gate | merge dependency |
 |---|---|---|---|---|---|---|
 | A3 closeout | `staging` | `5e1403e` | architecture | **PASS** | soak + PR #15 | — |
-| A4 SQL reads | `feat/a4-sql-read-model` | `5e1403e` | architecture | **ready for staging PR** (flag stays blob) | tests + no flag flip | A3 PASS |
-| A5 staging SQL | not created | post-A4 staging | architecture | blocked until A4 merge | existing UI proof | A4 on staging |
-| A6 production SQL | — | — | architecture | blocked | Release Readiness | A5 + Track B on staging |
+| A4 SQL reads | merged PR #16 | `2ea892c` | architecture | **PASS** | tests; flag stayed blob until A5 | A3 PASS |
+| A5 staging SQL | `staging` `280f73b` | `280f73b` | architecture | **PASS** 2026-09-09 | existing UI + SQL semantics | A4 + PR #17 |
+| A6 production SQL | — | — | architecture | blocked | Release Readiness | product tracks on staging |
 | A7 blob retirement | — | — | architecture | blocked | production SQL stable | A6 |
-| Portfolio | `feat/portfolio-completion` | `5e1403e` | product | branch only | modularity + tests | **A5 PASS** then rebase |
-| Commerce | `feat/commerce-hardening` | `5e1403e` | product | branch only | tx policy + tests | A5 PASS then rebase |
-| Gear | `feat/netnet-gear-foundation` | `5e1403e` | product | branch only | read-only + real metadata | A5 PASS then rebase |
-| Intelligence | `feat/basic-intelligence` | `5e1403e` | product | branch only | fixtures, no 2nd market | A5 PASS then rebase |
-| Launch QA | `feat/launch-readiness` | `5e1403e` | product | branch only | E2E/false-zero | last after each merge |
+| Portfolio | `feat/portfolio-completion` | `280f73b` | product | worktree ready | modularity + tests | first product merge |
+| Commerce | `feat/commerce-hardening` | `280f73b` | product | worktree ready | tx policy + tests | after Portfolio staging PASS |
+| Gear | `feat/netnet-gear-foundation` | `280f73b` | product | worktree ready | read-only + real metadata | after Commerce staging PASS |
+| Intelligence | `feat/basic-intelligence` | `280f73b` | product | worktree ready | fixtures, no 2nd market | after Gear staging PASS |
+| Launch QA | `feat/launch-readiness` | `280f73b` | product | worktree ready | E2E/false-zero | last after each merge |
 
 ## File ownership / collision matrix
 
-### A4 exclusive (Track B must not edit)
+### E2 frozen (product tracks must not edit)
 
 | Path | why |
 |---|---|
@@ -55,7 +60,7 @@ Source precedence: (1) verified repo invariants (2) dual-track directive (3) `do
 
 ### Shared — one owner, others adapt
 
-| Path | owner during A4/A5 | Track B rule |
+| Path | owner during E2 product sprint | Product-track rule |
 |---|---|---|
 | `apps/web/lib/market/source.ts` | A4 | consume interface; do not replace |
 | `apps/web/lib/market/types.ts` | A4 | additive optional fields only via A4 |

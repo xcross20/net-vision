@@ -1,0 +1,28 @@
+{
+  "project": "net-vision",
+  "stage": "ASDOS-6-parallel-expansion",
+  "authorityEpoch": "E2",
+  "baseSha": "280f73b5fc8b25094cc45dda4bc86a4cd2f4646a",
+  "updated": "2026-09-09",
+  "a5": "PASS",
+  "a6": "BLOCKED",
+  "a7": "BLOCKED",
+  "productionReadModel": "blob",
+  "stagingReadModel": "sql",
+  "integrationQueue": [
+    "feat/padp-epoch-e2",
+    "feat/portfolio-completion",
+    "feat/commerce-hardening",
+    "feat/netnet-gear-foundation",
+    "feat/basic-intelligence",
+    "feat/launch-readiness"
+  ],
+  "mergeBarriersClosed": true,
+  "tracks": {
+    "portfolio": { "branch": "feat/portfolio-completion", "status": "ready" },
+    "commerce": { "branch": "feat/commerce-hardening", "status": "ready" },
+    "gear": { "branch": "feat/netnet-gear-foundation", "status": "ready" },
+    "intelligence": { "branch": "feat/basic-intelligence", "status": "ready" },
+    "launch": { "branch": "feat/launch-readiness", "status": "ready" }
+  }
+}
