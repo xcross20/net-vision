@@ -74,6 +74,38 @@ export const ROBINHOOD_CHAIN = defineChain({
   },
 });
 
+/** 4663 as a 0x-prefixed hex string for wallet_switchEthereumChain. */
+export const ROBINHOOD_CHAIN_ID_HEX = '0x1237' as const;
+
+/**
+ * Canonical wallet_addEthereumChain payload. RPC and explorer here are
+ * the official public wallet defaults, not the app's production RPC.
+ * Never construct this from URL params, OpenSea, or user-controlled data.
+ */
+export function robinhoodAddEthereumChainParameter(): {
+  chainId: typeof ROBINHOOD_CHAIN_ID_HEX;
+  chainName: typeof ROBINHOOD_CHAIN.name;
+  nativeCurrency: {
+    name: typeof ROBINHOOD_CHAIN.nativeCurrency.name;
+    symbol: typeof ROBINHOOD_CHAIN.nativeCurrency.symbol;
+    decimals: typeof ROBINHOOD_CHAIN.nativeCurrency.decimals;
+  };
+  rpcUrls: readonly string[];
+  blockExplorerUrls: readonly string[];
+} {
+  return {
+    chainId: ROBINHOOD_CHAIN_ID_HEX,
+    chainName: ROBINHOOD_CHAIN.name,
+    nativeCurrency: {
+      name: ROBINHOOD_CHAIN.nativeCurrency.name,
+      symbol: ROBINHOOD_CHAIN.nativeCurrency.symbol,
+      decimals: ROBINHOOD_CHAIN.nativeCurrency.decimals,
+    },
+    rpcUrls: ROBINHOOD_CHAIN.rpcUrls.default.http,
+    blockExplorerUrls: [ROBINHOOD_CHAIN.blockExplorers.default.url],
+  };
+}
+
 /** OpenSea v2 path slug for this chain. Not a numeric id. */
 export const OPENSEA_CHAIN_SLUG = 'robinhood' as const;
 

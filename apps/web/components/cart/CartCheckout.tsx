@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useAccount, useChainId, usePublicClient, useSendTransaction, useSwitchChain, useWriteContract } from 'wagmi';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAccount, usePublicClient, useSendTransaction, useWriteContract } from 'wagmi';
 import { erc20Abi } from 'viem';
 import { SpinnerIcon, WarnIcon, CheckIcon } from '@/components/icons';
 import { cn } from '@/lib/cn';
@@ -19,6 +19,14 @@ import { PAYMENT_TOKENS, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 import { payment } from '@/lib/format';
 import type { UsdgStatus } from '@/lib/trade/usdg-status';
 import { boundedApproveAmount } from '@/lib/trade/bounded-approve';
+import { useRobinhoodNetworkGate } from '@/lib/wallet/NetworkGateProvider';
+import { checkoutFailureMessage } from '@/lib/wallet/network-errors';
+import {
+  assertWalletOnRobinhood,
+  checkoutPhaseAfterChainChange,
+  isRobinhoodChainId,
+  shouldInvalidateChainSensitiveState,
+} from '@/lib/wallet/network-gate';
 
 type PrepareSuccess = {
   listing: {
@@ -56,34 +64,26 @@ type RevalidateItem =
 
 export function CartCheckout() {
   const { items, phase, setPhase, removeConfirmed, consumeReviewRequest } = useCart();
-  const { address, isConnected } = useAccount();
-  const chainId = useChainId();
-  const { switchChainAsync, isPending: switching } = useSwitchChain();
+  const { address, isConnected, chainId, connector } = useAccount();
+  const { requestNetworkForAction } = useRobinhoodNetworkGate();
   const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
   const [acceptedPriceDrift, setAcceptedPriceDrift] = useState(false);
   const [usdgStatus, setUsdgStatus] = useState<UsdgStatus | null>(null);
+  const lastChainRef = useRef<number | undefined>(undefined);
 
   const onReview = useCallback(async () => {
     if (!address) {
       setPhase({ kind: 'error', message: 'Connect a wallet to check out.' });
       return;
     }
-    if (chainId !== ROBINHOOD_CHAIN.id) {
-      try {
-        await switchChainAsync?.({ chainId: ROBINHOOD_CHAIN.id });
-      } catch (err) {
-        setPhase({
-          kind: 'error',
-          message:
-            err instanceof Error
-              ? `Switch to Robinhood Chain before checkout: ${err.message}`
-              : 'Switch to Robinhood Chain before checkout.',
-        });
-        return;
-      }
-    }
+    const onRobinhood = await requestNetworkForAction('checkout', 'review');
+    if (!onRobinhood) return;
+    await assertWalletOnRobinhood({
+      getChainId: connector?.getChainId?.bind(connector),
+      chainId,
+    });
     setPhase({ kind: 'revalidating' });
     try {
       const res = await fetch('/api/trade/cart/revalidate', {
@@ -114,10 +114,16 @@ export function CartCheckout() {
         message: err instanceof Error ? err.message : String(err),
       });
     }
-  }, [address, chainId, items, setPhase, switchChainAsync]);
+  }, [address, chainId, connector, items, requestNetworkForAction, setPhase]);
 
   const onApproveUsdg = useCallback(async () => {
     if (phase.kind !== 'payment_select' || !address) return;
+    const onRobinhood = await requestNetworkForAction('approve', phase.kind);
+    if (!onRobinhood) return;
+    await assertWalletOnRobinhood({
+      getChainId: connector?.getChainId?.bind(connector),
+      chainId,
+    });
     const spender = usdgStatus?.spender.address;
     if (!spender) {
       setPhase({ kind: 'error', message: 'USDG spender is unresolved; cannot approve.' });
@@ -167,10 +173,10 @@ export function CartCheckout() {
     } catch (err) {
       setPhase({
         kind: 'error',
-        message: err instanceof Error ? err.message : String(err),
+        message: checkoutFailureMessage(err),
       });
     }
-  }, [address, phase, publicClient, setPhase, usdgStatus, writeContractAsync]);
+  }, [address, chainId, connector, phase, publicClient, requestNetworkForAction, setPhase, usdgStatus, writeContractAsync]);
 
   const onCheckout = useCallback(async () => {
     if (phase.kind !== 'review' && phase.kind !== 'payment_select') return;
@@ -178,6 +184,12 @@ export function CartCheckout() {
       setPhase({ kind: 'error', message: 'Connect a wallet to check out.' });
       return;
     }
+    const onRobinhood = await requestNetworkForAction('purchase', phase.kind);
+    if (!onRobinhood) return;
+    await assertWalletOnRobinhood({
+      getChainId: connector?.getChainId?.bind(connector),
+      chainId,
+    });
     const validItems = phase.items.filter((it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid');
     if (validItems.length === 0) {
       setPhase({ kind: 'error', message: 'No items are available for purchase.' });
@@ -247,11 +259,16 @@ export function CartCheckout() {
         if (!prepRes.ok || !prepJson.transaction) {
           throw new Error(prepJson.error ?? `prepare failed (${prepRes.status})`);
         }
+        await assertWalletOnRobinhood({
+      getChainId: connector?.getChainId?.bind(connector),
+      chainId,
+    });
         const tx = prepJson.transaction;
         const hash = await sendTransactionAsync({
           to: tx.to as `0x${string}`,
           data: (tx.data ?? '0x') as `0x${string}`,
           value: tx.value ? BigInt(tx.value) : BigInt(0),
+          chainId: ROBINHOOD_CHAIN.id,
         });
         if (!publicClient) {
           throw new Error('No RPC client — cannot wait for confirmation.');
@@ -271,7 +288,7 @@ export function CartCheckout() {
       } catch (err) {
         const confirmedItems = validItems.filter((row) => confirmed.includes(row.tokenId));
         const failedItems = validItems.filter((row) => !confirmed.includes(row.tokenId));
-        const message = err instanceof Error ? err.message : String(err);
+        const message = checkoutFailureMessage(err);
         if (confirmedItems.length > 0) {
           removeConfirmed(confirmed);
           setPhase({
@@ -292,7 +309,7 @@ export function CartCheckout() {
       confirmed: validItems,
       failed: [],
     });
-  }, [address, phase, publicClient, removeConfirmed, sendTransactionAsync, setPhase]);
+  }, [address, chainId, connector, phase, publicClient, removeConfirmed, requestNetworkForAction, sendTransactionAsync, setPhase]);
 
   useEffect(() => {
     if (phase.kind === 'browsing') return;
@@ -302,7 +319,32 @@ export function CartCheckout() {
   }, [items.length, phase, setPhase]);
 
   useEffect(() => {
-    if (phase.kind !== 'payment_select' || !address) {
+    const previous = lastChainRef.current;
+    if (previous === undefined) {
+      lastChainRef.current = chainId;
+      return;
+    }
+    if (!shouldInvalidateChainSensitiveState(previous, chainId)) return;
+    lastChainRef.current = chainId;
+    setUsdgStatus(null);
+    const wasExecutable =
+      phase.kind === 'revalidating' ||
+      phase.kind === 'review' ||
+      phase.kind === 'payment_select' ||
+      phase.kind === 'executing' ||
+      phase.kind === 'recovery';
+    if (phase.kind === 'executing' || phase.kind === 'revalidating') {
+      setPhase({ kind: 'browsing' });
+    } else if (checkoutPhaseAfterChainChange(phase.kind) === 'browsing' && phase.kind === 'recovery') {
+      setPhase({ kind: 'browsing' });
+    }
+    if (isConnected && !isRobinhoodChainId(chainId) && wasExecutable) {
+      void requestNetworkForAction('chain_changed', phase.kind);
+    }
+  }, [chainId, isConnected, phase.kind, requestNetworkForAction, setPhase]);
+
+  useEffect(() => {
+    if (phase.kind !== 'payment_select' || !address || !isRobinhoodChainId(chainId)) {
       setUsdgStatus(null);
       return;
     }
@@ -328,7 +370,7 @@ export function CartCheckout() {
     return () => {
       cancelled = true;
     };
-  }, [address, phase]);
+  }, [address, chainId, phase]);
 
   useEffect(() => {
     if (phase.kind !== 'browsing') return;
