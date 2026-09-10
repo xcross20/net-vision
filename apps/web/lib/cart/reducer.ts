@@ -3,6 +3,7 @@
  * the resulting state to localStorage.
  */
 import type { CartAction, CartItem, CartState } from './types';
+import { CART_MAX_ITEMS } from './types';
 
 export function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
@@ -14,6 +15,13 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
       }
       const next = [...state.items, action.item];
       return { ...state, items: dedupe(next) };
+    }
+    case 'UPSERT': {
+      const without = state.items.filter((existing) => existing.tokenId !== action.item.tokenId);
+      if (without.length >= CART_MAX_ITEMS && without.length === state.items.length) {
+        return state;
+      }
+      return { ...state, items: dedupe([...without, action.item]) };
     }
     case 'REMOVE':
       return {

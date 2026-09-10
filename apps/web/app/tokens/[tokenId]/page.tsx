@@ -160,6 +160,8 @@ export default async function TokenDetailPage({
             openseaUrl={`https://opensea.io/assets/robinhood/${token.contractAddress}/${token.tokenId}`}
             contractAddress={token.contractAddress}
             currency={token.currency}
+            listingOrderHash={token.listingOrderHash ?? null}
+            listingPriceRaw={token.listingPriceRaw ?? null}
           />
 
           <a

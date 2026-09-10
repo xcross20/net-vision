@@ -4,13 +4,13 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
-import { Heart, ArrowRight, Eye } from '@phosphor-icons/react/dist/ssr';
+import { Heart, Eye } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
 import { buildTokenImageUrl, isProxyImageUrl } from '@/lib/data/media';
 import { MarketplaceBadge } from './MarketplaceBadge';
 import { Price } from './Price';
-import { AddToCartButton } from '@/components/cart';
+import { AddToCartButton, BuyNowButton } from '@/components/cart';
 
 /**
  * NFT market card used in grids. It pairs the token number with its
@@ -91,13 +91,17 @@ export function AssetCard({
           </div>
           {canTrade ? (
             <>
-              <div className="pointer-events-none absolute inset-x-2 bottom-2 opacity-0 transition-all duration-200 group-hover/card:translate-y-0 group-hover/card:opacity-100 group-hover/card:pointer-events-auto max-md:hidden">
-                <span className="inline-flex h-9 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-net-green)] px-3 text-[13px] font-semibold tracking-tight text-[var(--color-bg)]">
-                  Buy now
-                  <ArrowRight size={12} weight="bold" />
-                </span>
+              <div className="absolute inset-x-2 bottom-2 z-10 opacity-0 transition-all duration-200 group-hover/card:translate-y-0 group-hover/card:opacity-100 max-md:hidden">
+                <BuyNowButton
+                  draft={{
+                    token,
+                    displayedPriceDecimal: ask.toString(),
+                    currencySymbol: token.currency,
+                  }}
+                  className="h-9 px-3 text-[13px]"
+                />
               </div>
-              <div className="absolute bottom-2 right-2 opacity-0 transition-opacity duration-200 group-hover/card:opacity-100 max-md:opacity-100">
+              <div className="absolute bottom-2 right-2 z-10 opacity-0 transition-opacity duration-200 group-hover/card:opacity-100 max-md:opacity-100">
                 <AddToCartButton
                   variant="compact"
                   className="border-[var(--color-border-default)] bg-[rgba(8,12,10,0.78)] backdrop-blur-md"
