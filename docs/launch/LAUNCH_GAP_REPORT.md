@@ -1,9 +1,27 @@
 # Launch Gap Report
 
-Date: 2026-09-10
-Inspected: current GitHub, Railway, staging/production HTTP, and `origin/staging` SHA `280f73b`.
+Date: 2026-09-10 (updated after **PR20 PASS**)
+Inspected: GitHub, Railway, staging/production HTTP.
 OS: Net Vision v1.1 + PADP Epoch E2.
-Verdict: **LAUNCH BLOCK** (do not reduce the bar). A5 SQL reads on staging are real; they are not a complete public MVP.
+Verdict: **LAUNCH BLOCK** (do not reduce the bar). PR #20 closed the SQL read-completeness P0s on staging. Public MVP is still blocked on production SHA, Buy E2E, and remaining honesty/Railway items.
+
+### PR20 PASS (2026-09-10)
+
+| Check | Evidence |
+| --- | --- |
+| CI `check` | SUCCESS (run 34489096357) |
+| Staging web SHA-pin | deploy `c27dc831` SUCCESS @ `baf2080` |
+| Merged | `ceac900` on `origin/staging` |
+| Listings | `/api/categories/digits-1/listings` total 2, ids 2 and 4, no envelope |
+| Homepage | 200, **27** `/tokens/` links (collection-wide `listTokens`) |
+| Inventory | seller `0xaf6193fd…` → **117** tokens including #2; unknown `0x…0123` → `200 []` (owner index is populated, so empty is a real empty wallet, not a stub) |
+| Slug | `digits-1` 200; `not-a-real-category-xyz` **404** (not zeros) |
+| Revision | collection/categories/listings all `market_events` high-water (~927k), not blob 123840 vs establishedCount 61940. Sequential calls differ by tens of events (live writer). |
+| Chain slug | `resolvedChainSlug=robinhood` |
+| Zeros | no live category with listed=0 and verified=0 |
+| Flags | trading still off; production still blob |
+
+Closed: P0-SQL-LIST, P0-SQL-ACCOUNT, P0-BUY-SLUG, P0-REV, P0-ZERO (SQL path).
 
 Do not treat stale dual-track / Gear-first plans as current. This sprint’s public MVP is **Button Presser only**. Gear, RWA, strategy, native listing, offers, sweep, Helix platformization are **P2 POST-LAUNCH** unless they are required to close a P0.
 
