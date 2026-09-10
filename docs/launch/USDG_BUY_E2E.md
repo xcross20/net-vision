@@ -1,71 +1,54 @@
 # USDG Buy E2E
 
-**Status:** **USDG CHECKOUT BLOCK** (2026-09-10)
+**Verdict: USDG CHECKOUT BLOCK** (2026-09-10)
 
-`TRADING_ENABLED` remains false. This document is the evidence log, not a flag flip.
+`TRADING_ENABLED` remains **false**. This is not a release-flag document.
 
-## Proven without a signed purchase
+## Required evidence (this PR)
 
-| Step | Evidence |
-| --- | --- |
-| Cart is the only buy executor | PR #26 merged. `buy-authority.test.ts` |
-| OpenSea fulfillment HTTP 200 | `docs/launch/BUY_FULFILLMENT_AUTHORITY.md` |
-| Request body | `{ listing: { hash, chain, protocol_address }, fulfiller: { address } }` |
-| Calldata | encoded `fulfillAdvancedOrder` from `input_data` |
-| Chain | 4663 |
-| Seaport | `0x0000000000000068F116a894984e2DB1123eB395` (`information()` = 1.6) |
-| USDG | `0x5fc5360d0400a0fd4f2af552add042d716f1d168` decimals 6 |
-| `msg.value` | 0 |
-| Spender | Conduit `0x963F00d3ff000064fFCbA824b800c0000000C300` via `getConduit(fulfillerConduitKey)` |
-| Conduit has code | 3190 bytes |
-| Seaport open channel on conduit | true |
-| Allowance eth_call | `USDG.allowance(buyer, conduit)` implemented; dummy 0xabc → 0 (call succeeds) |
-| Bounded approve | cart `approve(spender, requiredRaw)` — no unlimited default |
-| Revalidate after approval | cart checkout |
-| Final revalidate before prepare | cart checkout |
-| Balance knowledge | UNKNOWN / KNOWN_SUFFICIENT / KNOWN_INSUFFICIENT (never 0) |
+| # | Requirement | Result |
+| --- | --- | --- |
+| 1 | Resolve spender from observed conduitKey `0x61159fef…1d5e` | **PASS** — `0x963F00d3ff000064fFCbA824b800c0000000C300` |
+| 2 | Code exists at spender | **PASS** — 3190 bytes |
+| 3 | Derivation vs Seaport Controller | **PASS** — `information()` version 1.6, controller `0x00000000F949…Ad63`, `getConduit` exists=true, Seaport is an open channel |
+| 4 | USDG allowance read uses that spender | **PASS** — `allowance(buyer, conduit)` not Seaport; dummy 0xabc → 0 |
+| 5 | Bounded approve == accepted requirement | **PASS** — `boundedApproveAmount(requiredRaw)`; refuses 0 and MaxUint256. Cart `approve(spender, required)` |
+| 6 | Approval receipt success | **BLOCK** — no operator wallet in this environment |
+| 7 | Listing revalidation after approval | **PASS** in code (`CartCheckout.onApproveUsdg` revalidates after receipt) — **unproven live** |
+| 8 | Prepare binds accepted order hash and price | **PASS** — `BuyPrepareBody` requires both; 409 on mismatch |
+| 9 | Transaction policy PASS | **PASS** (unit): conduit spender allowed; Seaport rejected as spender when conduit resolved |
+| 10 | Simulation PASS | **PARTIAL** — encoder + `eth_call` path exists. Dry-run against live listing with empty dummy from-address reverted as expected (`TRADING_ENABLED=false`). No funded-buyer simulation success. |
 
-## Not yet proven (blocks PASS)
+Live dry-run (staging env, trading **false**), listing **#30781** / 1.39 USDG / order `0x582079b0…f7f3`, fulfillment HTTP 200.
 
-| Step | Status |
-| --- | --- |
-| Operator wallet with USDG on 4663 | missing in this environment |
-| Signed bounded approve receipt | not run |
-| Signed Seaport fulfill receipt `status === success` | not run |
-| NFT owner == buyer after receipt | not run |
-| Listing gone / indexer reconciliation | not run |
-| Activity + portfolio update | not run |
-
-Those require a funded buyer key and an explicit, temporary trading enable for **one** operator purchase. They are **not** satisfied by unit tests.
-
-## Operator sequence (after PR merge)
-
-1. Do **not** set `TRADING_ENABLED=true` on production.
-2. Staging-only, time-boxed: `BUY_ENABLED=true` + `TRADING_ENABLED=true` on web.
-3. Connect the operator wallet on chain 4663.
-4. Buy now a low-value listing (example observed: #30781 at 1.39 USDG).
-5. If allowance insufficient: Approve USDG (bounded) → wait receipt → listing revalidate.
-6. Prepare → policy → simulate → sign → `waitForTransactionReceipt`.
-7. Confirm `receipt.status === success`.
-8. Check `ownerOf(tokenId) == buyer`.
-9. Check listing 404 / unavailable on revalidate.
-10. Check activity + portfolio.
-11. Set `TRADING_ENABLED=false` again.
-12. Fill the table below and only then flip this doc to PASS.
+## Live signed-purchase proof (still missing)
 
 | Field | Value |
 | --- | --- |
-| tokenId | |
-| orderHash before | |
-| approve tx | |
-| purchase tx | |
-| receipt status | |
-| owner after | |
-| listing after | |
-| reconciliation latency | |
+| approval tx | not sent |
+| purchase tx | not sent |
+| receipt status | n/a |
+| owner after | n/a |
+| listing after | n/a |
+| activity | n/a |
+| portfolio | n/a |
+| reconciliation latency | n/a |
+
+No operator USDG wallet is available to this agent. A signed purchase would require a time-boxed staging `TRADING_ENABLED` flip, which was **not** done.
+
+## Operator sequence (human)
+
+1. Keep production `TRADING_ENABLED=false`.
+2. Staging-only, time-boxed enable.
+3. Buy now #30781 (or another low ask) on cart checkout.
+4. Bounded USDG approve if needed → receipt → revalidate.
+5. Prepare → policy → simulate → sign → receipt success.
+6. `ownerOf` == buyer; listing unavailable; activity + portfolio.
+7. Disable trading again.
+8. Fill the table and change this verdict to PASS.
 
 ## Verdict
 
 **USDG CHECKOUT BLOCK**
 
-Reason: spender/conduit/encode/cart path is implemented and on-chain verified; a real-money receipt has not been produced in this environment.
+Architecture and on-chain spender/allowance reads are proven. A real-money receipt is not.

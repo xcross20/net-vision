@@ -18,6 +18,7 @@ import {
 import { PAYMENT_TOKENS, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 import { payment } from '@/lib/format';
 import type { UsdgStatus } from '@/lib/trade/usdg-status';
+import { boundedApproveAmount } from '@/lib/trade/bounded-approve';
 
 type PrepareSuccess = {
   listing: {
@@ -125,11 +126,9 @@ export function CartCheckout() {
     const validItems = phase.items.filter(
       (it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid',
     );
-    const required = validItems.reduce((sum, it) => sum + BigInt(String(it.livePriceRaw)), 0n);
-    if (required <= 0n) {
-      setPhase({ kind: 'error', message: 'Nothing to approve.' });
-      return;
-    }
+    const required = boundedApproveAmount(
+      validItems.reduce((sum, it) => sum + BigInt(String(it.livePriceRaw)), 0n),
+    );
     try {
       const hash = await writeContractAsync({
         address: PAYMENT_TOKENS.USDG.contractAddress,

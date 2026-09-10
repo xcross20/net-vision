@@ -231,13 +231,19 @@ export function validateTradeAction(input: TradeValidationInput): PolicyDecision
       (input.extraAllowlistedSpenders ?? []).map((s) => s.toLowerCase()),
     );
     for (const a of action.approvals) {
+      // When a conduit was resolved for this listing, Seaport itself is
+      // not an acceptable ERC-20 spender.
       const spenderAllowlisted =
-        isAllowlistedContract(a.spender) || extra.has(a.spender.toLowerCase());
+        extra.size > 0
+          ? extra.has(a.spender.toLowerCase())
+          : isAllowlistedContract(a.spender);
       record(
         checks,
         `approval-spender-allowlisted(${a.spender})`,
         spenderAllowlisted,
-        'spender must be Seaport, ConduitController, or the resolved conduit',
+        extra.size > 0
+          ? 'spender must be the resolved conduit for this order'
+          : 'spender must be an allowlisted protocol',
       );
       record(
         checks,

@@ -11,6 +11,7 @@
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { BuyPrepareBody } from '@/lib/trade/prepare-body';
 import {
   ALLOWLISTED_PROTOCOLS,
   BUTTON_PRESSER_COLLECTION,
@@ -31,14 +32,7 @@ import { resolveApprovalSpender } from '@/lib/trade/resolve-conduit';
 
 export const dynamic = 'force-dynamic';
 
-const Body = z.object({
-  tokenId: z.string().regex(/^\d+$/),
-  buyerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  /** Mandatory reviewed spend cap (smallest units). */
-  acceptedPriceRaw: z.string().regex(/^\d+$/),
-  /** Mandatory reviewed live order hash. No UI may prepare without it. */
-  acceptedOrderHash: z.string().min(1),
-});
+const Body = BuyPrepareBody;
 
 export async function POST(request: Request) {
   if (!isSurfaceEnabled('buy')) {
@@ -135,7 +129,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const protocolAddress = listing.protocol_address ?? ALLOWLISTED_PROTOCOLS.seaport15;
+    const protocolAddress = listing.protocol_address ?? ALLOWLISTED_PROTOCOLS.seaport16;
     const fulfillment = await client.getListingFulfillmentData({
       orderHash: listing.order_hash,
       fulfillerAddress: parsed.buyerAddress,
