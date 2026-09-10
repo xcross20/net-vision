@@ -22,6 +22,12 @@ import { getPool } from '../index/pg';
 
 let sqlSingleton: SqlMarketSource | null = null;
 
+/** OpenSea path slug for fulfillment. Not discovered from the blob catalog. */
+function resolvedOpenSeaChainSlug(): string {
+  const hint = process.env.OPENSEA_CHAIN?.trim();
+  return hint && hint.length > 0 ? hint : 'robinhood';
+}
+
 export function getSqlMarketSourceOrFail(): SqlMarketSource {
   if (sqlSingleton) return sqlSingleton;
   const pool = getPool();
@@ -68,14 +74,14 @@ export class SqlMarketSource implements MarketSource {
       slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
       contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
       chainId: ROBINHOOD_CHAIN.id,
-      openseaChainSlug: '',
+      openseaChainSlug: resolvedOpenSeaChainSlug(),
       totalSupply: facts.officialSupply,
       owners: null,
       listedCount: facts.listedCount,
       staleListedCount: facts.staleListedCount,
       listingCoverage: coverage,
       marketStatus: status,
-      snapshotRevision: facts.establishedCount,
+      snapshotRevision: await this.reads.snapshotRevision(this.collectionId),
       currency: DEFAULT_PAYMENT_CURRENCY,
       floorPrice: floors.floorPrice,
       volume24hNative: null,
@@ -116,18 +122,15 @@ export class SqlMarketSource implements MarketSource {
   }
 
   async listTokens(filter: ListTokensFilter = {}): Promise<ListTokensPage> {
-    const slug = filter.category;
-    if (!slug) return { tokens: [], total: 0 };
-    const facts = await this.reads.categoryFacts(this.collectionId, slug);
+    const slug = filter.category ?? null;
     const limit = Math.min(filter.limit ?? 48, 200);
     const offset = filter.offset ?? 0;
-    const listedOnly = filter.listedOnly || filter.status === 'listed';
-    if (!listedOnly) {
-      const rows = await this.reads.listListedTokens(this.collectionId, slug, limit, offset);
-      return { tokens: rows.map((row) => this.toToken(row)), total: facts?.listedCount ?? rows.length };
-    }
+    const facts = slug
+      ? await this.reads.categoryFacts(this.collectionId, slug)
+      : await this.reads.collectionFacts(this.collectionId);
+    const listedCount = facts?.listedCount ?? 0;
     const rows = await this.reads.listListedTokens(this.collectionId, slug, limit, offset);
-    return { tokens: rows.map((row) => this.toToken(row)), total: facts?.listedCount ?? rows.length };
+    return { tokens: rows.map((row) => this.toToken(row)), total: listedCount };
   }
 
   async getCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
@@ -226,16 +229,18 @@ export class SqlMarketSource implements MarketSource {
     return [];
   }
 
-  async getAccountListings(_address: string): Promise<Token[]> {
-    return [];
+  async getAccountListings(address: string): Promise<Token[]> {
+    const tokens = await this.listAccountTokens(address);
+    return tokens.filter((token) => token.listingPrice != null);
   }
 
   async getAccountOffers(_address: string): Promise<Offer[]> {
     return [];
   }
 
-  async listAccountTokens(_address: string): Promise<Token[]> {
-    return [];
+  async listAccountTokens(address: string): Promise<Token[]> {
+    const rows = await this.reads.listAccountTokens(this.collectionId, address);
+    return rows.map((row) => this.toToken(row));
   }
 
   async listCategorySales(slug: string, options?: { window?: SalesWindow; limit?: number }): Promise<Sale[]> {
@@ -278,7 +283,7 @@ export class SqlMarketSource implements MarketSource {
       fresh: health === 'live',
       refreshedAt: Date.now(),
       source: 'sql',
-      resolvedChainSlug: null,
+      resolvedChainSlug: resolvedOpenSeaChainSlug(),
     };
   }
 

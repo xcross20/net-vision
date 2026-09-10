@@ -7,10 +7,14 @@ import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import type { ListingState } from '../market/listing-state';
 import { BUTTON_PRESSER_COLLECTION_ID } from './schema-v2';
 import {
+  SQL_ACCOUNT_TOKENS,
   SQL_CATEGORY_LISTED_TOKENS,
   SQL_CATEGORY_MARKET_FACTS,
   SQL_CATEGORY_SALES,
+  SQL_COLLECTION_LISTED_TOKENS,
   SQL_COLLECTION_MARKET_FACTS,
+  SQL_MARKET_EVENT_HIGH_WATER,
+  SQL_OWNER_ADDRESS_COUNT,
   SQL_RECENT_SALES,
   SQL_TOKEN_SALES,
 } from './sql-category-queries';
@@ -70,15 +74,24 @@ export type SaleReadRow = {
   seller: string | null;
 };
 
+export class OwnerIndexIncompleteError extends Error {
+  readonly code = 'OWNER_INDEX_INCOMPLETE' as const;
+  constructor() {
+    super('token owner_address coverage is empty; inventory is unavailable, not zero');
+  }
+}
+
 export interface MarketReadRepository {
   collectionFacts(collectionId: string): Promise<CollectionMarketFacts>;
   categoryFacts(collectionId: string, slug: string): Promise<CategoryMarketFacts | null>;
   listListedTokens(
     collectionId: string,
-    slug: string,
+    slug: string | null,
     limit: number,
     offset: number,
   ): Promise<ListedTokenRow[]>;
+  listAccountTokens(collectionId: string, ownerAddress: string): Promise<ListedTokenRow[]>;
+  snapshotRevision(collectionId: string): Promise<number>;
   getMarketState(collectionId: string, tokenId: number): Promise<SqlTokenMarketState | null>;
   listRecentSales(collectionId: string, limit: number): Promise<SaleReadRow[]>;
   listTokenSales(collectionId: string, tokenId: number, limit: number): Promise<SaleReadRow[]>;
@@ -236,19 +249,19 @@ export class MemoryMarketReadRepository implements MarketReadRepository {
 
   async listListedTokens(
     collectionId: string,
-    slug: string,
+    slug: string | null,
     limit: number,
     offset: number,
   ): Promise<ListedTokenRow[]> {
-    const members = new Set(this.members(collectionId, slug));
+    const members = slug ? new Set(this.members(collectionId, slug)) : null;
     const tokens = new Map(this.mem.tokenRows(collectionId).map((row) => [row.tokenId, row]));
     const listed = this.mem
       .marketRows(collectionId)
       .filter(
         (row) =>
           row.listingState === 'LISTED' &&
-          members.has(row.tokenId) &&
-          isOfficialExistingTokenId(row.tokenId),
+          isOfficialExistingTokenId(row.tokenId) &&
+          (members == null || members.has(row.tokenId)),
       )
       .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity) || a.tokenId - b.tokenId)
       .slice(offset, offset + limit);
@@ -266,6 +279,38 @@ export class MemoryMarketReadRepository implements MarketReadRepository {
         listingState: row.listingState,
       };
     });
+  }
+
+  async listAccountTokens(collectionId: string, ownerAddress: string): Promise<ListedTokenRow[]> {
+    const needle = ownerAddress.toLowerCase();
+    const owned = this.mem
+      .tokenRows(collectionId)
+      .filter((row) => isOfficialExistingTokenId(row.tokenId) && row.ownerAddress?.toLowerCase() === needle);
+    const withOwner = this.mem
+      .tokenRows(collectionId)
+      .filter((row) => isOfficialExistingTokenId(row.tokenId) && row.ownerAddress);
+    if (withOwner.length === 0) throw new OwnerIndexIncompleteError();
+    const market = new Map(this.mem.marketRows(collectionId).map((row) => [row.tokenId, row]));
+    return owned.map((token) => {
+      const row = market.get(token.tokenId);
+      return {
+        tokenId: token.tokenId,
+        name: token.name ?? null,
+        imageUrl: token.imageUrl ?? null,
+        ownerAddress: token.ownerAddress,
+        price: row?.listingState === 'LISTED' ? row.price : null,
+        currency: row?.currency ?? null,
+        orderHash: row?.listingState === 'LISTED' ? row.orderHash : null,
+        listedAt: row?.listedAt ?? null,
+        listingState: row?.listingState ?? 'UNKNOWN',
+      };
+    });
+  }
+
+  async snapshotRevision(collectionId: string): Promise<number> {
+    const sales = this.mem.saleRows(collectionId).length;
+    const market = this.mem.marketRows(collectionId).length;
+    return sales + market;
   }
 
   async getMarketState(collectionId: string, tokenId: number): Promise<SqlTokenMarketState | null> {
@@ -383,27 +428,27 @@ export class PgMarketReadRepository implements MarketReadRepository {
 
   async listListedTokens(
     collectionId: string,
-    slug: string,
+    slug: string | null,
     limit: number,
     offset: number,
   ): Promise<ListedTokenRow[]> {
-    const result = await this.pool.query(SQL_CATEGORY_LISTED_TOKENS, [
-      collectionId,
-      slug,
-      limit,
-      offset,
-    ]);
-    return result.rows.map((row) => ({
-      tokenId: Number(row.token_id),
-      name: row.name ?? null,
-      imageUrl: row.image_url ?? null,
-      ownerAddress: row.owner_address ?? null,
-      price: num(row.best_price_decimal),
-      currency: row.currency ?? null,
-      orderHash: row.best_order_hash ?? null,
-      listedAt: row.listed_at ? new Date(row.listed_at).getTime() : null,
-      listingState: row.listing_state,
-    }));
+    const result = slug
+      ? await this.pool.query(SQL_CATEGORY_LISTED_TOKENS, [collectionId, slug, limit, offset])
+      : await this.pool.query(SQL_COLLECTION_LISTED_TOKENS, [collectionId, limit, offset]);
+    return result.rows.map(pgListedRow);
+  }
+
+  async listAccountTokens(collectionId: string, ownerAddress: string): Promise<ListedTokenRow[]> {
+    const coverage = await this.pool.query(SQL_OWNER_ADDRESS_COUNT, [collectionId]);
+    const n = Number(coverage.rows[0]?.n ?? 0);
+    if (n === 0) throw new OwnerIndexIncompleteError();
+    const result = await this.pool.query(SQL_ACCOUNT_TOKENS, [collectionId, ownerAddress]);
+    return result.rows.map(pgListedRow);
+  }
+
+  async snapshotRevision(collectionId: string): Promise<number> {
+    const result = await this.pool.query(SQL_MARKET_EVENT_HIGH_WATER, [collectionId]);
+    return Number(result.rows[0]?.high_water ?? 0);
   }
 
   async getMarketState(collectionId: string, tokenId: number): Promise<SqlTokenMarketState | null> {
@@ -458,8 +503,48 @@ export class PgMarketReadRepository implements MarketReadRepository {
   }
 
   async workerHealth(): Promise<ReadWorkerHealth> {
-    return { workerOnline: true, streamConnected: true, heartbeatAgeMs: 0 };
+    const result = await this.pool.query<{ payload: Record<string, unknown> | null }>(
+      `SELECT payload FROM index_blob WHERE id = $1`,
+      ['market-index'],
+    );
+    const payload = result.rows[0]?.payload;
+    if (!payload || typeof payload !== 'object') {
+      return { workerOnline: false, streamConnected: false, heartbeatAgeMs: null };
+    }
+    const worker = (payload.worker ?? {}) as { workerHeartbeatAt?: number };
+    const maintenance = (payload.maintenance ?? {}) as { streamConnected?: boolean };
+    const hb = Number(worker.workerHeartbeatAt);
+    const heartbeatAgeMs = Number.isFinite(hb) ? Date.now() - hb : null;
+    return {
+      workerOnline: heartbeatAgeMs != null && heartbeatAgeMs <= 60_000,
+      streamConnected: Boolean(maintenance.streamConnected),
+      heartbeatAgeMs,
+    };
   }
+}
+
+function pgListedRow(row: {
+  token_id: unknown;
+  name: string | null;
+  image_url: string | null;
+  owner_address: string | null;
+  best_price_decimal: unknown;
+  currency: string | null;
+  best_order_hash: string | null;
+  listed_at: Date | string | null;
+  listing_state: ListingState;
+}): ListedTokenRow {
+  return {
+    tokenId: Number(row.token_id),
+    name: row.name ?? null,
+    imageUrl: row.image_url ?? null,
+    ownerAddress: row.owner_address ?? null,
+    price: num(row.best_price_decimal),
+    currency: row.currency ?? null,
+    orderHash: row.best_order_hash ?? null,
+    listedAt: row.listed_at ? new Date(row.listed_at).getTime() : null,
+    listingState: row.listing_state,
+  };
 }
 
 function pgSaleRow(row: {

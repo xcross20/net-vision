@@ -89,6 +89,70 @@ ORDER BY m.best_price_decimal ASC NULLS LAST, t.token_id ASC
 LIMIT $3 OFFSET $4
 `;
 
+/** Collection-wide cheapest LISTED asks. No category join. */
+export const SQL_COLLECTION_LISTED_TOKENS = `
+SELECT
+  t.token_id,
+  t.name,
+  t.image_url,
+  t.owner_address,
+  m.best_price_decimal,
+  m.currency,
+  m.best_order_hash,
+  m.listed_at,
+  m.listing_state
+FROM collections c
+JOIN token_market_state m
+  ON m.collection_id = c.id
+JOIN tokens t
+  ON t.collection_id = m.collection_id
+ AND t.token_id = m.token_id
+WHERE c.id = $1
+  AND m.listing_state = 'LISTED'
+  AND ${CANONICAL_EXISTING_TOKEN_SQL}
+ORDER BY m.best_price_decimal ASC NULLS LAST, t.token_id ASC
+LIMIT $2 OFFSET $3
+`;
+
+export const SQL_ACCOUNT_TOKENS = `
+SELECT
+  t.token_id,
+  t.name,
+  t.image_url,
+  t.owner_address,
+  m.best_price_decimal,
+  m.currency,
+  m.best_order_hash,
+  m.listed_at,
+  m.listing_state
+FROM collections c
+JOIN tokens t
+  ON t.collection_id = c.id
+LEFT JOIN token_market_state m
+  ON m.collection_id = t.collection_id
+ AND m.token_id = t.token_id
+WHERE c.id = $1
+  AND lower(t.owner_address) = lower($2)
+  AND ${CANONICAL_EXISTING_TOKEN_SQL}
+ORDER BY t.token_id ASC
+LIMIT 500
+`;
+
+export const SQL_OWNER_ADDRESS_COUNT = `
+SELECT COUNT(*)::int AS n
+FROM collections c
+JOIN tokens t ON t.collection_id = c.id
+WHERE c.id = $1
+  AND t.owner_address IS NOT NULL
+  AND ${CANONICAL_EXISTING_TOKEN_SQL}
+`;
+
+export const SQL_MARKET_EVENT_HIGH_WATER = `
+SELECT COALESCE(MAX(id), 0)::bigint AS high_water
+FROM market_events
+WHERE collection_id = $1
+`;
+
 export const SQL_RECENT_SALES = `
 SELECT
   s.token_id, s.price, s.currency, s.occurred_at, s.order_hash, s.buyer, s.seller

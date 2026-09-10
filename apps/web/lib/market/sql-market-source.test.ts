@@ -168,6 +168,51 @@ describe('SqlMarketSource', () => {
     expect(listed.tokens.map((t) => t.tokenId)).toEqual(['1']);
   });
 
+  it('lists cheapest collection-wide LISTED tokens when no category is given', async () => {
+    const mem = new MemoryMarketRepository();
+    await seedToken(mem, 1, 'LISTED', 50, ['digits-1']);
+    await seedToken(mem, 2, 'LISTED', 10, ['digits-1']);
+    await seedToken(mem, 3, 'UNLISTED_VERIFIED', null, ['digits-1']);
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const page = await source.listTokens({ listedOnly: true, limit: 8 });
+    expect(page.tokens.map((t) => t.tokenId)).toEqual(['2', '1']);
+    expect(page.total).toBe(2);
+  });
+
+  it('sets OpenSea chain slug on SQL freshness so buy prepare can resolve a chain', async () => {
+    const mem = new MemoryMarketRepository();
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const freshness = await source.getFreshness();
+    expect(freshness.source).toBe('sql');
+    expect(freshness.resolvedChainSlug).toBe('robinhood');
+  });
+
+  it('does not treat missing owner index as an empty wallet', async () => {
+    const mem = new MemoryMarketRepository();
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    await expect(source.listAccountTokens('0x0000000000000000000000000000000000000abc')).rejects.toThrow(
+      /unavailable|owner_address/i,
+    );
+  });
+
+  it('returns owned tokens when owner_address is present', async () => {
+    const mem = new MemoryMarketRepository();
+    await seedToken(mem, 1, 'LISTED', 41, ['digits-1']);
+    await seedToken(mem, 2, 'UNLISTED_VERIFIED', null, ['digits-1']);
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const tokens = await source.listAccountTokens('0xabc');
+    expect(tokens.map((t) => t.tokenId).sort()).toEqual(['1', '2']);
+  });
+
+  it('stamps OpenSea chain slug on the collection snapshot', async () => {
+    const mem = new MemoryMarketRepository();
+    await seedToken(mem, 1, 'LISTED', 41, ['digits-1']);
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const snapshot = await source.getCollectionSnapshot();
+    expect(snapshot.openseaChainSlug).toBe('robinhood');
+    expect(typeof snapshot.snapshotRevision).toBe('number');
+  });
+
   it('does not treat UNKNOWN as unlisted or as listed', async () => {
     const mem = new MemoryMarketRepository();
     await seedToken(mem, 1, 'UNKNOWN', null, ['digits-1']);

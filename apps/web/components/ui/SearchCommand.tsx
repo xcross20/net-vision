@@ -63,9 +63,21 @@ export function SearchCommand({
   }, [categories, q]);
 
   const filteredTokens = useMemo(() => {
-    if (!q.trim()) return tokens.slice(0, 6);
-    const needle = q.toLowerCase();
-    return tokens.filter((t) => t.tokenId.toLowerCase().includes(needle)).slice(0, 8);
+    const needle = q.trim();
+    const fromList = !needle
+      ? tokens.slice(0, 6)
+      : tokens.filter((t) => t.tokenId.toLowerCase().includes(needle.toLowerCase())).slice(0, 8);
+    if (/^\d+$/.test(needle) && !fromList.some((t) => t.tokenId === needle)) {
+      const jump = {
+        tokenId: needle,
+        imageUrl: `/api/media/token/${needle}`,
+        listingPrice: null,
+        listedAt: null,
+        currency: 'USDG',
+      } as Token;
+      return [jump, ...fromList].slice(0, 8);
+    }
+    return fromList;
   }, [tokens, q]);
 
   const hasAny = filteredCategories.length > 0 || filteredTokens.length > 0;
