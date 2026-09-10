@@ -104,6 +104,9 @@ export function CartCheckout() {
   const publicClient = usePublicClient();
   const [acceptedPriceDrift, setAcceptedPriceDrift] = useState(false);
   const [usdgStatus, setUsdgStatus] = useState<UsdgStatus | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<
+    Array<{ assetId: string; available: boolean; feeBps: number; reasonCode?: string }>
+  >([]);
   const lastChainRef = useRef<number | undefined>(undefined);
   const itemsRef = useRef(items);
   itemsRef.current = items;
@@ -614,6 +617,22 @@ export function CartCheckout() {
     }
   }, [cartRevision, checkoutIntent, items, phase, revalidate]);
 
+  useEffect(() => {
+    if (phase.kind !== 'payment_select') return;
+    let cancelled = false;
+    void fetch('/api/payment/methods')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: { methods?: Array<{ assetId: string; available: boolean; feeBps: number; reasonCode?: string }> } | null) => {
+        if (!cancelled && json?.methods) setPaymentMethods(json.methods);
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentMethods([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase.kind]);
+
   const cta = useMemo(
     () =>
       primaryCheckoutAction({
@@ -803,6 +822,17 @@ export function CartCheckout() {
           {PAYMENT_ASSETS.map((asset) => {
             const selected = phase.payment.assetId === asset.id;
             const executable = isExecutablePaymentAsset(asset.id);
+            const routerId =
+              asset.id === 'USDG'
+                ? 'usdg'
+                : asset.id === 'ETH'
+                  ? 'eth'
+                  : asset.id === 'NET'
+                    ? 'netnet-net'
+                    : 'rh-nvda';
+            const method = paymentMethods.find((m) => m.assetId === routerId);
+            const feeLabel =
+              method?.feeBps === 0 ? 'FREE' : method?.feeBps ? `+${(method.feeBps / 100).toFixed(1)}%` : null;
             return (
               <li key={asset.id}>
                 <button
@@ -831,7 +861,11 @@ export function CartCheckout() {
                     <span className="text-[var(--color-text-tertiary)]">{asset.routeLabel}</span>
                   </span>
                   <span className="text-[var(--color-text-tertiary)]">
-                    {executable ? (asset.recommended ? 'Recommended' : 'Available') : 'Coming soon'}
+                    {executable
+                      ? `${asset.recommended ? 'Recommended' : 'Available'}${feeLabel ? ` · ${feeLabel}` : ''}`
+                      : method?.reasonCode === 'REGION_RESTRICTED'
+                        ? 'Unavailable in your region'
+                        : 'Coming soon'}
                   </span>
                 </button>
               </li>

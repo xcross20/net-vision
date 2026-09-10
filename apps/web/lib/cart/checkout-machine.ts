@@ -10,6 +10,7 @@
  * `verified_enabled`. Public TRADING_ENABLED stays off until USDG E2E PASS.
  */
 import type { CheckoutItem } from './types';
+import { getPaymentAsset } from '@net-vision/payment-router';
 
 export type CheckoutKind =
   | 'BROWSING'
@@ -145,8 +146,16 @@ export function paymentAsset(id: PaymentAssetId): PaymentAsset {
   return row;
 }
 
+const ROUTER_ASSET_ID: Record<PaymentAssetId, string> = {
+  USDG: 'usdg',
+  ETH: 'eth',
+  NET: 'netnet-net',
+  NVDA: 'rh-nvda',
+};
+
 export function isExecutablePaymentAsset(id: PaymentAssetId): boolean {
-  return paymentAsset(id).status === 'verified_enabled';
+  const row = getPaymentAsset(ROUTER_ASSET_ID[id]);
+  return row?.status === 'ENABLED' && paymentAsset(id).status === 'verified_enabled';
 }
 
 export function assertCanSelectPaymentAsset(id: PaymentAssetId): void {

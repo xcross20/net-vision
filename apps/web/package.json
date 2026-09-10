@@ -17,6 +17,7 @@
   "dependencies": {
     "@net-vision/chain-config": "*",
     "@net-vision/opensea-client": "*",
+    "@net-vision/payment-router": "*",
     "@net-vision/taxonomy": "*",
     "@net-vision/transaction-policy": "*",
     "@net-vision/ui": "*",
