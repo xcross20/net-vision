@@ -6,17 +6,15 @@ import {
 
 describe('blobSaveMinIntervalMs', () => {
   it('defaults to 30s outside tests', () => {
-    expect(blobSaveMinIntervalMs({} as NodeJS.ProcessEnv)).toBe(30_000);
+    expect(blobSaveMinIntervalMs({})).toBe(30_000);
   });
 
   it('is zero under VITEST unless overridden', () => {
-    expect(blobSaveMinIntervalMs({ VITEST: 'true' } as NodeJS.ProcessEnv)).toBe(0);
+    expect(blobSaveMinIntervalMs({ VITEST: 'true' })).toBe(0);
   });
 
   it('honors INDEX_BLOB_SAVE_MIN_MS', () => {
-    expect(
-      blobSaveMinIntervalMs({ INDEX_BLOB_SAVE_MIN_MS: '15000' } as NodeJS.ProcessEnv),
-    ).toBe(15_000);
+    expect(blobSaveMinIntervalMs({ INDEX_BLOB_SAVE_MIN_MS: '15000' })).toBe(15_000);
   });
 });
 

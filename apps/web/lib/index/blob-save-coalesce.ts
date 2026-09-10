@@ -21,7 +21,7 @@ export type LatestWinScheduler<T> = {
 const DEFAULT_BLOB_SAVE_MIN_MS = 30_000;
 
 export function blobSaveMinIntervalMs(
-  env: NodeJS.ProcessEnv = process.env,
+  env: Record<string, string | undefined> = process.env,
 ): number {
   if (env.VITEST && env.INDEX_BLOB_SAVE_MIN_MS === undefined) return 0;
   const raw = env.INDEX_BLOB_SAVE_MIN_MS;
