@@ -83,7 +83,8 @@ function metadataPaceMs(): number {
 const RATE_LIMIT_SLEEP_MS = 5 * 60_000;
 const WALKER_HOT_REFRESH_PAUSE_MS = 5 * 60_000;
 const WALKER_ERROR_BACKOFF_MS = 10_000;
-const SAVE_EVERY = 10;
+/** Local JSON checkpoint cadence. Postgres blob writes are separately coalesced. */
+const SAVE_EVERY = 200;
 const HEARTBEAT_MS = 15_000;
 export const METADATA_RETRY_BACKOFF_MS = [10_000, 30_000, 120_000, 600_000, 1_800_000] as const;
 const MAX_METADATA_RETRY_ATTEMPTS = METADATA_RETRY_BACKOFF_MS.length;

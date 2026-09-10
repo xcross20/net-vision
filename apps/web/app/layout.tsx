@@ -5,8 +5,6 @@ import { Footer } from '@/components/ui/Footer';
 import { MarketHeaderClient } from '@/components/ui/MarketHeaderClient';
 import { CartDrawer, CartProvider } from '@/components/cart';
 import { WatchlistProvider } from '@/lib/watchlist/WatchlistProvider';
-import { listCategories } from '@/lib/data/categories';
-import { listTokens } from '@/lib/data/tokens';
 import { WalletProvider } from '@/lib/wallet/WalletProvider';
 
 const geistSans = Geist({
@@ -40,7 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <WatchlistProvider>
           <CartProvider>
             <div className="flex min-h-[100dvh] flex-col">
-              <Shell />
+              <MarketHeaderClient />
               <main className="flex-1">
                 <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-10 md:px-8 md:pb-24 md:pt-16">
                   {children}
@@ -57,10 +55,4 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   );
 }
 
-async function Shell() {
-  const [tokens, categories] = await Promise.all([
-    listTokens({ listedOnly: true, limit: 24 }),
-    listCategories(),
-  ]);
-  return <MarketHeaderClient tokens={tokens} categories={categories} />;
-}
+

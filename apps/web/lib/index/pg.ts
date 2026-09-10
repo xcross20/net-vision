@@ -14,6 +14,11 @@ import type { FloorSnapshot, SaleAttribution } from '../market/engine';
 import type { TokenFacet } from '@net-vision/taxonomy';
 import { SCHEMA_V2_SQL } from './schema-v2';
 import { destructiveNormalizedRebuildEnabled } from './sql-writer-flags';
+import {
+  blobSaveMinIntervalMs,
+  createLatestWinScheduler,
+  type LatestWinScheduler,
+} from './blob-save-coalesce';
 
 const BLOB_ID = 'market-index';
 const WORKER_ID = 'market-worker';
@@ -393,19 +398,33 @@ export async function saveSnapshotToPg(
   }
 }
 
+let blobSaveScheduler: LatestWinScheduler<IndexSnapshot> | null = null;
+
+function blobSaveSchedulerInstance(): LatestWinScheduler<IndexSnapshot> {
+  if (blobSaveScheduler) return blobSaveScheduler;
+  blobSaveScheduler = createLatestWinScheduler<IndexSnapshot>({
+    minIntervalMs: () => blobSaveMinIntervalMs(),
+    save: (job) =>
+      saveSnapshotToPg(job.payload, { normalized: false, revision: job.revision }),
+    onError: (err) => {
+      console.error('[index/pg] dual-write failed', err instanceof Error ? err.message : err);
+    },
+  });
+  return blobSaveScheduler;
+}
+
 /**
  * Fire-and-forget dual-write helper used by saveIndex.
- * Blob-only on the hot path — a full normalized rebuild of 60k rows
- * every SAVE_EVERY tick would stall the worker.
+ * Blob-only on the hot path. Coalesced: a full ~1GB JSONB rewrite on
+ * every walker tick saturates WAL checkpoints and stalls web reads.
  */
 export function scheduleSaveSnapshotToPg(
   snap: IndexSnapshot,
   options: { revision?: number } = {},
 ): void {
   if (!databaseUrl()) return;
-  void saveSnapshotToPg(snap, { normalized: false, revision: options.revision }).catch((err) => {
-    console.error('[index/pg] dual-write failed', err instanceof Error ? err.message : err);
-  });
+  const revision = options.revision ?? snap.snapshotRevision ?? 0;
+  blobSaveSchedulerInstance().schedule(snap, revision);
 }
 
 export type ImportStats = {
@@ -428,6 +447,8 @@ export async function importSnapshot(snap: IndexSnapshot): Promise<ImportStats> 
 /** Exposed for tests / scripts — not part of request path. */
 export function _resetPgForTests(): void {
   schemaReady = false;
+  blobSaveScheduler?.reset();
+  blobSaveScheduler = null;
   if (pool) {
     void pool.end();
     pool = null;

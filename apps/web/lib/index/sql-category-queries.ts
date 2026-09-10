@@ -29,8 +29,8 @@ WHERE c.id = $1
 GROUP BY c.id, c.official_supply
 `;
 
-/** Category membership from token_facets, market from token_market_state. */
-export const SQL_CATEGORY_MARKET_FACTS = `
+/** Shared category membership + market aggregates. Alias `f` = token_facets. */
+const SQL_CATEGORY_MARKET_FACTS_FROM = `
 SELECT
   f.slug AS slug,
   COUNT(*) AS member_count,
@@ -56,8 +56,19 @@ LEFT JOIN token_market_state m
   ON m.collection_id = f.collection_id
  AND m.token_id = f.token_id
 WHERE c.id = $1
-  AND f.slug = $2
   AND ${CANONICAL_EXISTING_TOKEN_SQL}
+`;
+
+/** Category membership from token_facets, market from token_market_state. */
+export const SQL_CATEGORY_MARKET_FACTS = `
+${SQL_CATEGORY_MARKET_FACTS_FROM}
+  AND f.slug = $2
+GROUP BY f.slug
+`;
+
+/** One round-trip for the categories directory. Same facts as the single-slug query. */
+export const SQL_ALL_CATEGORY_MARKET_FACTS = `
+${SQL_CATEGORY_MARKET_FACTS_FROM}
 GROUP BY f.slug
 `;
 
@@ -190,4 +201,19 @@ WHERE c.id = $1
   AND ($3::timestamptz IS NULL OR s.occurred_at >= $3)
 ORDER BY s.occurred_at DESC
 LIMIT $4
+`;
+
+/** Directory sale tape: every attributed sale, slug included, no per-category round-trip. */
+export const SQL_ALL_CATEGORY_SALES = `
+SELECT
+  a.category_slug AS slug,
+  s.token_id, s.price, s.currency, s.occurred_at, s.order_hash, s.buyer, s.seller
+FROM collections c
+JOIN sale_attributions a ON a.collection_id = c.id
+JOIN sales s
+  ON s.collection_id = a.collection_id
+ AND s.sale_event_id = a.sale_event_id
+WHERE c.id = $1
+  AND s.token_id >= 1 AND s.token_id <= c.official_supply
+ORDER BY s.occurred_at DESC
 `;
