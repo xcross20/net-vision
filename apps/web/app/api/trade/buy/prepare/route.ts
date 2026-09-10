@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
+  ALLOWLISTED_PROTOCOLS,
   BUTTON_PRESSER_COLLECTION,
   PAYMENT_TOKENS,
   ROBINHOOD_CHAIN,
@@ -25,6 +26,7 @@ import { getMarketSource } from '@/lib/market';
 import { createOpenSeaClient } from '@net-vision/opensea-client';
 import { isSurfaceEnabled, tradingDisabledResponse } from '@/lib/trade/kill-switch';
 import { simulateTradeTransaction } from '@/lib/trade/simulate';
+import { encodeSeaportFulfillment } from '@/lib/trade/encode-seaport-fulfillment';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,10 +134,12 @@ export async function POST(request: Request) {
       );
     }
 
+    const protocolAddress = listing.protocol_address ?? ALLOWLISTED_PROTOCOLS.seaport15;
     const fulfillment = await client.getListingFulfillmentData({
       orderHash: listing.order_hash,
       fulfillerAddress: parsed.buyerAddress,
       chain: freshness.resolvedChainSlug,
+      protocolAddress,
     });
 
     const raw = fulfillment.raw as Record<string, unknown>;
@@ -144,17 +148,21 @@ export async function POST(request: Request) {
       (raw?.['transaction'] as Record<string, unknown> | undefined) ??
       raw;
 
-    const txTo = String((txCandidate as { to?: string })?.to ?? listing.protocol_address);
-    const txData =
-      typeof (txCandidate as { data?: unknown })?.data === 'string'
-        ? (txCandidate as { data: string }).data
-        : undefined;
-    const txValueRaw =
-      typeof (txCandidate as { value?: unknown })?.value === 'string'
-        ? BigInt((txCandidate as { value: string }).value)
-        : typeof (txCandidate as { value?: unknown })?.value === 'number'
-          ? BigInt(Math.trunc((txCandidate as { value: number }).value))
-          : 0n;
+    let encoded;
+    try {
+      encoded = encodeSeaportFulfillment(txCandidate as Record<string, unknown>);
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error: 'unable to encode fulfillment transaction',
+          detail: err instanceof Error ? err.message : String(err),
+        },
+        { status: 422 },
+      );
+    }
+    const txTo = encoded.to;
+    const txData = encoded.data;
+    const txValueRaw = encoded.value;
 
     const recipientVerified = calldataMentionsAddress(txData, parsed.buyerAddress);
     if (!recipientVerified) {

@@ -16,6 +16,7 @@ import {
 } from '@/lib/cart/checkout-machine';
 import { ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 import { payment } from '@/lib/format';
+import type { UsdgStatus } from '@/lib/trade/usdg-status';
 
 type PrepareSuccess = {
   listing: {
@@ -58,6 +59,7 @@ export function CartCheckout() {
   const { sendTransactionAsync } = useSendTransaction();
   const publicClient = usePublicClient();
   const [acceptedPriceDrift, setAcceptedPriceDrift] = useState(false);
+  const [usdgStatus, setUsdgStatus] = useState<UsdgStatus | null>(null);
 
   const onReview = useCallback(async () => {
     if (!address) {
@@ -138,11 +140,38 @@ export function CartCheckout() {
         confirmedTokenIds: confirmed,
       });
       try {
-        const acceptedPriceRaw = String(it.livePriceRaw);
+        const finalRes = await fetch('/api/trade/cart/revalidate', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            buyerAddress: address,
+            items: [
+              {
+                tokenId: it.tokenId,
+                contractAddress: it.cartItem.contractAddress,
+                displayedOrderHash: it.liveOrderHash,
+                displayedPriceRaw: String(it.livePriceRaw),
+              },
+            ],
+          }),
+        });
+        const finalJson = (await finalRes.json()) as { items?: RevalidateItem[]; error?: string };
+        const live = finalJson.items?.[0];
+        if (!finalRes.ok || !live || live.state !== 'valid') {
+          throw new Error(
+            live && live.state === 'unavailable'
+              ? `Listing gone (${live.reason})`
+              : finalJson.error ?? 'Final listing revalidation failed',
+          );
+        }
+        if (live.liveOrderHash !== it.liveOrderHash || live.priceChanged) {
+          throw new Error('Listing changed after payment select; review again.');
+        }
+        const acceptedPriceRaw = String(live.livePriceRaw);
         assertCanPreparePurchase({
-          acceptedOrderHash: it.liveOrderHash,
+          acceptedOrderHash: live.liveOrderHash,
           acceptedPriceRaw,
-          listingState: it.state,
+          listingState: live.state,
         });
         const prepRes = await fetch('/api/trade/buy/prepare', {
           method: 'POST',
@@ -151,7 +180,7 @@ export function CartCheckout() {
             tokenId: it.tokenId,
             buyerAddress: address,
             acceptedPriceRaw,
-            acceptedOrderHash: it.liveOrderHash,
+            acceptedOrderHash: live.liveOrderHash,
           }),
         });
         const prepJson = (await prepRes.json()) as PrepareSuccess & { error?: string };
@@ -211,6 +240,29 @@ export function CartCheckout() {
       setPhase({ kind: 'browsing' });
     }
   }, [items.length, phase, setPhase]);
+
+  useEffect(() => {
+    if (phase.kind !== 'payment_select' || !address) {
+      setUsdgStatus(null);
+      return;
+    }
+    const valid = phase.items.filter(
+      (it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid',
+    );
+    const required = valid.reduce((sum, it) => sum + BigInt(String(it.livePriceRaw)), 0n);
+    let cancelled = false;
+    void fetch(`/api/trade/usdg-status?buyer=${address}&requiredRaw=${required.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json: UsdgStatus | null) => {
+        if (!cancelled) setUsdgStatus(json);
+      })
+      .catch(() => {
+        if (!cancelled) setUsdgStatus(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [address, phase]);
 
   useEffect(() => {
     if (phase.kind !== 'browsing') return;
@@ -417,12 +469,26 @@ export function CartCheckout() {
             );
           })}
         </ul>
-        <p className="text-[11px] text-[var(--color-text-tertiary)]">
-          Settlement is always USDG. Routed assets stay disabled until each route independently
-          PASSes. Wallet balances are unknown until queried — never shown as 0.
-        </p>
-        <button type="button" onClick={onCheckout} className="nv-button w-full">
-          Review purchase
+        <div className="text-[11px] text-[var(--color-text-tertiary)]">
+          <p>USDG balance: {formatKnowledge(usdgStatus?.balance)}</p>
+          <p>USDG allowance: {formatKnowledge(usdgStatus?.allowance)}</p>
+          <p>
+            Spender is provisional (Seaport v1.5) until a live fulfillment payload names the
+            conduit. Unknown is never shown as 0.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCheckout}
+          disabled={usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT'}
+          className={cn(
+            'nv-button w-full',
+            usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT' && 'cursor-not-allowed opacity-50',
+          )}
+        >
+          {usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT'
+            ? 'Insufficient USDG'
+            : 'Review purchase'}
         </button>
         <button
           type="button"
@@ -497,4 +563,15 @@ export function CartCheckout() {
   }
 
   return null;
+}
+
+function formatKnowledge(
+  row: { state: string; raw: string | null } | null | undefined,
+): string {
+  if (!row || row.state === 'UNKNOWN') {
+    return row?.raw ? `${row.raw} (status unknown vs required)` : 'unknown';
+  }
+  if (row.state === 'KNOWN_SUFFICIENT') return 'sufficient';
+  if (row.state === 'KNOWN_INSUFFICIENT') return 'insufficient';
+  return 'unknown';
 }

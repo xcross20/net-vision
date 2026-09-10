@@ -403,6 +403,37 @@ describe('OpenSeaClient getBestOffer', () => {
 });
 
 describe('OpenSeaClient fulfillment endpoints', () => {
+  it('POSTs the official listing+fulfiller body, not a flat DTO', async () => {
+    const seen: Array<{ url: string; body: unknown }> = [];
+    const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit) => {
+      seen.push({
+        url: String(input),
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      });
+      return new Response(
+        JSON.stringify({ fulfillment_data: { transaction: { to: SEAPORT } } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    };
+    const client = new OpenSeaClient({
+      baseUrl: BASE_URL,
+      apiKey: 'test-key',
+      chain: 'robinhood',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    await client.getListingFulfillmentData({
+      orderHash: '0xabc',
+      fulfillerAddress: '0x0000000000000000000000000000000000000abc',
+      chain: 'robinhood',
+      protocolAddress: SEAPORT,
+    });
+    expect(seen[0]?.url).toContain('/api/v2/listings/fulfillment_data');
+    expect(seen[0]?.body).toEqual({
+      listing: { hash: '0xabc', chain: 'robinhood', protocol_address: SEAPORT },
+      fulfiller: { address: '0x0000000000000000000000000000000000000abc' },
+    });
+  });
+
   it('returns raw fulfillment data for a listing', async () => {
     const client = new OpenSeaClient({
       baseUrl: BASE_URL,
@@ -419,6 +450,7 @@ describe('OpenSeaClient fulfillment endpoints', () => {
       orderHash: '0xabc',
       fulfillerAddress: '0x0000000000000000000000000000000000000abc',
       chain: 'robinhood',
+      protocolAddress: SEAPORT,
     });
     expect(fd.raw).toBeDefined();
   });
@@ -439,6 +471,7 @@ describe('OpenSeaClient fulfillment endpoints', () => {
       orderHash: '0xabc',
       fulfillerAddress: '0x0000000000000000000000000000000000000abc',
       chain: 'robinhood',
+      protocolAddress: SEAPORT,
     });
     expect(fd.raw).toBeDefined();
   });
@@ -455,6 +488,7 @@ describe('OpenSeaClient fulfillment endpoints', () => {
         orderHash: '0xabc',
         fulfillerAddress: '0x0000000000000000000000000000000000000abc',
         chain: 'robinhood',
+        protocolAddress: SEAPORT,
       }),
     ).rejects.toThrow();
   });

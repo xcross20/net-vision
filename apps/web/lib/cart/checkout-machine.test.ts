@@ -14,6 +14,11 @@ import {
 } from './checkout-machine';
 
 describe('checkout state machine', () => {
+  it('allows USDG allowance then final revalidation', () => {
+    expect(canTransition('PAYMENT_READY', 'USDG_ALLOWANCE_REQUIRED')).toBe(true);
+    expect(canTransition('APPROVAL_CONFIRMED', 'LISTING_REVALIDATING_FINAL')).toBe(true);
+  });
+
   it('allows the USDG happy path', () => {
     const path = [
       'BROWSING',
