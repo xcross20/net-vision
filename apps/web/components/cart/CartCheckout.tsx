@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAccount, usePublicClient, useSendTransaction, useWriteContract } from 'wagmi';
 import { erc20Abi } from 'viem';
-import { SpinnerIcon, WarnIcon, CheckIcon } from '@/components/icons';
+import { SpinnerIcon, WarnIcon, CheckIcon, WalletIcon } from '@/components/icons';
 import { cn } from '@/lib/cn';
 import { useCart } from '@/lib/cart/CartProvider';
 import type { CartItem, CheckoutItem } from '@/lib/cart/types';
@@ -20,13 +20,26 @@ import { payment } from '@/lib/format';
 import type { UsdgStatus } from '@/lib/trade/usdg-status';
 import { boundedApproveAmount } from '@/lib/trade/bounded-approve';
 import { useRobinhoodNetworkGate } from '@/lib/wallet/NetworkGateProvider';
+import { useWalletConnectModal } from '@/lib/wallet/WalletConnectProvider';
 import { checkoutFailureMessage } from '@/lib/wallet/network-errors';
 import {
   assertWalletOnRobinhood,
-  checkoutPhaseAfterChainChange,
   isRobinhoodChainId,
   shouldInvalidateChainSensitiveState,
 } from '@/lib/wallet/network-gate';
+import { cartAssetId, cartMembershipSet } from '@/lib/cart/identity';
+import { checkoutRequestBind, isCheckoutResponseCurrent } from '@/lib/cart/checkout-request';
+import { recordCheckoutEvent } from '@/lib/cart/checkout-events';
+import { primaryCheckoutAction } from '@/lib/cart/primary-action';
+import {
+  checkoutCurrency,
+  currentCheckoutItems,
+  currentTotalDecimal,
+  originalTotalDecimal,
+  requiredUsdgRaw,
+  validCheckoutItems,
+} from '@/lib/cart/selectors';
+import { reconcileCheckoutWithCart } from '@/lib/cart/reconcile';
 
 type PrepareSuccess = {
   listing: {
@@ -45,7 +58,7 @@ type RevalidateItem =
       state: 'valid';
       cartItem: CartItem;
       liveOrderHash: string;
-      livePriceRaw: string;
+      livePriceRaw: string | bigint;
       livePriceDecimal: number;
       livePriceDisplay: string;
       liveCurrency: string;
@@ -62,28 +75,86 @@ type RevalidateItem =
     }
   | { tokenId: string; state: 'error'; cartItem: CartItem; message: string };
 
+function asCheckoutItems(rows: RevalidateItem[]): CheckoutItem[] {
+  return rows.map((row) => {
+    if (row.state === 'valid') {
+      return { ...row, livePriceRaw: BigInt(String(row.livePriceRaw)) };
+    }
+    return row;
+  });
+}
+
 export function CartCheckout() {
-  const { items, phase, setPhase, removeConfirmed, consumeReviewRequest } = useCart();
+  const {
+    items,
+    phase,
+    setPhase,
+    removeConfirmed,
+    consumeReviewRequest,
+    cartRevision,
+    checkoutIntent,
+    setCheckoutIntent,
+    isOpen,
+  } = useCart();
   const { address, isConnected, chainId, connector } = useAccount();
   const { requestNetworkForAction } = useRobinhoodNetworkGate();
+  const { openConnectModal } = useWalletConnectModal();
   const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
   const [acceptedPriceDrift, setAcceptedPriceDrift] = useState(false);
   const [usdgStatus, setUsdgStatus] = useState<UsdgStatus | null>(null);
   const lastChainRef = useRef<number | undefined>(undefined);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const revisionRef = useRef(cartRevision);
+  revisionRef.current = cartRevision;
+  const lastBalanceState = useRef<string | null>(null);
+  const lastAllowanceState = useRef<string | null>(null);
+  const resumeInFlight = useRef(false);
+  const lastRevalidateRevision = useRef(-1);
 
-  const onReview = useCallback(async () => {
-    if (!address) {
-      setPhase({ kind: 'error', message: 'Connect a wallet to check out.' });
-      return;
+  const onRobinhood = isRobinhoodChainId(chainId);
+  const displayItems = currentCheckoutItems(phase, items);
+  const validItems = validCheckoutItems(phase, items);
+  const originalTotal = originalTotalDecimal(phase, items);
+  const currentTotal = currentTotalDecimal(phase, items);
+  const requiredRaw = requiredUsdgRaw(phase, items);
+  const currency = checkoutCurrency(phase, items);
+  const drifted = validItems.filter((it) => it.priceChanged);
+  const unavailable = displayItems.filter((it) => it.state !== 'valid');
+
+  useEffect(() => {
+    if (drifted.length === 0 && acceptedPriceDrift) setAcceptedPriceDrift(false);
+  }, [acceptedPriceDrift, drifted.length]);
+
+  const liveBind = useCallback(
+    () =>
+      checkoutRequestBind({
+        cartRevision: revisionRef.current,
+        address: address ?? null,
+        chainId: chainId ?? null,
+      }),
+    [address, chainId],
+  );
+
+  const revalidate = useCallback(async (): Promise<boolean> => {
+    if (!address) return false;
+    const onChain = await requestNetworkForAction('checkout', 'revalidate');
+    if (!onChain) {
+      setPhase({ kind: 'network_required' });
+      return false;
     }
-    const onRobinhood = await requestNetworkForAction('checkout', 'review');
-    if (!onRobinhood) return;
     await assertWalletOnRobinhood({
       getChainId: connector?.getChainId?.bind(connector),
       chainId,
     });
+    const bound = liveBind();
+    const snapshot = itemsRef.current;
+    if (snapshot.length === 0) {
+      setPhase({ kind: 'browsing' });
+      return false;
+    }
     setPhase({ kind: 'revalidating' });
     try {
       const res = await fetch('/api/trade/cart/revalidate', {
@@ -91,7 +162,7 @@ export function CartCheckout() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           buyerAddress: address,
-          items: items.map((it) => ({
+          items: snapshot.map((it) => ({
             tokenId: it.tokenId,
             contractAddress: it.contractAddress,
             displayedOrderHash: it.displayedOrderHash,
@@ -100,26 +171,72 @@ export function CartCheckout() {
         }),
       });
       const json = (await res.json()) as { items?: RevalidateItem[]; error?: string };
+      if (!isCheckoutResponseCurrent(bound, liveBind())) return false;
       if (!res.ok || !json.items) {
         setPhase({
           kind: 'error',
           message: json.error ?? `Revalidate failed (${res.status}).`,
         });
-        return;
+        return false;
       }
-      setPhase({ kind: 'review', items: json.items as CheckoutItem[] });
+      const checkoutItems = asCheckoutItems(json.items);
+      const membership = reconcileCheckoutWithCart({
+        phase: { kind: 'review', items: checkoutItems },
+        cartItems: itemsRef.current,
+      });
+      setPhase(membership.phase);
+      return membership.phase.kind === 'review';
     } catch (err) {
+      if (!isCheckoutResponseCurrent(bound, liveBind())) return false;
       setPhase({
         kind: 'error',
         message: err instanceof Error ? err.message : String(err),
       });
+      return false;
     }
-  }, [address, chainId, connector, items, requestNetworkForAction, setPhase]);
+  }, [address, chainId, connector, liveBind, requestNetworkForAction, setPhase]);
+
+  const onConnectWallet = useCallback(() => {
+    setCheckoutIntent(true);
+    recordCheckoutEvent('checkout_blocker_entered', {
+      cartRevision,
+      checkoutState: 'wallet_required',
+    });
+    setPhase({ kind: 'wallet_required' });
+    openConnectModal();
+  }, [cartRevision, openConnectModal, setCheckoutIntent, setPhase]);
+
+  const onReview = useCallback(async () => {
+    setCheckoutIntent(true);
+    if (!address) {
+      onConnectWallet();
+      return;
+    }
+    if (!onRobinhood) {
+      setPhase({ kind: 'network_required' });
+      recordCheckoutEvent('checkout_blocker_entered', {
+        cartRevision,
+        checkoutState: 'network_required',
+      });
+      const switched = await requestNetworkForAction('checkout', 'network_required');
+      if (!switched) return;
+    }
+    await revalidate();
+  }, [
+    address,
+    cartRevision,
+    onConnectWallet,
+    onRobinhood,
+    revalidate,
+    requestNetworkForAction,
+    setCheckoutIntent,
+    setPhase,
+  ]);
 
   const onApproveUsdg = useCallback(async () => {
     if (phase.kind !== 'payment_select' || !address) return;
-    const onRobinhood = await requestNetworkForAction('approve', phase.kind);
-    if (!onRobinhood) return;
+    const onChain = await requestNetworkForAction('approve', phase.kind);
+    if (!onChain) return;
     await assertWalletOnRobinhood({
       getChainId: connector?.getChainId?.bind(connector),
       chainId,
@@ -129,12 +246,8 @@ export function CartCheckout() {
       setPhase({ kind: 'error', message: 'USDG spender is unresolved; cannot approve.' });
       return;
     }
-    const validItems = phase.items.filter(
-      (it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid',
-    );
-    const required = boundedApproveAmount(
-      validItems.reduce((sum, it) => sum + BigInt(String(it.livePriceRaw)), 0n),
-    );
+    const required = boundedApproveAmount(requiredRaw);
+    const bound = liveBind();
     try {
       const hash = await writeContractAsync({
         address: PAYMENT_TOKENS.USDG.contractAddress,
@@ -148,12 +261,14 @@ export function CartCheckout() {
       if (receipt.status !== 'success') {
         throw new Error(`USDG approval reverted (${hash})`);
       }
+      if (!isCheckoutResponseCurrent(bound, liveBind())) return;
+      const snapshot = validCheckoutItems(phase, itemsRef.current);
       const res = await fetch('/api/trade/cart/revalidate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           buyerAddress: address,
-          items: validItems.map((it) => ({
+          items: snapshot.map((it) => ({
             tokenId: it.tokenId,
             contractAddress: it.cartItem.contractAddress,
             displayedOrderHash: it.liveOrderHash,
@@ -162,13 +277,19 @@ export function CartCheckout() {
         }),
       });
       const json = (await res.json()) as { items?: RevalidateItem[]; error?: string };
+      if (!isCheckoutResponseCurrent(bound, liveBind())) return;
       if (!res.ok || !json.items) {
         throw new Error(json.error ?? 'Listing revalidation after approval failed.');
       }
+      setUsdgStatus(null);
       setPhase({
         kind: 'payment_select',
-        items: json.items as CheckoutItem[],
+        items: asCheckoutItems(json.items),
         payment: phase.payment,
+      });
+      recordCheckoutEvent('allowance_sufficient_checkout_resumed', {
+        cartRevision: revisionRef.current,
+        checkoutState: 'payment_select',
       });
     } catch (err) {
       setPhase({
@@ -176,22 +297,35 @@ export function CartCheckout() {
         message: checkoutFailureMessage(err),
       });
     }
-  }, [address, chainId, connector, phase, publicClient, requestNetworkForAction, setPhase, usdgStatus, writeContractAsync]);
+  }, [
+    address,
+    chainId,
+    connector,
+    items,
+    liveBind,
+    phase,
+    publicClient,
+    requestNetworkForAction,
+    requiredRaw,
+    setPhase,
+    usdgStatus,
+    writeContractAsync,
+  ]);
 
   const onCheckout = useCallback(async () => {
     if (phase.kind !== 'review' && phase.kind !== 'payment_select') return;
     if (!address) {
-      setPhase({ kind: 'error', message: 'Connect a wallet to check out.' });
+      onConnectWallet();
       return;
     }
-    const onRobinhood = await requestNetworkForAction('purchase', phase.kind);
-    if (!onRobinhood) return;
+    const onChain = await requestNetworkForAction('purchase', phase.kind);
+    if (!onChain) return;
     await assertWalletOnRobinhood({
       getChainId: connector?.getChainId?.bind(connector),
       chainId,
     });
-    const validItems = phase.items.filter((it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid');
-    if (validItems.length === 0) {
+    const starting = validCheckoutItems(phase, itemsRef.current);
+    if (starting.length === 0) {
       setPhase({ kind: 'error', message: 'No items are available for purchase.' });
       return;
     }
@@ -202,16 +336,23 @@ export function CartCheckout() {
       return;
     }
     const confirmed: string[] = [];
-    setPhase({ kind: 'executing', items: phase.items, currentIndex: 0, confirmedTokenIds: [] });
-    for (let i = 0; i < validItems.length; i += 1) {
-      const it = validItems[i];
+    setPhase({ kind: 'executing', items: displayItems, currentIndex: 0, confirmedTokenIds: [] });
+    for (let i = 0; i < starting.length; i += 1) {
+      const it = starting[i];
+      const liveCart = cartMembershipSet(itemsRef.current);
+      if (!liveCart.has(cartAssetId(it.cartItem))) {
+        continue;
+      }
       setPhase({
         kind: 'executing',
-        items: phase.items,
+        items: currentCheckoutItems(phase, itemsRef.current).length
+          ? currentCheckoutItems({ kind: 'executing', items: displayItems, currentIndex: i, confirmedTokenIds: confirmed }, itemsRef.current)
+          : displayItems,
         currentIndex: i,
         confirmedTokenIds: confirmed,
       });
       try {
+        const bound = liveBind();
         const finalRes = await fetch('/api/trade/cart/revalidate', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -228,6 +369,12 @@ export function CartCheckout() {
           }),
         });
         const finalJson = (await finalRes.json()) as { items?: RevalidateItem[]; error?: string };
+        if (!isCheckoutResponseCurrent(bound, liveBind())) {
+          throw new Error('Cart changed during checkout; review again.');
+        }
+        if (!cartMembershipSet(itemsRef.current).has(cartAssetId(it.cartItem))) {
+          continue;
+        }
         const live = finalJson.items?.[0];
         if (!finalRes.ok || !live || live.state !== 'valid') {
           throw new Error(
@@ -256,13 +403,16 @@ export function CartCheckout() {
           }),
         });
         const prepJson = (await prepRes.json()) as PrepareSuccess & { error?: string };
+        if (!isCheckoutResponseCurrent(bound, liveBind())) {
+          throw new Error('Cart changed during checkout; review again.');
+        }
         if (!prepRes.ok || !prepJson.transaction) {
           throw new Error(prepJson.error ?? `prepare failed (${prepRes.status})`);
         }
         await assertWalletOnRobinhood({
-      getChainId: connector?.getChainId?.bind(connector),
-      chainId,
-    });
+          getChainId: connector?.getChainId?.bind(connector),
+          chainId,
+        });
         const tx = prepJson.transaction;
         const hash = await sendTransactionAsync({
           to: tx.to as `0x${string}`,
@@ -279,15 +429,13 @@ export function CartCheckout() {
           throw new Error(`Transaction reverted (${hash})`);
         }
         confirmed.push(it.tokenId);
-        setPhase({
-          kind: 'executing',
-          items: phase.items,
-          currentIndex: i + 1,
-          confirmedTokenIds: confirmed,
-        });
       } catch (err) {
-        const confirmedItems = validItems.filter((row) => confirmed.includes(row.tokenId));
-        const failedItems = validItems.filter((row) => !confirmed.includes(row.tokenId));
+        const confirmedItems = starting.filter((row) => confirmed.includes(row.tokenId));
+        const failedItems = starting.filter(
+          (row) =>
+            !confirmed.includes(row.tokenId) &&
+            cartMembershipSet(itemsRef.current).has(cartAssetId(row.cartItem)),
+        );
         const message = checkoutFailureMessage(err);
         if (confirmedItems.length > 0) {
           removeConfirmed(confirmed);
@@ -304,19 +452,88 @@ export function CartCheckout() {
       }
     }
     removeConfirmed(confirmed);
+    setCheckoutIntent(false);
     setPhase({
       kind: 'complete',
-      confirmed: validItems,
+      confirmed: starting.filter((row) => confirmed.includes(row.tokenId)),
       failed: [],
     });
-  }, [address, chainId, connector, phase, publicClient, removeConfirmed, requestNetworkForAction, sendTransactionAsync, setPhase]);
+  }, [
+    address,
+    chainId,
+    connector,
+    displayItems,
+    liveBind,
+    onConnectWallet,
+    phase,
+    publicClient,
+    removeConfirmed,
+    requestNetworkForAction,
+    sendTransactionAsync,
+    setCheckoutIntent,
+    setPhase,
+  ]);
 
   useEffect(() => {
-    if (phase.kind === 'browsing') return;
-    if (items.length === 0 && phase.kind !== 'complete') {
-      setPhase({ kind: 'browsing' });
+    if (!isOpen || items.length === 0) return;
+    if (phase.kind === 'executing' || phase.kind === 'complete' || phase.kind === 'revalidating') {
+      return;
     }
-  }, [items.length, phase, setPhase]);
+    if (!isConnected) {
+      if (checkoutIntent && phase.kind !== 'wallet_required') {
+        setPhase({ kind: 'wallet_required' });
+      }
+      return;
+    }
+    if (!onRobinhood) {
+      if (checkoutIntent && phase.kind !== 'network_required') {
+        setPhase({ kind: 'network_required' });
+        if (!resumeInFlight.current) {
+          resumeInFlight.current = true;
+          void requestNetworkForAction('checkout', 'network_required').then((ok) => {
+            resumeInFlight.current = false;
+            if (ok) {
+              recordCheckoutEvent('network_corrected_checkout_resumed', {
+                cartRevision: revisionRef.current,
+                checkoutState: 'review',
+              });
+              void revalidate();
+            }
+          });
+        }
+      }
+      return;
+    }
+    const shouldResume =
+      checkoutIntent &&
+      (phase.kind === 'wallet_required' ||
+        phase.kind === 'network_required' ||
+        (phase.kind === 'browsing' && consumeReviewRequest()));
+    if (shouldResume && !resumeInFlight.current) {
+      resumeInFlight.current = true;
+      if (phase.kind === 'wallet_required') {
+        recordCheckoutEvent('wallet_connected_checkout_resumed', {
+          cartRevision,
+          checkoutState: 'review',
+        });
+      }
+      void revalidate().finally(() => {
+        resumeInFlight.current = false;
+      });
+    }
+  }, [
+    cartRevision,
+    checkoutIntent,
+    consumeReviewRequest,
+    isConnected,
+    isOpen,
+    items.length,
+    onRobinhood,
+    phase.kind,
+    requestNetworkForAction,
+    revalidate,
+    setPhase,
+  ]);
 
   useEffect(() => {
     const previous = lastChainRef.current;
@@ -327,77 +544,128 @@ export function CartCheckout() {
     if (!shouldInvalidateChainSensitiveState(previous, chainId)) return;
     lastChainRef.current = chainId;
     setUsdgStatus(null);
-    const wasExecutable =
-      phase.kind === 'revalidating' ||
-      phase.kind === 'review' ||
-      phase.kind === 'payment_select' ||
-      phase.kind === 'executing' ||
-      phase.kind === 'recovery';
-    if (phase.kind === 'executing' || phase.kind === 'revalidating') {
-      setPhase({ kind: 'browsing' });
-    } else if (checkoutPhaseAfterChainChange(phase.kind) === 'browsing' && phase.kind === 'recovery') {
-      setPhase({ kind: 'browsing' });
+    if (phase.kind === 'executing') {
+      setPhase({ kind: 'network_required' });
     }
-    if (isConnected && !isRobinhoodChainId(chainId) && wasExecutable) {
-      void requestNetworkForAction('chain_changed', phase.kind);
-    }
-  }, [chainId, isConnected, phase.kind, requestNetworkForAction, setPhase]);
+  }, [chainId, phase.kind, setPhase]);
 
   useEffect(() => {
-    if (phase.kind !== 'payment_select' || !address || !isRobinhoodChainId(chainId)) {
+    if (phase.kind !== 'payment_select' || !address || !onRobinhood) {
       setUsdgStatus(null);
       return;
     }
-    const valid = phase.items.filter(
-      (it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid',
-    );
-    const required = valid.reduce((sum, it) => sum + BigInt(String(it.livePriceRaw)), 0n);
-    const conduitKey = valid[0]?.liveConduitKey ?? '';
     let cancelled = false;
-    const qs = new URLSearchParams({
-      buyer: address,
-      requiredRaw: required.toString(),
-    });
-    if (conduitKey) qs.set('conduitKey', conduitKey);
-    void fetch(`/api/trade/usdg-status?${qs.toString()}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json: UsdgStatus | null) => {
-        if (!cancelled) setUsdgStatus(json);
-      })
-      .catch(() => {
-        if (!cancelled) setUsdgStatus(null);
+    const load = async () => {
+      const bound = liveBind();
+      const required = requiredUsdgRaw(phase, itemsRef.current);
+      const valid = validCheckoutItems(phase, itemsRef.current);
+      const conduitKey = valid[0]?.liveConduitKey ?? '';
+      const qs = new URLSearchParams({
+        buyer: address,
+        requiredRaw: required.toString(),
       });
+      if (conduitKey) qs.set('conduitKey', conduitKey);
+      try {
+        const res = await fetch(`/api/trade/usdg-status?${qs.toString()}`);
+        const json = (await res.json()) as UsdgStatus | null;
+        if (cancelled || !isCheckoutResponseCurrent(bound, liveBind())) return;
+        if (res.ok && json) {
+          if (
+            lastBalanceState.current === 'KNOWN_INSUFFICIENT' &&
+            json.balance.state === 'KNOWN_SUFFICIENT'
+          ) {
+            recordCheckoutEvent('balance_sufficient_checkout_resumed', {
+              cartRevision: revisionRef.current,
+              checkoutState: 'payment_select',
+            });
+          }
+          if (
+            lastAllowanceState.current === 'KNOWN_INSUFFICIENT' &&
+            json.allowance.state === 'KNOWN_SUFFICIENT'
+          ) {
+            recordCheckoutEvent('allowance_sufficient_checkout_resumed', {
+              cartRevision: revisionRef.current,
+              checkoutState: 'payment_select',
+            });
+          }
+          lastBalanceState.current = json.balance.state;
+          lastAllowanceState.current = json.allowance.state;
+          setUsdgStatus(json);
+        }
+      } catch {
+        if (!cancelled) setUsdgStatus(null);
+      }
+    };
+    void load();
+    const interval = window.setInterval(() => void load(), 8000);
     return () => {
       cancelled = true;
+      window.clearInterval(interval);
     };
-  }, [address, chainId, phase]);
+  }, [address, liveBind, onRobinhood, phase, cartRevision]);
 
   useEffect(() => {
-    if (phase.kind !== 'browsing') return;
-    if (!consumeReviewRequest()) return;
-    if (items.length === 0) return;
-    void onReview();
-  }, [consumeReviewRequest, items.length, onReview, phase.kind]);
+    if (!checkoutIntent) return;
+    if (phase.kind !== 'review' && phase.kind !== 'payment_select') return;
+    const result = reconcileCheckoutWithCart({ phase, cartItems: items });
+    if (result.needRevalidate && lastRevalidateRevision.current !== cartRevision) {
+      lastRevalidateRevision.current = cartRevision;
+      void revalidate();
+    }
+  }, [cartRevision, checkoutIntent, items, phase, revalidate]);
 
-  if (phase.kind === 'browsing') {
+  const cta = useMemo(
+    () =>
+      primaryCheckoutAction({
+        itemCount: items.length,
+        connected: Boolean(isConnected && address),
+        onRobinhood,
+        phase,
+        allowanceInsufficient: usdgStatus?.allowance.state === 'KNOWN_INSUFFICIENT',
+        balanceInsufficient: usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT',
+        approveAmountLabel: payment(currentTotal, currency),
+      }),
+    [address, currency, currentTotal, isConnected, items.length, onRobinhood, phase, usdgStatus],
+  );
+
+  if (phase.kind === 'browsing' || phase.kind === 'wallet_required' || phase.kind === 'network_required') {
     return (
       <div className="flex flex-col gap-2">
         {!isConnected ? (
           <p className="text-[12px] text-[var(--color-text-tertiary)]">
-            Connect a wallet to check out. Your cart is saved on this device.
+            Your items remain saved. Connect your wallet to continue.
+          </p>
+        ) : !onRobinhood ? (
+          <p className="text-[12px] text-[var(--color-text-tertiary)]">
+            Switch to Robinhood Chain to continue this purchase.
           </p>
         ) : null}
-        <button
-          type="button"
-          disabled={items.length === 0}
-          onClick={onReview}
-          className={cn(
-            'nv-button w-full',
-            items.length === 0 && 'cursor-not-allowed opacity-50',
-          )}
-        >
-          Review {items.length} item{items.length === 1 ? '' : 's'}
-        </button>
+        {cta?.kind === 'connect_wallet' ? (
+          <button type="button" onClick={onConnectWallet} className="nv-button w-full">
+            <WalletIcon size={14} weight="duotone" />
+            Connect wallet
+          </button>
+        ) : cta?.kind === 'switch_network' ? (
+          <button
+            type="button"
+            onClick={() => {
+              setCheckoutIntent(true);
+              void onReview();
+            }}
+            className="nv-button w-full"
+          >
+            Switch to Robinhood Chain
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={items.length === 0}
+            onClick={() => void onReview()}
+            className={cn('nv-button w-full', items.length === 0 && 'cursor-not-allowed opacity-50')}
+          >
+            {cta?.label ?? `Review ${items.length} item${items.length === 1 ? '' : 's'}`}
+          </button>
+        )}
       </div>
     );
   }
@@ -418,7 +686,14 @@ export function CartCheckout() {
           <WarnIcon size={14} weight="duotone" />
           <span>{phase.message}</span>
         </p>
-        <button type="button" onClick={() => setPhase({ kind: 'browsing' })} className="nv-button-ghost text-sm">
+        <button
+          type="button"
+          onClick={() => {
+            setCheckoutIntent(false);
+            setPhase({ kind: 'browsing' });
+          }}
+          className="nv-button-ghost text-sm"
+        >
           Back to cart
         </button>
       </div>
@@ -426,26 +701,14 @@ export function CartCheckout() {
   }
 
   if (phase.kind === 'review') {
-    const validItems = phase.items.filter(
-      (it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid',
-    );
-    const validCount = validItems.length;
-    const unavailable = phase.items.filter((it) => it.state !== 'valid');
-    const drifted = validItems.filter((it) => it.priceChanged);
-    const originalTotal = validItems.reduce((sum, it) => {
-      const snap = Number(it.cartItem.displayedPriceDecimal ?? it.livePriceDecimal);
-      return sum + (Number.isFinite(snap) ? snap : it.livePriceDecimal);
-    }, 0);
-    const currentTotal = validItems.reduce((sum, it) => sum + it.livePriceDecimal, 0);
-    const currency = validItems[0]?.liveCurrency ?? 'USDG';
-    const canBuy = validCount > 0 && (drifted.length === 0 || acceptedPriceDrift);
+    const canBuy = validItems.length > 0 && (drifted.length === 0 || acceptedPriceDrift);
     return (
       <div className="flex flex-col gap-3">
         <ul className="flex max-h-56 flex-col gap-2 overflow-y-auto text-[12px]">
-          {phase.items.map((it) => {
+          {displayItems.map((it) => {
             if (it.state !== 'valid') {
               return (
-                <li key={it.tokenId} className="flex items-center justify-between text-[var(--color-danger)]">
+                <li key={cartAssetId(it.cartItem)} className="flex items-center justify-between text-[var(--color-danger)]">
                   <span>#{it.tokenId}</span>
                   <span>✕ {it.state === 'unavailable' ? it.reason.replace('_', ' ') : 'error'}</span>
                 </li>
@@ -453,7 +716,7 @@ export function CartCheckout() {
             }
             const was = it.cartItem.displayedPriceDecimal;
             return (
-              <li key={it.tokenId} className="flex items-center justify-between gap-2">
+              <li key={cartAssetId(it.cartItem)} className="flex items-center justify-between gap-2">
                 <span>#{it.tokenId}</span>
                 <span className={it.priceChanged ? 'text-[var(--color-warning)]' : 'text-[var(--color-net-green)]'}>
                   {it.priceChanged && was
@@ -498,18 +761,19 @@ export function CartCheckout() {
             onClick={() =>
               setPhase({
                 kind: 'payment_select',
-                items: phase.items,
+                items: displayItems,
                 payment: { assetId: 'USDG' },
               })
             }
             className={cn('nv-button w-full', !canBuy && 'cursor-not-allowed opacity-50')}
           >
-            {validCount === 0 ? 'Nothing to buy' : 'Choose payment'}
+            {validItems.length === 0 ? 'Nothing to buy' : 'Choose payment'}
           </button>
           <button
             type="button"
             onClick={() => {
               setAcceptedPriceDrift(false);
+              setCheckoutIntent(false);
               setPhase({ kind: 'browsing' });
             }}
             className="text-[12px] text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-primary)]"
@@ -522,11 +786,8 @@ export function CartCheckout() {
   }
 
   if (phase.kind === 'payment_select') {
-    const validItems = phase.items.filter(
-      (it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid',
-    );
-    const currentTotal = validItems.reduce((sum, it) => sum + it.livePriceDecimal, 0);
-    const currency = validItems[0]?.liveCurrency ?? 'USDG';
+    const insufficient = usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT';
+    const needsApprove = usdgStatus?.allowance.state === 'KNOWN_INSUFFICIENT';
     return (
       <div className="flex flex-col gap-3">
         <div className="flex justify-between text-[12px] text-[var(--color-text-secondary)]">
@@ -550,7 +811,7 @@ export function CartCheckout() {
                   onClick={() =>
                     setPhase({
                       kind: 'payment_select',
-                      items: phase.items,
+                      items: displayItems,
                       payment: { assetId: asset.id as PaymentAssetId },
                     })
                   }
@@ -581,6 +842,10 @@ export function CartCheckout() {
           <p>USDG balance: {formatKnowledge(usdgStatus?.balance)}</p>
           <p>USDG allowance: {formatKnowledge(usdgStatus?.allowance)}</p>
           <p>
+            Required:{' '}
+            <span className="text-numeral">{payment(currentTotal, currency)}</span>
+          </p>
+          <p>
             Spender:{' '}
             {usdgStatus?.spender.address
               ? `${usdgStatus.spender.source} ${usdgStatus.spender.address.slice(0, 10)}…`
@@ -588,33 +853,33 @@ export function CartCheckout() {
           </p>
           <p>{usdgStatus?.spender.note ?? 'Unknown is never shown as 0.'}</p>
         </div>
-        {usdgStatus?.allowance.state === 'KNOWN_INSUFFICIENT' ? (
+        {insufficient ? (
+          <div className="rounded-[var(--radius-sm)] border border-[var(--color-warning)] px-3 py-2 text-[12px] text-[var(--color-text-primary)]">
+            Insufficient USDG. Add funds — this checkout will continue automatically when the
+            balance covers {payment(currentTotal, currency)}.
+          </div>
+        ) : null}
+        {needsApprove && !insufficient ? (
           <button type="button" onClick={() => void onApproveUsdg()} className="nv-button w-full">
-            Approve USDG (bounded)
+            Approve {payment(currentTotal, currency)}
           </button>
         ) : (
           <button
             type="button"
-            onClick={onCheckout}
-            disabled={
-              usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT' ||
-              usdgStatus?.spender.address == null
-            }
+            onClick={() => void onCheckout()}
+            disabled={insufficient || usdgStatus?.spender.address == null || needsApprove}
             className={cn(
               'nv-button w-full',
-              (usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT' ||
-                usdgStatus?.spender.address == null) &&
+              (insufficient || usdgStatus?.spender.address == null || needsApprove) &&
                 'cursor-not-allowed opacity-50',
             )}
           >
-            {usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT'
-              ? 'Insufficient USDG'
-              : 'Review purchase'}
+            {insufficient ? 'Insufficient USDG' : 'Review purchase'}
           </button>
         )}
         <button
           type="button"
-          onClick={() => setPhase({ kind: 'review', items: phase.items })}
+          onClick={() => setPhase({ kind: 'review', items: displayItems })}
           className="text-[12px] text-[var(--color-text-tertiary)]"
         >
           Back to listings
@@ -624,7 +889,7 @@ export function CartCheckout() {
   }
 
   if (phase.kind === 'executing') {
-    const total = phase.items.filter((it) => it.state === 'valid').length;
+    const total = validItems.length;
     return (
       <div className="flex items-center justify-center gap-2 py-3 text-sm text-[var(--color-text-secondary)]">
         <SpinnerIcon className="animate-spin" size={14} />
@@ -651,7 +916,10 @@ export function CartCheckout() {
         ) : null}
         <button
           type="button"
-          onClick={() => setPhase({ kind: 'browsing' })}
+          onClick={() => {
+            setCheckoutIntent(false);
+            setPhase({ kind: 'browsing' });
+          }}
           className="nv-button-ghost text-sm"
         >
           Close
@@ -675,7 +943,10 @@ export function CartCheckout() {
         </p>
         <button
           type="button"
-          onClick={() => setPhase({ kind: 'browsing' })}
+          onClick={() => {
+            setCheckoutIntent(false);
+            setPhase({ kind: 'browsing' });
+          }}
           className="nv-button-ghost text-sm"
         >
           Back to cart

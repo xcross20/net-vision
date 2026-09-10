@@ -18,6 +18,11 @@ describe('USDG amount knowledge', () => {
     expect(classifyAmount(1_850_000n, 1_850_000n).state).toBe('KNOWN_SUFFICIENT');
   });
 
+  it('becomes sufficient without treating the previous insufficient read as terminal', () => {
+    expect(classifyAmount(1_000_000n, 1_360_000n).state).toBe('KNOWN_INSUFFICIENT');
+    expect(classifyAmount(2_000_000n, 1_360_000n).state).toBe('KNOWN_SUFFICIENT');
+  });
+
   it('stays UNKNOWN when required is not yet known even if balance is', () => {
     expect(classifyAmount(1_850_000n, null)).toEqual({
       state: 'UNKNOWN',

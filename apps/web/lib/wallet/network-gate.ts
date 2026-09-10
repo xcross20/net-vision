@@ -125,9 +125,10 @@ export function shouldInvalidateChainSensitiveState(
  * Executable checkout phases must not keep a prepared tx / allowance
  * after the wallet leaves 4663. Cart item identity is preserved.
  */
-export function checkoutPhaseAfterChainChange(phaseKind: string): 'browsing' | 'unchanged' {
+export function checkoutPhaseAfterChainChange(phaseKind: string): 'browsing' | 'unchanged' | 'network_required' {
   if (phaseKind === 'browsing' || phaseKind === 'complete') return 'unchanged';
-  return 'browsing';
+  if (phaseKind === 'executing') return 'network_required';
+  return 'unchanged';
 }
 
 export const ROBINHOOD_SWITCH_CHAIN_ID = ROBINHOOD_CHAIN.id;

@@ -48,7 +48,7 @@ export type CartItemDraft = {
 export type CartAction =
   | { type: 'ADD'; item: CartItem }
   | { type: 'UPSERT'; item: CartItem }
-  | { type: 'REMOVE'; tokenId: string }
+  | { type: 'REMOVE'; tokenId: string; contractAddress?: string }
   | { type: 'CLEAR' }
   | { type: 'HYDRATE'; items: CartItem[] }
   | { type: 'REMOVE_CONFIRMED'; tokenIds: ReadonlyArray<string> };
@@ -56,6 +56,8 @@ export type CartAction =
 export type CartState = {
   items: CartItem[];
   hydrated: boolean;
+  /** Monotonic. Binds async revalidate/status/prepare responses. */
+  revision: number;
 };
 
 export type CheckoutItem =
@@ -92,6 +94,8 @@ export type SelectedPayment = {
 
 export type CartPhase =
   | { kind: 'browsing' }
+  | { kind: 'wallet_required' }
+  | { kind: 'network_required' }
   | { kind: 'revalidating' }
   | { kind: 'review'; items: CheckoutItem[] }
   | { kind: 'payment_select'; items: CheckoutItem[]; payment: SelectedPayment }

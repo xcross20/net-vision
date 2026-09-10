@@ -6,10 +6,11 @@ import Link from 'next/link';
 import { cn } from '@/lib/cn';
 import { useCart } from '@/lib/cart/CartProvider';
 import type { CartItem } from '@/lib/cart/types';
+import { canRemoveCartAsset } from '@/lib/cart/reconcile';
 import { CartCheckout } from './CartCheckout';
 
 export function CartDrawer() {
-  const { isOpen, close, items, remove, clear, itemCount } = useCart();
+  const { isOpen, close, items, remove, clear, itemCount, phase } = useCart();
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -74,7 +75,8 @@ export function CartDrawer() {
                 <CartItemRow
                   key={`${item.contractAddress}-${item.tokenId}`}
                   item={item}
-                  onRemove={() => remove(item.tokenId)}
+                  executionLocked={!canRemoveCartAsset(phase, item).ok}
+                  onRemove={() => remove(item.tokenId, item.contractAddress)}
                 />
               ))}
             </ul>
@@ -114,7 +116,15 @@ export function CartDrawer() {
   );
 }
 
-function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: () => void }) {
+function CartItemRow({
+  item,
+  onRemove,
+  executionLocked,
+}: {
+  item: CartItem;
+  onRemove: () => { ok: boolean; reason?: string };
+  executionLocked: boolean;
+}) {
   const priceLabel =
     item.displayedPriceDecimal && item.currencySymbol
       ? `${item.displayedPriceDecimal} ${item.currencySymbol}`
@@ -147,9 +157,11 @@ function CartItemRow({ item, onRemove }: { item: CartItem; onRemove: () => void 
       </div>
       <button
         type="button"
-        onClick={onRemove}
+        onClick={() => onRemove()}
+        disabled={executionLocked}
+        title={executionLocked ? 'Purchase in progress — this item is locked' : `Remove #${item.tokenId}`}
         aria-label={`Remove #${item.tokenId}`}
-        className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-3)] hover:text-[var(--color-danger)]"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] text-[var(--color-text-tertiary)] transition-colors hover:bg-[var(--color-surface-3)] hover:text-[var(--color-danger)] disabled:cursor-not-allowed disabled:opacity-40"
       >
         <X size={12} weight="bold" />
       </button>

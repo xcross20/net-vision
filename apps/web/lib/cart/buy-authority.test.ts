@@ -29,6 +29,13 @@ describe('buy checkout authority', () => {
     expect(offenders).toEqual([]);
   });
 
+  it('CartCheckout does not implement a second wallet connector', () => {
+    const src = readFileSync(join(WEB_ROOT, 'components/cart/CartCheckout.tsx'), 'utf8');
+    expect(src).toMatch(/useWalletConnectModal/);
+    expect(src).toMatch(/Connect wallet/);
+    expect(src).not.toMatch(/useConnect\(/);
+  });
+
   it('BuyDrawer does not fetch prepare or send a transaction', () => {
     const src = readFileSync(join(WEB_ROOT, 'components/BuyDrawer.tsx'), 'utf8');
     expect(src).not.toMatch(/fetch\s*\(/);
