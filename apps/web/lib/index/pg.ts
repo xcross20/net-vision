@@ -13,6 +13,7 @@ import type { CatalogSale } from '../market/catalog';
 import type { FloorSnapshot, SaleAttribution } from '../market/engine';
 import type { TokenFacet } from '@net-vision/taxonomy';
 import { SCHEMA_V2_SQL } from './schema-v2';
+import { SCHEMA_METADATA_BOOTSTRAP_SQL } from './schema-metadata-bootstrap';
 import { destructiveNormalizedRebuildEnabled } from './sql-writer-flags';
 import {
   blobSaveMinIntervalMs,
@@ -145,6 +146,7 @@ export async function ensureSchema(): Promise<boolean> {
   if (schemaReady) return true;
   await db.query(SCHEMA_SQL);
   await db.query(SCHEMA_V2_SQL);
+  await db.query(SCHEMA_METADATA_BOOTSTRAP_SQL);
   schemaReady = true;
   return true;
 }
