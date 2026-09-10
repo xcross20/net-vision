@@ -1,13 +1,12 @@
 'use client';
 
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@/components/ConnectButton';
-import { BuyDrawer } from '@/components/BuyDrawer';
-import { AddToCartButton } from '@/components/cart';
+import { AddToCartButton, BuyNowButton } from '@/components/cart';
 import { ArrowUR, WalletIcon } from '@/components/icons';
 import { ROBINHOOD_CHAIN } from '@net-vision/chain-config';
+import type { Token } from '@/lib/market';
 
 export function TokenCommercePanel({
   tokenId,
@@ -17,6 +16,8 @@ export function TokenCommercePanel({
   openseaUrl,
   contractAddress,
   currency,
+  listingOrderHash,
+  listingPriceRaw,
 }: {
   tokenId: string;
   imageUrl: string;
@@ -25,9 +26,28 @@ export function TokenCommercePanel({
   openseaUrl: string;
   contractAddress: string;
   currency: string;
+  listingOrderHash?: string | null;
+  listingPriceRaw?: string | null;
 }) {
-  const [buying, setBuying] = useState(false);
   const { isConnected } = useAccount();
+  const token: Token = {
+    tokenId,
+    contractAddress,
+    chainId: ROBINHOOD_CHAIN.id,
+    imageUrl,
+    name: `#${tokenId}`,
+    listingPrice: ask,
+    currency,
+    listingOrderHash: listingOrderHash ?? null,
+    listingPriceRaw: listingPriceRaw ?? null,
+    lastSalePrice: lastSale,
+    ownerAddress: null,
+    traits: [],
+    rarityRank: null,
+    listedAt: null,
+    lastSaleAt: null,
+  };
+  const draft = { token, displayedPriceDecimal: ask !== null ? String(ask) : null };
   return (
     <div className="flex flex-col gap-5">
       <dl className="nv-panel-soft divide-y divide-[var(--nv-border)] p-4">
@@ -36,15 +56,11 @@ export function TokenCommercePanel({
       </dl>
 
       <div className="flex flex-col gap-2">
-        <motion.button
-          type="button"
-          onClick={() => (isConnected ? setBuying(true) : null)}
-          className={`nv-button ${isConnected ? '' : 'nv-button-disabled'}`}
-          disabled={!isConnected}
-          whileTap={{ scale: 0.98 }}
-        >
-          {isConnected ? 'Buy now' : 'Connect to buy'}
-        </motion.button>
+        <BuyNowButton
+          draft={draft}
+          disabled={!isConnected || ask === null}
+          label={isConnected ? 'Buy now' : 'Connect to buy'}
+        />
         <motion.button
           type="button"
           className="nv-button nv-button-ghost nv-button-disabled"
@@ -53,26 +69,7 @@ export function TokenCommercePanel({
         >
           Make offer
         </motion.button>
-        <AddToCartButton
-          variant="primary"
-          draft={{
-            token: {
-              tokenId,
-              contractAddress,
-              chainId: ROBINHOOD_CHAIN.id,
-              imageUrl,
-              name: `#${tokenId}`,
-              listingPrice: ask,
-              currency,
-              lastSalePrice: lastSale,
-              ownerAddress: null,
-              traits: [],
-              rarityRank: null,
-              listedAt: null,
-              lastSaleAt: null,
-            },
-          }}
-        />
+        <AddToCartButton variant="primary" draft={draft} />
       </div>
 
       <div className="flex items-center gap-3 text-xs text-[var(--nv-muted)]">
@@ -92,14 +89,6 @@ export function TokenCommercePanel({
           </span>
         ) : null}
       </div>
-      {buying ? (
-        <BuyDrawer
-          tokenId={tokenId}
-          imageUrl={imageUrl}
-          fallbackPrice={ask !== null ? ask.toString() : null}
-          onClose={() => setBuying(false)}
-        />
-      ) : null}
     </div>
   );
 }

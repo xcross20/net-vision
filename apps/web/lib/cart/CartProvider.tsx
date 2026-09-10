@@ -40,6 +40,8 @@ type CartContextValue = {
   open: () => void;
   close: () => void;
   add: (draft: CartItemDraft) => { ok: boolean; reason?: string };
+  /** Add or replace one item, open the cart, and start checkout review. */
+  buyNow: (draft: CartItemDraft) => { ok: boolean; reason?: string };
   addMany: (drafts: CartItemDraft[]) => { added: string[]; skipped: Array<{ tokenId: string; reason: string }> };
   remove: (tokenId: string) => void;
   clear: () => void;
@@ -82,6 +84,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
         return { ok: false, reason: 'cart-full' };
       }
       dispatch({ type: 'ADD', item: built.item });
+      return { ok: true };
+    },
+    [state.items],
+  );
+
+  const buyNow = useCallback(
+    (draft: CartItemDraft): { ok: boolean; reason?: string } => {
+      const built = buildCartItem(draft);
+      if ('reason' in built) return { ok: false, reason: built.reason };
+      const exists = state.items.some((existing) => existing.tokenId === built.item.tokenId);
+      if (!exists && state.items.length >= CART_MAX_ITEMS) {
+        return { ok: false, reason: 'cart-full' };
+      }
+      dispatch({ type: 'UPSERT', item: built.item });
+      reviewRequestedRef.current = true;
+      setIsOpen(true);
       return { ok: true };
     },
     [state.items],
@@ -148,6 +166,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       open,
       close,
       add,
+      buyNow,
       addMany,
       remove,
       clear,
@@ -164,6 +183,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       open,
       close,
       add,
+      buyNow,
       addMany,
       remove,
       clear,

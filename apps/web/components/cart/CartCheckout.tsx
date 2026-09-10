@@ -6,6 +6,14 @@ import { SpinnerIcon, WarnIcon, CheckIcon } from '@/components/icons';
 import { cn } from '@/lib/cn';
 import { useCart } from '@/lib/cart/CartProvider';
 import type { CartItem, CheckoutItem } from '@/lib/cart/types';
+import {
+  PAYMENT_ASSETS,
+  assertCanMarkConfirmed,
+  assertCanPreparePurchase,
+  assertCanSelectPaymentAsset,
+  isExecutablePaymentAsset,
+  type PaymentAssetId,
+} from '@/lib/cart/checkout-machine';
 import { ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 import { payment } from '@/lib/format';
 
@@ -103,7 +111,7 @@ export function CartCheckout() {
   }, [address, chainId, items, setPhase, switchChainAsync]);
 
   const onCheckout = useCallback(async () => {
-    if (phase.kind !== 'review') return;
+    if (phase.kind !== 'review' && phase.kind !== 'payment_select') return;
     if (!address) {
       setPhase({ kind: 'error', message: 'Connect a wallet to check out.' });
       return;
@@ -111,6 +119,12 @@ export function CartCheckout() {
     const validItems = phase.items.filter((it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid');
     if (validItems.length === 0) {
       setPhase({ kind: 'error', message: 'No items are available for purchase.' });
+      return;
+    }
+    try {
+      assertCanSelectPaymentAsset('USDG');
+    } catch (err) {
+      setPhase({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
       return;
     }
     const confirmed: string[] = [];
@@ -124,13 +138,19 @@ export function CartCheckout() {
         confirmedTokenIds: confirmed,
       });
       try {
+        const acceptedPriceRaw = String(it.livePriceRaw);
+        assertCanPreparePurchase({
+          acceptedOrderHash: it.liveOrderHash,
+          acceptedPriceRaw,
+          listingState: it.state,
+        });
         const prepRes = await fetch('/api/trade/buy/prepare', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             tokenId: it.tokenId,
             buyerAddress: address,
-            acceptedPriceRaw: it.livePriceRaw,
+            acceptedPriceRaw,
             acceptedOrderHash: it.liveOrderHash,
           }),
         });
@@ -148,6 +168,7 @@ export function CartCheckout() {
           throw new Error('No RPC client — cannot wait for confirmation.');
         }
         const receipt = await publicClient.waitForTransactionReceipt({ hash });
+        assertCanMarkConfirmed(receipt.status === 'success' ? 'success' : 'reverted');
         if (receipt.status !== 'success') {
           throw new Error(`Transaction reverted (${hash})`);
         }
@@ -159,20 +180,20 @@ export function CartCheckout() {
           confirmedTokenIds: confirmed,
         });
       } catch (err) {
-        setPhase({
-          kind: 'complete',
-          confirmed: phase.items.filter((it): it is Extract<CheckoutItem, { state: 'valid' }> =>
-            confirmed.includes(it.tokenId),
-          ),
-          failed: [
-            ...phase.items.filter((it): it is Extract<CheckoutItem, { state: 'valid' }> =>
-              confirmed.includes(it.tokenId) === false && it.tokenId === it.cartItem.tokenId,
-            ),
-          ].filter(
-            (it): it is Extract<CheckoutItem, { state: 'valid' }> =>
-              it.state === 'valid' && it.tokenId === it.cartItem.tokenId,
-          ),
-        });
+        const confirmedItems = validItems.filter((row) => confirmed.includes(row.tokenId));
+        const failedItems = validItems.filter((row) => !confirmed.includes(row.tokenId));
+        const message = err instanceof Error ? err.message : String(err);
+        if (confirmedItems.length > 0) {
+          removeConfirmed(confirmed);
+          setPhase({
+            kind: 'recovery',
+            confirmed: confirmedItems,
+            failed: failedItems,
+            message,
+          });
+        } else {
+          setPhase({ kind: 'error', message });
+        }
         return;
       }
     }
@@ -314,10 +335,16 @@ export function CartCheckout() {
           <button
             type="button"
             disabled={!canBuy}
-            onClick={onCheckout}
+            onClick={() =>
+              setPhase({
+                kind: 'payment_select',
+                items: phase.items,
+                payment: { assetId: 'USDG' },
+              })
+            }
             className={cn('nv-button w-full', !canBuy && 'cursor-not-allowed opacity-50')}
           >
-            {validCount === 0 ? 'Nothing to buy' : `Buy ${validCount} item${validCount === 1 ? '' : 's'}`}
+            {validCount === 0 ? 'Nothing to buy' : 'Choose payment'}
           </button>
           <button
             type="button"
@@ -330,6 +357,80 @@ export function CartCheckout() {
             Back to cart
           </button>
         </div>
+      </div>
+    );
+  }
+
+  if (phase.kind === 'payment_select') {
+    const validItems = phase.items.filter(
+      (it): it is Extract<CheckoutItem, { state: 'valid' }> => it.state === 'valid',
+    );
+    const currentTotal = validItems.reduce((sum, it) => sum + it.livePriceDecimal, 0);
+    const currency = validItems[0]?.liveCurrency ?? 'USDG';
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex justify-between text-[12px] text-[var(--color-text-secondary)]">
+          <span>Current total</span>
+          <span className="text-numeral text-[var(--color-text-primary)]">
+            {payment(currentTotal, currency)}
+          </span>
+        </div>
+        <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
+          Pay with
+        </p>
+        <ul className="flex flex-col gap-2">
+          {PAYMENT_ASSETS.map((asset) => {
+            const selected = phase.payment.assetId === asset.id;
+            const executable = isExecutablePaymentAsset(asset.id);
+            return (
+              <li key={asset.id}>
+                <button
+                  type="button"
+                  disabled={!executable}
+                  onClick={() =>
+                    setPhase({
+                      kind: 'payment_select',
+                      items: phase.items,
+                      payment: { assetId: asset.id as PaymentAssetId },
+                    })
+                  }
+                  className={cn(
+                    'flex w-full items-start justify-between rounded-[var(--radius-sm)] border px-3 py-2 text-left text-[12px]',
+                    selected && executable
+                      ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.08)]'
+                      : 'border-[var(--color-border-subtle)]',
+                    !executable && 'cursor-not-allowed opacity-50',
+                  )}
+                >
+                  <span className="flex flex-col gap-0.5">
+                    <span className="font-semibold text-[var(--color-text-primary)]">
+                      {selected ? '● ' : '○ '}
+                      {asset.symbol}
+                    </span>
+                    <span className="text-[var(--color-text-tertiary)]">{asset.routeLabel}</span>
+                  </span>
+                  <span className="text-[var(--color-text-tertiary)]">
+                    {executable ? (asset.recommended ? 'Recommended' : 'Available') : 'Coming soon'}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="text-[11px] text-[var(--color-text-tertiary)]">
+          Settlement is always USDG. Routed assets stay disabled until each route independently
+          PASSes. Wallet balances are unknown until queried — never shown as 0.
+        </p>
+        <button type="button" onClick={onCheckout} className="nv-button w-full">
+          Review purchase
+        </button>
+        <button
+          type="button"
+          onClick={() => setPhase({ kind: 'review', items: phase.items })}
+          className="text-[12px] text-[var(--color-text-tertiary)]"
+        >
+          Back to listings
+        </button>
       </div>
     );
   }
@@ -354,12 +455,42 @@ export function CartCheckout() {
             on-chain.
           </span>
         </p>
+        {phase.failed.length > 0 ? (
+          <p className="text-[12px] text-[var(--color-danger)]">
+            {phase.failed.length} item{phase.failed.length === 1 ? '' : 's'} not confirmed — cart
+            kept those listings.
+          </p>
+        ) : null}
         <button
           type="button"
           onClick={() => setPhase({ kind: 'browsing' })}
           className="nv-button-ghost text-sm"
         >
           Close
+        </button>
+      </div>
+    );
+  }
+
+  if (phase.kind === 'recovery') {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="flex items-start gap-2 text-[12px] text-[var(--color-warning)]">
+          <WarnIcon size={14} weight="duotone" />
+          <span>
+            {phase.confirmed.length} confirmed. {phase.failed.length} still need action. {phase.message}
+          </span>
+        </p>
+        <p className="text-[11px] text-[var(--color-text-tertiary)]">
+          Confirmed NFTs stay yours. Failed items remain in the cart for retry. We never substitute
+          another token.
+        </p>
+        <button
+          type="button"
+          onClick={() => setPhase({ kind: 'browsing' })}
+          className="nv-button-ghost text-sm"
+        >
+          Back to cart
         </button>
       </div>
     );

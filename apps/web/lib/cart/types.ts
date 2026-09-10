@@ -47,6 +47,7 @@ export type CartItemDraft = {
 
 export type CartAction =
   | { type: 'ADD'; item: CartItem }
+  | { type: 'UPSERT'; item: CartItem }
   | { type: 'REMOVE'; tokenId: string }
   | { type: 'CLEAR' }
   | { type: 'HYDRATE'; items: CartItem[] }
@@ -84,10 +85,16 @@ export type CheckoutItem =
       message: string;
     };
 
+export type SelectedPayment = {
+  assetId: 'USDG' | 'ETH' | 'NET' | 'NVDA';
+};
+
 export type CartPhase =
   | { kind: 'browsing' }
   | { kind: 'revalidating' }
   | { kind: 'review'; items: CheckoutItem[] }
+  | { kind: 'payment_select'; items: CheckoutItem[]; payment: SelectedPayment }
   | { kind: 'executing'; items: CheckoutItem[]; currentIndex: number; confirmedTokenIds: string[] }
   | { kind: 'complete'; confirmed: CheckoutItem[]; failed: CheckoutItem[] }
+  | { kind: 'recovery'; confirmed: CheckoutItem[]; failed: CheckoutItem[]; message: string }
   | { kind: 'error'; message: string };

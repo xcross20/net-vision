@@ -33,7 +33,8 @@ const Body = z.object({
   buyerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   /** Mandatory reviewed spend cap (smallest units). */
   acceptedPriceRaw: z.string().regex(/^\d+$/),
-  acceptedOrderHash: z.string().min(1).optional(),
+  /** Mandatory reviewed live order hash. No UI may prepare without it. */
+  acceptedOrderHash: z.string().min(1),
 });
 
 export async function POST(request: Request) {
@@ -124,7 +125,7 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     }
-    if (parsed.acceptedOrderHash !== undefined && parsed.acceptedOrderHash !== liveOrderHash) {
+    if (parsed.acceptedOrderHash !== liveOrderHash) {
       return NextResponse.json(
         { error: 'order changed; please review and accept the new order', liveOrderHash },
         { status: 409 },
