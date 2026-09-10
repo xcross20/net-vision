@@ -61,11 +61,10 @@ describe('registry', () => {
 });
 
 describe('chain id', () => {
-  it('flags Net Vision 1311 as not official mainnet 4663', () => {
-    const check = checkConfiguredChainId(ROBINHOOD_CHAIN.id);
-    expect(ROBINHOOD_CHAIN.id).toBe(1311);
-    expect(check.matchesOfficialMainnet).toBe(false);
-    expect(check.officialMainnetChainId).toBe(OFFICIAL_ROBINHOOD_MAINNET_CHAIN_ID);
+  it('SoT chain id matches official mainnet; 1311 is rejected', () => {
+    expect(ROBINHOOD_CHAIN.id).toBe(OFFICIAL_ROBINHOOD_MAINNET_CHAIN_ID);
+    expect(checkConfiguredChainId(ROBINHOOD_CHAIN.id).matchesOfficialMainnet).toBe(true);
+    expect(checkConfiguredChainId(1311).matchesOfficialMainnet).toBe(false);
   });
 });
 
