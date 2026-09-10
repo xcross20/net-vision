@@ -1,12 +1,10 @@
 /**
  * USDG balance/allowance knowledge. Unknown must never render as 0.
+ * Allowance spender is the resolved Seaport conduit (or Seaport if key is 0).
  */
 import { createPublicClient, http, erc20Abi } from 'viem';
-import {
-  ALLOWLISTED_PROTOCOLS,
-  PAYMENT_TOKENS,
-  ROBINHOOD_CHAIN,
-} from '@net-vision/chain-config';
+import { PAYMENT_TOKENS, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
+import { resolveApprovalSpender } from './resolve-conduit';
 
 export type AmountKnowledge =
   | { state: 'UNKNOWN'; raw: string | null }
@@ -33,8 +31,9 @@ export type UsdgStatus = {
   chainId: number;
   token: { address: `0x${string}`; decimals: number; symbol: string };
   spender: {
-    address: `0x${string}`;
-    source: 'seaport-allowlist-provisional';
+    address: `0x${string}` | null;
+    source: 'seaport-direct' | 'conduit' | 'unresolved';
+    conduitKey: string | null;
     note: string;
   };
   balance: AmountKnowledge;
@@ -44,24 +43,43 @@ export type UsdgStatus = {
 export async function readUsdgStatus(input: {
   buyerAddress: `0x${string}`;
   requiredRaw: bigint | null;
+  conduitKey: string | null;
 }): Promise<UsdgStatus> {
   const token = PAYMENT_TOKENS.USDG.contractAddress;
-  const spender = ALLOWLISTED_PROTOCOLS.seaport15;
-  const base = {
+  const unresolved = {
     chainId: ROBINHOOD_CHAIN.id,
     token: { address: token, decimals: PAYMENT_TOKENS.USDG.decimals, symbol: 'USDG' },
     spender: {
-      address: spender,
-      source: 'seaport-allowlist-provisional' as const,
-      note: 'Spender is Seaport v1.5 until a live fulfillment payload names a conduit. Do not treat this as proven.',
+      address: null as `0x${string}` | null,
+      source: 'unresolved' as const,
+      conduitKey: input.conduitKey,
+      note: 'Cannot read allowance until conduitKey is resolved on-chain.',
     },
+    balance: { state: 'UNKNOWN' as const, raw: null },
+    allowance: { state: 'UNKNOWN' as const, raw: null },
   };
+  let resolved;
+  try {
+    resolved = await resolveApprovalSpender(input.conduitKey);
+  } catch (err) {
+    return {
+      ...unresolved,
+      spender: {
+        ...unresolved.spender,
+        note: err instanceof Error ? err.message : String(err),
+      },
+    };
+  }
   const url = rpcUrl();
   if (!url) {
     return {
-      ...base,
-      balance: { state: 'UNKNOWN', raw: null },
-      allowance: { state: 'UNKNOWN', raw: null },
+      ...unresolved,
+      spender: {
+        address: resolved.spender,
+        source: resolved.source,
+        conduitKey: resolved.conduitKey,
+        note: 'RPC missing; spender resolved but allowance unread.',
+      },
     };
   }
   try {
@@ -80,19 +98,33 @@ export async function readUsdgStatus(input: {
         address: token,
         abi: erc20Abi,
         functionName: 'allowance',
-        args: [input.buyerAddress, spender],
+        args: [input.buyerAddress, resolved.spender],
       }),
     ]);
     return {
-      ...base,
+      chainId: ROBINHOOD_CHAIN.id,
+      token: { address: token, decimals: PAYMENT_TOKENS.USDG.decimals, symbol: 'USDG' },
+      spender: {
+        address: resolved.spender,
+        source: resolved.source,
+        conduitKey: resolved.conduitKey,
+        note:
+          resolved.source === 'conduit'
+            ? 'USDG allowance spender is the Seaport conduit, not Seaport.'
+            : 'Zero conduitKey: spender is Seaport itself.',
+      },
       balance: classifyAmount(balance, input.requiredRaw),
       allowance: classifyAmount(allowance, input.requiredRaw),
     };
   } catch {
     return {
-      ...base,
-      balance: { state: 'UNKNOWN', raw: null },
-      allowance: { state: 'UNKNOWN', raw: null },
+      ...unresolved,
+      spender: {
+        address: resolved.spender,
+        source: resolved.source,
+        conduitKey: resolved.conduitKey,
+        note: 'Spender resolved; balance/allowance RPC read failed.',
+      },
     };
   }
 }

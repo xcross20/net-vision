@@ -61,7 +61,19 @@ Source: `GET /api/v2/listings/collection/button-presser/all` then official fulfi
 
 Dummy fulfiller `0x0000…0abc` used for capture (not a real buyer). Signatures omitted from git.
 
-**Residual P0 for live money:** ERC-20 allowance spender must be the **conduit** derived from `conduitKey` / `fulfillerConduitKey`, not Seaport. `usdg-status` still labels Seaport as provisional.
+**USDG spender (on-chain, 2026-09-10):**
+
+| Step | Result |
+| --- | --- |
+| `Seaport.information()` | version **1.6**, controller `0x00000000F9490004C11Cef243f5400493c00Ad63` |
+| Controller code | 8820 bytes |
+| `getConduit(0x61159fef…1d5e)` | conduit `0x963F00d3ff000064fFCbA824b800c0000000C300`, exists **true** |
+| Conduit code | 3190 bytes |
+| `getChannelStatus(conduit, Seaport)` | **true** (Seaport is an open channel) |
+
+Buyer USDG `approve` must target **the conduit**, not Seaport. Zero conduitKey would mean Seaport-direct.
+
+**Residual for live money:** a signed low-value purchase + receipt. `TRADING_ENABLED` stays false until that operator E2E.
 
 ## Operator recapture
 

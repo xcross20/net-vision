@@ -70,6 +70,7 @@ export type CheckoutItem =
       liveCurrency: string;
       liveProtocolAddress: string;
       liveValidUntil: number | null;
+      liveConduitKey?: string | null;
       priceChanged: boolean;
     }
   | {

@@ -46,6 +46,12 @@ export type TradeValidationInput = {
   expectedMaximumSpendRaw?: bigint;
   /** Payment token contract (not symbol). Mandatory for buy. */
   expectedPaymentToken?: string;
+  /**
+   * Extra ERC-20 spenders allowed for this action (resolved Seaport
+   * conduit). Target of the NFT tx remains Seaport; this is only for
+   * the bounded USDG approve.
+   */
+  extraAllowlistedSpenders?: ReadonlyArray<string>;
   openseaAction: {
     chainId: number;
     target: string;
@@ -221,13 +227,17 @@ export function validateTradeAction(input: TradeValidationInput): PolicyDecision
   }
 
   if (action.approvals) {
+    const extra = new Set(
+      (input.extraAllowlistedSpenders ?? []).map((s) => s.toLowerCase()),
+    );
     for (const a of action.approvals) {
-      const spenderAllowlisted = isAllowlistedContract(a.spender);
+      const spenderAllowlisted =
+        isAllowlistedContract(a.spender) || extra.has(a.spender.toLowerCase());
       record(
         checks,
         `approval-spender-allowlisted(${a.spender})`,
         spenderAllowlisted,
-        'spender must be an allowlisted protocol',
+        'spender must be Seaport, ConduitController, or the resolved conduit',
       );
       record(
         checks,

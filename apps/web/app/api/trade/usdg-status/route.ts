@@ -23,9 +23,11 @@ export async function GET(request: Request) {
     }
     requiredRaw = BigInt(requiredParam);
   }
+  const conduitKey = url.searchParams.get('conduitKey');
   const status = await readUsdgStatus({
     buyerAddress: buyer as `0x${string}`,
     requiredRaw,
+    conduitKey,
   });
   return NextResponse.json(status);
 }

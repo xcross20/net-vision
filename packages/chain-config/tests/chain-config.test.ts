@@ -25,8 +25,10 @@ describe('chain-config', () => {
     expect(isAllowlistedContract(BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase())).toBe(true);
   });
 
-  it('allows the Seaport v1.5 protocol', () => {
-    expect(isAllowlistedContract(ALLOWLISTED_PROTOCOLS.seaport15)).toBe(true);
+  it('allows Seaport 1.6 and the canonical ConduitController', () => {
+    expect(ALLOWLISTED_PROTOCOLS.seaport16).toBe(ALLOWLISTED_PROTOCOLS.seaport15);
+    expect(isAllowlistedContract(ALLOWLISTED_PROTOCOLS.seaport16)).toBe(true);
+    expect(isAllowlistedContract(ALLOWLISTED_PROTOCOLS.conduitController)).toBe(true);
   });
 
   it('rejects unknown contracts', () => {

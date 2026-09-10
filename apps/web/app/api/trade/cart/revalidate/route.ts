@@ -144,6 +144,10 @@ export async function POST(request: Request) {
           liveCurrency: currency,
           liveProtocolAddress: listing.protocol_address,
           liveValidUntil: validUntil,
+          liveConduitKey:
+            typeof listing.protocol_data?.parameters?.conduitKey === 'string'
+              ? listing.protocol_data.parameters.conduitKey
+              : null,
           // Treat an order-hash swap as a price change for review purposes:
           // the user must explicitly accept the new seller / order.
           priceChanged: priceChanged || orderChanged,
@@ -188,6 +192,7 @@ type RevalidateResult =
       liveCurrency: string;
       liveProtocolAddress: string;
       liveValidUntil: number | null;
+      liveConduitKey: string | null;
       priceChanged: boolean;
     }
   | {
