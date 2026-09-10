@@ -198,6 +198,60 @@ Any open P0 is launch BLOCK. Public trading stays off until P0-BUY is closed wit
 
 ---
 
+## P0-SHELL — Root layout fetch can 500 every page
+
+**Symptom.** `app/layout.tsx` `Shell` awaits `listTokens` + `listCategories` with no catch. Homepage `settle()` never runs if the header throws. No `error.tsx` / `loading.tsx`.
+
+**Root cause.** Shared chrome treated as infallible.
+
+**Sibling-risk.** Every route: market, categories, token, portfolio, activity.
+
+**Invariant.** Optional upstream failure degrades a section; it does not take down the product.
+
+**Fix.** Catch to empty arrays (search degrades). Add `app/error.tsx`.
+
+**Files.** `app/layout.tsx`.
+
+**BLOCK condition.** A SQL timeout in the header 500s `/`.
+
+---
+
+## P0-BUY-CTA — “Buy now” while trading is off
+
+**Symptom.** Token page shows **Buy now** for connected wallets. Prepare is kill-switched (503). `BuyDrawer` omits `acceptedPriceRaw` (400 even if flags on). `TradingGateNotice` existed unused.
+
+**Root cause.** UI not bound to the same kill switch as `/api/trade/buy/prepare`.
+
+**Sibling-risk.** Add to cart, sweep, make offer.
+
+**Invariant.** Disabled money paths must not look executable.
+
+**Fix.** Render `TradingGateNotice` unless `NEXT_PUBLIC_TRADING_ENABLED=true`. Keep OpenSea outbound. Do not enable flags here.
+
+**Files.** `TokenCommercePanel.tsx`, `TradingGateBanner.tsx`.
+
+**BLOCK condition.** Public users believe they can buy on Net Vision before Buy E2E PASS.
+
+---
+
+## P0-MARKET-3DIGIT — /market “3 Digit” filter was 1 Digit
+
+**Symptom.** `MarketView` `3digit` used `slugs.has('digits-1')`. Users looking for 3-digit Buttons get 1-digit.
+
+**Root cause.** Typo / wrong slug. SQL tokens also ship `traits: []`, so slug filters fail entirely unless we use token-id identity.
+
+**Sibling-risk.** Palindrome/repeating filters; any client filter on SQL tokens.
+
+**Invariant.** Token ID = displayed number. 3-digit membership is `digits-3` or id length 3.
+
+**Fix.** `digits-3` / `repdigit` / palindrome, with token-id fallbacks.
+
+**Files.** `components/ui/MarketView.tsx`.
+
+**BLOCK condition.** Category navigation lies about membership.
+
+---
+
 ## P0-BUY-E2E — No real single-NFT purchase evidence
 
 **Symptom.** Trading flags are correctly **off**. There is no `docs/launch/BUY_E2E.md` and no receipt. Unit tests are not Buy PASS.

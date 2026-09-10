@@ -59,8 +59,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 async function Shell() {
   const [tokens, categories] = await Promise.all([
-    listTokens({ listedOnly: true, limit: 24 }),
-    listCategories(),
+    listTokens({ listedOnly: true, limit: 24 }).catch(() => [] as Awaited<ReturnType<typeof listTokens>>),
+    listCategories().catch(() => [] as Awaited<ReturnType<typeof listCategories>>),
   ]);
   return <MarketHeaderClient tokens={tokens} categories={categories} />;
 }

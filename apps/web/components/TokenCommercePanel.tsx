@@ -7,6 +7,7 @@ import { ConnectButton } from '@/components/ConnectButton';
 import { BuyDrawer } from '@/components/BuyDrawer';
 import { AddToCartButton } from '@/components/cart';
 import { ArrowUR, WalletIcon } from '@/components/icons';
+import { TradingGateNotice } from '@/components/TradingGateBanner';
 
 export function TokenCommercePanel({
   tokenId,
@@ -27,6 +28,7 @@ export function TokenCommercePanel({
 }) {
   const [buying, setBuying] = useState(false);
   const { isConnected } = useAccount();
+  const tradingOn = process.env.NEXT_PUBLIC_TRADING_ENABLED === 'true';
   return (
     <div className="flex flex-col gap-5">
       <dl className="nv-panel-soft divide-y divide-[var(--nv-border)] p-4">
@@ -35,6 +37,7 @@ export function TokenCommercePanel({
       </dl>
 
       <div className="flex flex-col gap-2">
+        {tradingOn ? (
         <motion.button
           type="button"
           onClick={() => (isConnected ? setBuying(true) : null)}
@@ -44,6 +47,9 @@ export function TokenCommercePanel({
         >
           {isConnected ? 'Buy now' : 'Connect to buy'}
         </motion.button>
+        ) : (
+          <TradingGateNotice context="token" />
+        )}
         <motion.button
           type="button"
           className="nv-button nv-button-ghost nv-button-disabled"
@@ -52,6 +58,7 @@ export function TokenCommercePanel({
         >
           Make offer
         </motion.button>
+        {tradingOn ? (
         <AddToCartButton
           variant="primary"
           draft={{
@@ -72,6 +79,7 @@ export function TokenCommercePanel({
             },
           }}
         />
+        ) : null}
       </div>
 
       <div className="flex items-center gap-3 text-xs text-[var(--nv-muted)]">

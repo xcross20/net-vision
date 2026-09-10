@@ -6,7 +6,6 @@ import { Tabs } from '@/components/ui/Tabs';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { AssetCard } from '@/components/ui/AssetCard';
 import { AssetRow } from '@/components/ui/AssetRow';
-import { AssetSkeleton } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
 
@@ -23,9 +22,16 @@ const FILTERS: { value: Filter; label: string }[] = [
 function traitFilter(t: Token, filter: Filter): boolean {
   if (filter === 'all') return true;
   const slugs = new Set(t.traits.map((tr) => tr.slug));
-  if (filter === 'palindrome') return slugs.has('palindrome');
-  if (filter === 'repeating') return slugs.has('repeating-pairs') || slugs.has('repeating-run');
-  if (filter === '3digit') return slugs.has('digits-1');
+  const id = t.tokenId;
+  if (filter === 'palindrome') {
+    return slugs.has('palindrome') || (id.length > 1 && id === [...id].reverse().join(''));
+  }
+  if (filter === 'repeating') {
+    return slugs.has('repdigit') || (id.length > 1 && /^(\d)\1+$/.test(id));
+  }
+  if (filter === '3digit') {
+    return slugs.has('digits-3') || id.length === 3;
+  }
   return true;
 }
 
@@ -111,7 +117,11 @@ export function MarketView({
             className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:gap-5 xl:grid-cols-4"
           >
             {filtered.length === 0
-              ? Array.from({ length: 8 }).map((_, i) => <AssetSkeleton key={i} />)
+              ? (
+                <p className="col-span-full py-10 text-center text-sm text-[var(--color-text-tertiary)]">
+                  No listings match this filter.
+                </p>
+              )
               : filtered.map((t, idx) => (
                   <AssetCard key={t.tokenId} token={t} priority={idx < 4} />
                 ))}
@@ -144,7 +154,11 @@ export function MarketView({
               <span className="text-right" />
             </div>
             {filtered.length === 0
-              ? Array.from({ length: 6 }).map((_, i) => <AssetSkeleton key={i} />)
+              ? (
+                <p className="px-4 py-10 text-center text-sm text-[var(--color-text-tertiary)]">
+                  No listings match this filter.
+                </p>
+              )
               : filtered.map((t) => <AssetRow key={t.tokenId} token={t} />)}
           </motion.div>
         )}
