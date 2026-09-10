@@ -5,8 +5,10 @@ import {
   OPENSEA_CHAIN_SLUG,
   PAYMENT_TOKENS,
   ROBINHOOD_CHAIN,
+  ROBINHOOD_CHAIN_ID_HEX,
   isAllowlistedContract,
   isOfficialExistingTokenId,
+  robinhoodAddEthereumChainParameter,
 } from '../src/index';
 
 describe('chain-config', () => {
@@ -18,6 +20,17 @@ describe('chain-config', () => {
     );
     expect(ROBINHOOD_CHAIN.blockExplorers.default.url).toContain('blockscout.com');
     expect(OPENSEA_CHAIN_SLUG).toBe('robinhood');
+  });
+
+  it('wallet add/switch payload is derived from ROBINHOOD_CHAIN only', () => {
+    expect(ROBINHOOD_CHAIN_ID_HEX).toBe('0x1237');
+    expect(Number.parseInt(ROBINHOOD_CHAIN_ID_HEX, 16)).toBe(ROBINHOOD_CHAIN.id);
+    const params = robinhoodAddEthereumChainParameter();
+    expect(params.chainId).toBe(ROBINHOOD_CHAIN_ID_HEX);
+    expect(params.chainName).toBe(ROBINHOOD_CHAIN.name);
+    expect(params.nativeCurrency).toEqual(ROBINHOOD_CHAIN.nativeCurrency);
+    expect(params.rpcUrls).toEqual(ROBINHOOD_CHAIN.rpcUrls.default.http);
+    expect(params.blockExplorerUrls).toEqual([ROBINHOOD_CHAIN.blockExplorers.default.url]);
   });
 
   it('allows the Button Presser contract', () => {

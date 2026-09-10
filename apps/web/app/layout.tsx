@@ -6,6 +6,7 @@ import { MarketHeaderClient } from '@/components/ui/MarketHeaderClient';
 import { CartDrawer, CartProvider } from '@/components/cart';
 import { WatchlistProvider } from '@/lib/watchlist/WatchlistProvider';
 import { WalletProvider } from '@/lib/wallet/WalletProvider';
+import { NetworkGateProvider } from '@/lib/wallet/NetworkGateProvider';
 
 const geistSans = Geist({
   subsets: ['latin'],
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
         <WalletProvider>
+          <NetworkGateProvider>
           <WatchlistProvider>
           <CartProvider>
             <div className="flex min-h-[100dvh] flex-col">
@@ -49,6 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <CartDrawer />
           </CartProvider>
           </WatchlistProvider>
+          </NetworkGateProvider>
         </WalletProvider>
       </body>
     </html>
