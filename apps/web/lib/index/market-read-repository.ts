@@ -52,12 +52,20 @@ export type ListedTokenRow = {
   tokenId: number;
   name: string | null;
   imageUrl: string | null;
+  metadataVerifiedAt: number | null;
   ownerAddress: string | null;
   price: number | null;
   currency: string | null;
   orderHash: string | null;
   listedAt: number | null;
   listingState: ListingState;
+};
+
+export type TokenSummaryRow = {
+  tokenId: number;
+  name: string | null;
+  imageUrl: string | null;
+  metadataVerifiedAt: number | null;
 };
 
 export type ReadWorkerHealth = {
@@ -111,6 +119,7 @@ export interface MarketReadRepository {
   listAccountTokens(collectionId: string, ownerAddress: string): Promise<ListedTokenRow[]>;
   snapshotRevision(collectionId: string): Promise<number>;
   getMarketState(collectionId: string, tokenId: number): Promise<SqlTokenMarketState | null>;
+  getTokenSummary(collectionId: string, tokenId: number): Promise<TokenSummaryRow | null>;
   listRecentSales(collectionId: string, limit: number): Promise<SaleReadRow[]>;
   listTokenSales(collectionId: string, tokenId: number, limit: number): Promise<SaleReadRow[]>;
   listCategorySales(
@@ -292,6 +301,7 @@ export class MemoryMarketReadRepository implements MarketReadRepository {
         tokenId: row.tokenId,
         name: token?.name ?? null,
         imageUrl: token?.imageUrl ?? null,
+        metadataVerifiedAt: token?.metadataVerifiedAt ?? null,
         ownerAddress: token?.ownerAddress ?? row.seller,
         price: row.price,
         currency: row.currency,
@@ -318,6 +328,7 @@ export class MemoryMarketReadRepository implements MarketReadRepository {
         tokenId: token.tokenId,
         name: token.name ?? null,
         imageUrl: token.imageUrl ?? null,
+        metadataVerifiedAt: token.metadataVerifiedAt ?? null,
         ownerAddress: token.ownerAddress,
         price: row?.listingState === 'LISTED' ? row.price : null,
         currency: row?.currency ?? null,
@@ -337,6 +348,21 @@ export class MemoryMarketReadRepository implements MarketReadRepository {
   async getMarketState(collectionId: string, tokenId: number): Promise<SqlTokenMarketState | null> {
     if (!isOfficialExistingTokenId(tokenId)) return null;
     return this.mem.getTokenMarketState(collectionId, tokenId);
+  }
+
+  async getTokenSummary(
+    collectionId: string,
+    tokenId: number,
+  ): Promise<TokenSummaryRow | null> {
+    if (!isOfficialExistingTokenId(tokenId)) return null;
+    const token = this.mem.token(collectionId, tokenId);
+    if (!token) return null;
+    return {
+      tokenId,
+      name: token.name ?? null,
+      imageUrl: token.imageUrl ?? null,
+      metadataVerifiedAt: token.metadataVerifiedAt ?? null,
+    };
   }
 
   async listRecentSales(collectionId: string, limit: number): Promise<SaleReadRow[]> {
@@ -499,6 +525,29 @@ export class PgMarketReadRepository implements MarketReadRepository {
     };
   }
 
+  async getTokenSummary(
+    collectionId: string,
+    tokenId: number,
+  ): Promise<TokenSummaryRow | null> {
+    if (!isOfficialExistingTokenId(tokenId)) return null;
+    const result = await this.pool.query(
+      `SELECT token_id, name, image_url, metadata_verified_at
+         FROM tokens
+        WHERE collection_id = $1 AND token_id = $2`,
+      [collectionId, tokenId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      tokenId: Number(row.token_id),
+      name: row.name ?? null,
+      imageUrl: row.image_url ?? null,
+      metadataVerifiedAt: row.metadata_verified_at
+        ? new Date(row.metadata_verified_at).getTime()
+        : null,
+    };
+  }
+
   async listRecentSales(collectionId: string, limit: number): Promise<SaleReadRow[]> {
     const result = await this.pool.query(SQL_RECENT_SALES, [collectionId, limit]);
     return result.rows.map(pgSaleRow);
@@ -577,6 +626,7 @@ function pgListedRow(row: {
   token_id: unknown;
   name: string | null;
   image_url: string | null;
+  metadata_verified_at?: Date | string | null;
   owner_address: string | null;
   best_price_decimal: unknown;
   currency: string | null;
@@ -588,6 +638,9 @@ function pgListedRow(row: {
     tokenId: Number(row.token_id),
     name: row.name ?? null,
     imageUrl: row.image_url ?? null,
+    metadataVerifiedAt: row.metadata_verified_at
+      ? new Date(row.metadata_verified_at).getTime()
+      : null,
     ownerAddress: row.owner_address ?? null,
     price: num(row.best_price_decimal),
     currency: row.currency ?? null,

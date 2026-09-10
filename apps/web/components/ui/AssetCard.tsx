@@ -33,10 +33,17 @@ export function AssetCard({
   }, [token.imageUrl]);
   const ask = token.listingPrice;
   const canTrade = showActions && ask !== null;
-  const topTraits = token.traits
-    .filter((t) => t.family !== 'digits' && t.family !== 'number')
-    .slice(0, 2);
+  // Suppress trait-derived captions when the metadata walker has not
+  // verified this token. Showing fabricated labels ("5 Digit · Doubles")
+  // for an unverified Anodised plate is misleading.
+  const metadataVerified = token.metadataVerifiedAt != null;
+  const topTraits = metadataVerified
+    ? token.traits.filter((t) => t.family !== 'digits' && t.family !== 'number').slice(0, 2)
+    : [];
   const unoptimized = isProxyImageUrl(src) || src.endsWith('.svg');
+  const imageAlt = metadataVerified
+    ? `Button Presser #${token.tokenId}`
+    : `Button Presser #${token.tokenId} — image pending`;
   return (
     <motion.div
       whileHover={{ y: -2 }}
@@ -56,14 +63,17 @@ export function AssetCard({
         <div className="relative aspect-square overflow-hidden bg-[var(--color-surface-2)]">
           <Image
             src={src}
-            alt={`Button Presser #${token.tokenId}`}
+            alt={imageAlt}
             fill
             sizes="(min-width: 1280px) 18rem, (min-width: 768px) 33vw, 50vw"
             priority={priority}
             unoptimized={unoptimized}
-            className="object-contain p-3 transition-transform duration-500 ease-out group-hover/card:scale-[1.02]"
+            className={cn(
+              'object-contain p-3 transition-transform duration-500 ease-out group-hover/card:scale-[1.02]',
+              !metadataVerified && 'opacity-70',
+            )}
             onError={() => {
-              const fallback = buildTokenImageUrl(token.tokenId);
+              const fallback = `${buildTokenImageUrl(token.tokenId)}?state=unverified`;
               if (src !== fallback) setSrc(fallback);
             }}
           />
@@ -120,7 +130,9 @@ export function AssetCard({
               </span>
               <span className="truncate text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
                 {topTraits.length === 0
-                  ? 'Button Presser'
+                  ? metadataVerified
+                    ? 'Button Presser'
+                    : 'Image pending'
                   : topTraits.map((t) => t.label).join(' / ')}
               </span>
             </div>

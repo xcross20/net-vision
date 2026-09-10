@@ -324,3 +324,70 @@ describe('SqlMarketSource', () => {
     expect(snapshot.listedCount).not.toBe(snapshot.totalSupply);
   });
 });
+
+describe('SqlMarketSource image fallback honesty', () => {
+  async function seedToken(
+    mem: MemoryMarketRepository,
+    tokenId: number,
+    listingState: ListingState,
+    price: number | null,
+    imageUrl: string | null,
+    metadataVerifiedAt: number | null,
+  ) {
+    await mem.upsertToken({
+      collectionId: CID,
+      tokenId,
+      displayNumber: String(tokenId),
+      exists: true,
+      ownerAddress: '0xabc',
+      name: null,
+      imageUrl,
+      metadataJson: null,
+      metadataVerifiedAt,
+      lastSeenAt: 1,
+    });
+    await mem.upsertTokenMarketState(state(tokenId, listingState, price));
+  }
+
+  it('keeps the real OpenSea CDN URL when image_url is present and metadata is verified', async () => {
+    const mem = new MemoryMarketRepository();
+    await seedToken(
+      mem,
+      42349,
+      'LISTED',
+      1.85,
+      'https://raw2.seadn.io/robinhood/example.svg',
+      1_700_000_000_000,
+    );
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const listed = await source.listTokens({ category: undefined, listedOnly: true, limit: 10 });
+    // No facets seeded so the LISTED token won't appear under any slug.
+    // Use the single-token read path instead.
+    const token = await source.getToken('42349');
+    expect(token).not.toBeNull();
+    expect(token!.imageUrl).toBe('https://raw2.seadn.io/robinhood/example.svg');
+    expect(token!.metadataVerifiedAt).toBe(1_700_000_000_000);
+  });
+
+  it('falls back to the unverified-state SVG when image_url is NULL and metadata is unverified', async () => {
+    const mem = new MemoryMarketRepository();
+    await seedToken(mem, 43866, 'LISTED', 1.85, null, null);
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const token = await source.getToken('43866');
+    expect(token).not.toBeNull();
+    expect(token!.imageUrl).toContain('/api/media/token/43866');
+    expect(token!.imageUrl).toContain('state=unverified');
+    expect(token!.metadataVerifiedAt).toBeNull();
+  });
+
+  it('falls back to the missing-state SVG when image_url is NULL but metadata is verified', async () => {
+    const mem = new MemoryMarketRepository();
+    await seedToken(mem, 43951, 'LISTED', 1.85, null, 1_700_000_000_000);
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const token = await source.getToken('43951');
+    expect(token).not.toBeNull();
+    expect(token!.imageUrl).toContain('/api/media/token/43951');
+    expect(token!.imageUrl).toContain('state=missing');
+    expect(token!.metadataVerifiedAt).toBe(1_700_000_000_000);
+  });
+});

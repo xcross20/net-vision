@@ -11,9 +11,13 @@
  *   3. remaining supply
  *
  * Metadata bootstrap (separate cursor):
- *   1. 1..999 (Brass acceptance — official Plate supply)
- *   2. 1000..4999, 5000..19999, 20000..max
+ *   1. LISTED / STALE / UNKNOWN tokens without verified metadata
+ *      (marketplace cards the user can actually see)
+ *   2. Linear remainder in plate order: 1..999 Brass, then Steel,
+ *      Anodised, rest of supply
  * RETRY enqueues with backoff and advances the cursor (no head-of-line block).
+ * Optional sharding: METADATA_WORKER_SHARD_COUNT / METADATA_WORKER_SHARD_INDEX
+ * so N replicas can split token_id % N without sharing a cursor.
  */
 import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import { facetsForToken } from '@net-vision/taxonomy';
@@ -35,6 +39,7 @@ import {
   walkerTokensPerMinute as currentWalkerTokensPerMinute,
 } from './walker-metrics';
 import {
+  allListingRecords,
   countVerifiedListings,
   countVerifiedMetadataInRange,
   dueMetadataRetries,
@@ -73,11 +78,34 @@ const ANODISED_MAX = 19999;
  */
 const METADATA_PACE_MS_DEFAULT = 3_000;
 
-function metadataPaceMs(): number {
+export function metadataShardCount(): number {
+  const n = Number(process.env.METADATA_WORKER_SHARD_COUNT?.trim());
+  if (!Number.isInteger(n) || n < 1) return 1;
+  return n;
+}
+
+export function metadataShardIndex(): number {
+  const count = metadataShardCount();
+  const n = Number(process.env.METADATA_WORKER_SHARD_INDEX?.trim());
+  if (!Number.isInteger(n) || n < 0 || n >= count) return 0;
+  return n;
+}
+
+/** True when this replica is responsible for `tokenId`. COUNT=1 owns every id. */
+export function shardOwnsTokenId(tokenId: string): boolean {
+  const count = metadataShardCount();
+  if (count <= 1) return true;
+  const n = Number(tokenId);
+  if (!Number.isInteger(n) || n < 0) return false;
+  return n % count === metadataShardIndex();
+}
+
+export function metadataPaceMs(): number {
   const raw = process.env.METADATA_PACE_MS?.trim();
+  const minAllowed = metadataShardCount() > 1 ? WALKER_MIN_PACE_MS : METADATA_PACE_MS_DEFAULT;
   if (!raw) return METADATA_PACE_MS_DEFAULT;
   const n = Number(raw);
-  if (!Number.isFinite(n) || n < WALKER_MIN_PACE_MS) return METADATA_PACE_MS_DEFAULT;
+  if (!Number.isFinite(n) || n < minAllowed) return METADATA_PACE_MS_DEFAULT;
   return n;
 }
 const RATE_LIMIT_SLEEP_MS = 5 * 60_000;
@@ -128,18 +156,44 @@ function buildQueue(): string[] {
 /**
  * Plate metadata bootstrap order: Brass range first (acceptance), then
  * the remaining official Plate splits, then any remainder of supply.
+ * Filtered by shard so replica i only walks token_id % N === i.
  */
 export function buildMetadataQueue(): string[] {
   const max = BUTTON_PRESSER_COLLECTION.maxTokenId;
   const queue: string[] = [];
   const pushRange = (from: number, to: number) => {
-    for (let n = from; n <= to && n <= max; n += 1) queue.push(String(n));
+    for (let n = from; n <= to && n <= max; n += 1) {
+      const id = String(n);
+      if (shardOwnsTokenId(id)) queue.push(id);
+    }
   };
   pushRange(1, BRASS_MAX);
   pushRange(BRASS_MAX + 1, STEEL_MAX);
   pushRange(STEEL_MAX + 1, ANODISED_MAX);
   pushRange(ANODISED_MAX + 1, max);
   return queue;
+}
+
+const LISTED_FIRST_STATES = new Set(['LISTED', 'STALE', 'UNKNOWN']);
+
+/**
+ * Marketplace-visible tokens the metadata walker has not verified yet.
+ * These are the cards users actually see, so they outrank the linear
+ * Brass→Steel remainder. Tokens already in the retry queue are skipped
+ * so a 429 does not pin the drain on one id.
+ */
+export function buildListedFirstMetadataQueue(): string[] {
+  const retrying = new Set(metadataRetryQueue().map((item) => item.tokenId));
+  const pending: string[] = [];
+  for (const record of allListingRecords()) {
+    if (!LISTED_FIRST_STATES.has(record.state)) continue;
+    if (!shardOwnsTokenId(record.tokenId)) continue;
+    if (retrying.has(record.tokenId)) continue;
+    if (hasVerifiedMetadata(record.tokenId)) continue;
+    pending.push(record.tokenId);
+  }
+  pending.sort((a, b) => Number(a) - Number(b));
+  return pending;
 }
 
 function classifyIntoIndex(tokenId: string): void {
@@ -337,7 +391,12 @@ export async function runMetadataBootstrapPass(
 }> {
   const queue = buildMetadataQueue();
   const checkpoint = metadataCheckpoint();
-  if (checkpoint.phase === 'done' && metadataRetryQueue().length === 0) {
+  const listedPending = buildListedFirstMetadataQueue();
+  if (
+    checkpoint.phase === 'done' &&
+    metadataRetryQueue().length === 0 &&
+    listedPending.length === 0
+  ) {
     return {
       processed: 0,
       cursor: checkpoint.cursor,
@@ -352,47 +411,47 @@ export async function runMetadataBootstrapPass(
   let processed = 0;
   let missing = 0;
 
+  const fetchOne = async (tokenId: string): Promise<void> => {
+    const observation = await observeMetadata(tokenId, fetchMetadata);
+    const result = applyMetadataObservation(tokenId, observation);
+    if (result === 'settled' && observation.kind === 'missing') missing += 1;
+    if (result === 'exhausted') missing += 1;
+    if (result === 'settled' || result === 'exhausted') {
+      writeMetadataCheckpoint({ lastSuccessAt: Date.now(), lastError: null });
+    } else {
+      writeMetadataCheckpoint({
+        lastError: observation.kind === 'retry' ? observation.reason : null,
+      });
+    }
+    processed += 1;
+  };
+
   for (let i = 0; i < limit; i += 1) {
-    const due = dueMetadataRetries();
+    const due = dueMetadataRetries().filter((item) => shardOwnsTokenId(item.tokenId));
     if (due.length > 0) {
       const item = due[0];
       if (hasVerifiedMetadata(item.tokenId)) {
         removeMetadataRetry(item.tokenId);
         processed += 1;
       } else {
-        const observation = await observeMetadata(item.tokenId, fetchMetadata);
-        const result = applyMetadataObservation(item.tokenId, observation);
-        if (result === 'settled' && observation.kind === 'missing') missing += 1;
-        if (result === 'exhausted') missing += 1;
-        if (result === 'settled' || result === 'exhausted') {
-          writeMetadataCheckpoint({ lastSuccessAt: Date.now(), lastError: null });
-        } else {
-          writeMetadataCheckpoint({ lastError: observation.kind === 'retry' ? observation.reason : null });
-        }
-        processed += 1;
-      }
-    } else if (cursor < queue.length) {
-      const tokenId = queue[cursor];
-      if (hasVerifiedMetadata(tokenId)) {
-        cursor += 1;
-        processed += 1;
-      } else {
-        const observation = await observeMetadata(tokenId, fetchMetadata);
-        const result = applyMetadataObservation(tokenId, observation);
-        if (result === 'settled' && observation.kind === 'missing') missing += 1;
-        if (result === 'exhausted') missing += 1;
-        if (result === 'settled' || result === 'exhausted') {
-          writeMetadataCheckpoint({ lastSuccessAt: Date.now(), lastError: null });
-        } else {
-          writeMetadataCheckpoint({
-            lastError: observation.kind === 'retry' ? observation.reason : null,
-          });
-        }
-        cursor += 1;
-        processed += 1;
+        await fetchOne(item.tokenId);
       }
     } else {
-      break;
+      const listed = buildListedFirstMetadataQueue();
+      if (listed.length > 0) {
+        await fetchOne(listed[0]);
+      } else if (cursor < queue.length) {
+        const tokenId = queue[cursor];
+        if (hasVerifiedMetadata(tokenId)) {
+          cursor += 1;
+          processed += 1;
+        } else {
+          await fetchOne(tokenId);
+          cursor += 1;
+        }
+      } else {
+        break;
+      }
     }
 
     writeMetadataCheckpoint({
@@ -497,7 +556,11 @@ export function startBackgroundIndexer(
           await new Promise((resolve) => setTimeout(resolve, 30_000));
         } else {
           const checkpoint = metadataCheckpoint();
-          if (checkpoint.phase === 'done' && metadataRetryQueue().length === 0) {
+          if (
+            checkpoint.phase === 'done' &&
+            metadataRetryQueue().length === 0 &&
+            buildListedFirstMetadataQueue().length === 0
+          ) {
             metadataRunning = false;
             return;
           }

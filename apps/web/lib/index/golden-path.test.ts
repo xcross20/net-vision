@@ -38,6 +38,7 @@ describe('golden path: list then cancel', () => {
       contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
       chainId: ROBINHOOD_CHAIN.id,
       imageUrl: '/x',
+      metadataVerifiedAt: 1,
       name: '#756',
       listingPrice: 650,
       currency: 'USDG',

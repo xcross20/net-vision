@@ -20,6 +20,8 @@ export type Token = {
   chainId: number;
   /** Live OpenSea image URL when available; falls back to the deterministic media proxy. */
   imageUrl: string;
+  /** epoch ms when the metadata walker last verified this token's artwork. null = never verified. */
+  metadataVerifiedAt: number | null;
   name: string | null;
   /** On-chain / OpenSea description when the indexer has one. */
   description?: string | null;

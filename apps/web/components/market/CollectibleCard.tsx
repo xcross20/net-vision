@@ -29,11 +29,17 @@ export function CollectibleCard({
   }, [token.imageUrl]);
 
   const ask = token.listingPrice;
-  const topTraits = token.traits
-    .filter((t) => t.family !== 'digits' && t.family !== 'number')
-    .slice(0, 2);
+  // Suppress fabricated trait labels until the metadata walker has
+  // verified this token's image and traits.
+  const metadataVerified = token.metadataVerifiedAt != null;
+  const topTraits = metadataVerified
+    ? token.traits.filter((t) => t.family !== 'digits' && t.family !== 'number').slice(0, 2)
+    : [];
   const canSelect = selectable && ask !== null && onToggle;
   const unoptimized = isProxyImageUrl(src) || src.endsWith('.svg');
+  const imageAlt = metadataVerified
+    ? `Button Presser #${token.tokenId}`
+    : `Button Presser #${token.tokenId} — image pending`;
   return (
     <div
       className={cn(
@@ -64,14 +70,14 @@ export function CollectibleCard({
         <div className="relative aspect-square overflow-hidden bg-[var(--color-surface-2)]">
           <Image
             src={src}
-            alt={`Button Presser #${token.tokenId}`}
+            alt={imageAlt}
             fill
             sizes="(min-width: 1280px) 18rem, (min-width: 768px) 33vw, 50vw"
             priority={priority}
             unoptimized={unoptimized}
-            className="object-contain p-3"
+            className={cn('object-contain p-3', !metadataVerified && 'opacity-70')}
             onError={() => {
-              const fallback = buildTokenImageUrl(token.tokenId);
+              const fallback = `${buildTokenImageUrl(token.tokenId)}?state=unverified`;
               if (src !== fallback) setSrc(fallback);
             }}
           />
@@ -86,7 +92,11 @@ export function CollectibleCard({
                 #{token.tokenId}
               </span>
               <span className="truncate text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
-                {topTraits.length === 0 ? 'Button Presser' : topTraits.map((t) => t.label).join(' / ')}
+                {topTraits.length === 0
+                  ? metadataVerified
+                    ? 'Button Presser'
+                    : 'Image pending'
+                  : topTraits.map((t) => t.label).join(' / ')}
               </span>
             </div>
             <Price value={ask} currency={token.currency} size="md" align="right" />

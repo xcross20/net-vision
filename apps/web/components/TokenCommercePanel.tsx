@@ -61,6 +61,7 @@ export function TokenCommercePanel({
               contractAddress,
               chainId: ROBINHOOD_CHAIN.id,
               imageUrl,
+              metadataVerifiedAt: null,
               name: `#${tokenId}`,
               listingPrice: ask,
               currency,

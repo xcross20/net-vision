@@ -24,6 +24,7 @@ describe('A4 SQL category queries', () => {
     expect(SQL_CATEGORY_MARKET_FACTS).toContain(CANONICAL_EXISTING_TOKEN_SQL);
     expect(SQL_CATEGORY_LISTED_TOKENS).toContain("m.listing_state = 'LISTED'");
     expect(SQL_CATEGORY_LISTED_TOKENS).toContain(CANONICAL_EXISTING_TOKEN_SQL);
+    expect(SQL_CATEGORY_LISTED_TOKENS).toContain('t.metadata_verified_at');
   });
 
   it('directory facts query is one round-trip without a slug bind', () => {

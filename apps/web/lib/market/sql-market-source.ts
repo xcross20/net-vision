@@ -159,13 +159,19 @@ export class SqlMarketSource implements MarketSource {
     if (!Number.isInteger(id)) return null;
     const state = await this.reads.getMarketState(this.collectionId, id);
     if (!state) return null;
+    const summary = await this.reads.getTokenSummary(this.collectionId, id);
     const listed = state.listingState === 'LISTED';
     return {
       tokenId: String(id),
       contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
       chainId: ROBINHOOD_CHAIN.id,
-      imageUrl: buildTokenImageUrl(String(id)),
-      name: null,
+      imageUrl: resolveImageUrl(
+        String(id),
+        summary?.imageUrl ?? null,
+        summary?.metadataVerifiedAt ?? null,
+      ),
+      metadataVerifiedAt: summary?.metadataVerifiedAt ?? null,
+      name: summary?.name ?? null,
       listingPrice: listed ? state.price : null,
       currency: state.currency ?? DEFAULT_PAYMENT_CURRENCY,
       listingOrderHash: listed ? state.orderHash : null,
@@ -407,6 +413,7 @@ export class SqlMarketSource implements MarketSource {
     tokenId: number;
     name: string | null;
     imageUrl: string | null;
+    metadataVerifiedAt: number | null;
     ownerAddress: string | null;
     price: number | null;
     currency: string | null;
@@ -417,7 +424,12 @@ export class SqlMarketSource implements MarketSource {
       tokenId: String(row.tokenId),
       contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
       chainId: ROBINHOOD_CHAIN.id,
-      imageUrl: row.imageUrl ?? buildTokenImageUrl(String(row.tokenId)),
+      imageUrl: resolveImageUrl(
+        String(row.tokenId),
+        row.imageUrl,
+        row.metadataVerifiedAt,
+      ),
+      metadataVerifiedAt: row.metadataVerifiedAt,
       name: row.name,
       listingPrice: row.price,
       currency: row.currency ?? DEFAULT_PAYMENT_CURRENCY,
@@ -430,4 +442,24 @@ export class SqlMarketSource implements MarketSource {
       lastSaleAt: null,
     };
   }
+}
+
+/**
+ * Pick the image URL the marketplace card should render. When the
+ * metadata walker has verified a token we use its OpenSea CDN image.
+ * When metadata is unverified we still fall back to the deterministic
+ * media proxy so the card has art, but we mark the URL with `?state=`
+ * so the proxy renders an "Image pending" SVG instead of fabricated
+ * trait labels.
+ */
+function resolveImageUrl(
+  tokenId: string,
+  storedImageUrl: string | null,
+  metadataVerifiedAt: number | null,
+): string {
+  if (storedImageUrl && /^https?:\/\//i.test(storedImageUrl)) return storedImageUrl;
+  if (metadataVerifiedAt == null) {
+    return `${buildTokenImageUrl(tokenId)}?state=unverified`;
+  }
+  return `${buildTokenImageUrl(tokenId)}?state=missing`;
 }

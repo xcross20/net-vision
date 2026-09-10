@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import {
   listingRecord,
   metadataCheckpoint,
@@ -9,12 +9,18 @@ import {
   resetIndexForTests,
   snapshotRevision,
   saveIndex,
+  writeListing,
 } from './store';
 import {
   PRIORITY_TOKEN_IDS,
+  buildListedFirstMetadataQueue,
   buildMetadataQueue,
+  metadataPaceMs,
+  metadataShardCount,
+  metadataShardIndex,
   runIndexerPass,
   runMetadataBootstrapPass,
+  shardOwnsTokenId,
 } from './worker';
 
 describe('listing reconciliation worker', () => {
@@ -171,6 +177,161 @@ describe('Plate metadata bootstrap', () => {
     expect(result.cursor).toBe(2);
     expect(result.missing).toBe(2);
     expect(metadataCheckpoint().cursor).toBe(2);
+  });
+
+  it('fetches LISTED tokens without verified metadata before the linear Brass cursor', async () => {
+    writeListing({
+      tokenId: '43866',
+      state: 'LISTED',
+      price: 1.85,
+      currency: 'USDG',
+      orderHash: '0x43866',
+      seller: '0xabc',
+      listedAt: 1,
+      lastVerifiedAt: 1,
+      consecutive404s: 0,
+    });
+    writeListing({
+      tokenId: '1',
+      state: 'UNLISTED_VERIFIED',
+      price: null,
+      currency: null,
+      orderHash: null,
+      seller: null,
+      listedAt: null,
+      lastVerifiedAt: 1,
+      consecutive404s: 0,
+    });
+    expect(buildListedFirstMetadataQueue()).toEqual(['43866']);
+    const fetched: string[] = [];
+    const result = await runMetadataBootstrapPass(
+      async (tokenId) => {
+        fetched.push(tokenId);
+        persistNftMetadata(tokenId, {
+          name: `Button #${tokenId}`,
+          imageUrl: `https://raw2.seadn.io/example/${tokenId}.svg`,
+        });
+        return { kind: 'found' };
+      },
+      { maxTokens: 1 },
+    );
+    expect(fetched).toEqual(['43866']);
+    // Linear Brass cursor must not move — we drained a listed-first token.
+    expect(result.cursor).toBe(0);
+    expect(metadataCheckpoint().cursor).toBe(0);
+  });
+
+  it('does not pin listed-first drain on a token already in the retry queue', async () => {
+    writeListing({
+      tokenId: '43866',
+      state: 'LISTED',
+      price: 1.85,
+      currency: 'USDG',
+      orderHash: '0x43866',
+      seller: null,
+      listedAt: 1,
+      lastVerifiedAt: 1,
+      consecutive404s: 0,
+    });
+    await runMetadataBootstrapPass(
+      async () => ({ kind: 'retry', reason: 'transient' }),
+      { maxTokens: 1 },
+    );
+    expect(buildListedFirstMetadataQueue()).toEqual([]);
+    const fetched: string[] = [];
+    await runMetadataBootstrapPass(
+      async (tokenId) => {
+        fetched.push(tokenId);
+        return { kind: 'found' };
+      },
+      { maxTokens: 1 },
+    );
+    // Retry is not yet due, so we walk the linear queue instead of re-pinning 43866.
+    expect(fetched[0]).toBe('1');
+  });
+});
+
+describe('metadata worker sharding', () => {
+  const prevCount = process.env.METADATA_WORKER_SHARD_COUNT;
+  const prevIndex = process.env.METADATA_WORKER_SHARD_INDEX;
+  const prevPace = process.env.METADATA_PACE_MS;
+
+  beforeEach(() => {
+    process.env.INDEX_DB_PATH = join(mkdtempSync(join(tmpdir(), 'nv-shard-')), 'index.json');
+    resetIndexForTests();
+    delete process.env.METADATA_WORKER_SHARD_COUNT;
+    delete process.env.METADATA_WORKER_SHARD_INDEX;
+    delete process.env.METADATA_PACE_MS;
+  });
+
+  afterEach(() => {
+    if (prevCount === undefined) delete process.env.METADATA_WORKER_SHARD_COUNT;
+    else process.env.METADATA_WORKER_SHARD_COUNT = prevCount;
+    if (prevIndex === undefined) delete process.env.METADATA_WORKER_SHARD_INDEX;
+    else process.env.METADATA_WORKER_SHARD_INDEX = prevIndex;
+    if (prevPace === undefined) delete process.env.METADATA_PACE_MS;
+    else process.env.METADATA_PACE_MS = prevPace;
+  });
+
+  it('defaults to a single shard that owns every token', () => {
+    expect(metadataShardCount()).toBe(1);
+    expect(metadataShardIndex()).toBe(0);
+    expect(shardOwnsTokenId('1')).toBe(true);
+    expect(shardOwnsTokenId('43866')).toBe(true);
+    expect(buildMetadataQueue()[0]).toBe('1');
+    expect(buildMetadataQueue()[998]).toBe('999');
+  });
+
+  it('splits the linear queue by token_id % N', () => {
+    process.env.METADATA_WORKER_SHARD_COUNT = '3';
+    process.env.METADATA_WORKER_SHARD_INDEX = '1';
+    expect(shardOwnsTokenId('1')).toBe(true); // 1 % 3 === 1
+    expect(shardOwnsTokenId('2')).toBe(false);
+    expect(shardOwnsTokenId('3')).toBe(false);
+    expect(shardOwnsTokenId('4')).toBe(true);
+    const queue = buildMetadataQueue();
+    expect(queue[0]).toBe('1');
+    expect(queue[1]).toBe('4');
+    expect(queue.every((id) => Number(id) % 3 === 1)).toBe(true);
+  });
+
+  it('filters listed-first queue to this shard', () => {
+    process.env.METADATA_WORKER_SHARD_COUNT = '3';
+    process.env.METADATA_WORKER_SHARD_INDEX = '0';
+    writeListing({
+      tokenId: '43866', // 43866 % 3 === 0
+      state: 'LISTED',
+      price: 1.85,
+      currency: 'USDG',
+      orderHash: '0xa',
+      seller: null,
+      listedAt: 1,
+      lastVerifiedAt: 1,
+      consecutive404s: 0,
+    });
+    writeListing({
+      tokenId: '43951', // 43951 % 3 === 1
+      state: 'LISTED',
+      price: 1.85,
+      currency: 'USDG',
+      orderHash: '0xb',
+      seller: null,
+      listedAt: 1,
+      lastVerifiedAt: 1,
+      consecutive404s: 0,
+    });
+    expect(buildListedFirstMetadataQueue()).toEqual(['43866']);
+  });
+
+  it('refuses METADATA_PACE_MS below 3000 on a single shard', () => {
+    process.env.METADATA_PACE_MS = '1500';
+    expect(metadataPaceMs()).toBe(3_000);
+  });
+
+  it('allows METADATA_PACE_MS=1500 when more than one shard is configured', () => {
+    process.env.METADATA_WORKER_SHARD_COUNT = '3';
+    process.env.METADATA_PACE_MS = '1500';
+    expect(metadataPaceMs()).toBe(1_500);
   });
 });
 

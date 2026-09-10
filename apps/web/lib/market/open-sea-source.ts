@@ -1287,6 +1287,7 @@ function nftToToken(tokenId: string, nft: NftInfo): Token {
       nft.image_preview_url ??
       nft.image_original_url ??
       buildTokenImageUrl(tokenId),
+    metadataVerifiedAt: Date.now(),
     name: nft.name ?? `#${tokenId}`,
     description: nft.description ?? null,
     listingPrice: null,
@@ -1310,6 +1311,7 @@ function mergeListedTokenWithNft(token: Token, nft: NftInfo): Token {
       nft.image_preview_url ??
       nft.image_original_url ??
       token.imageUrl,
+    metadataVerifiedAt: Date.now(),
     name: nft.name ?? token.name,
     ownerAddress: nftOwnerAddress(nft) ?? token.ownerAddress,
     traits: mergeTraits(token.traits, nft.traits ?? []),
@@ -1338,7 +1340,8 @@ function buildUnlistedCategoryToken(tokenId: string): Token {
     tokenId,
     contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
     chainId: ROBINHOOD_CHAIN.id,
-    imageUrl: buildTokenImageUrl(tokenId),
+    imageUrl: `${buildTokenImageUrl(tokenId)}?state=unverified`,
+    metadataVerifiedAt: null,
     name: `#${tokenId}`,
     listingPrice: null,
     currency: DEFAULT_PAYMENT_CURRENCY,
@@ -1366,6 +1369,7 @@ function catalogListingToToken(
     contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
     chainId: ROBINHOOD_CHAIN.id,
     imageUrl: resolveTokenImageUrl(listing.tokenId, storedImageUrl),
+    metadataVerifiedAt: storedImageUrl && /^https?:\/\//i.test(storedImageUrl) ? Date.now() : null,
     name: storedName ?? `#${listing.tokenId}`,
     listingPrice: listing.price,
     currency: listing.currency,
@@ -1453,6 +1457,7 @@ function orderToListedToken(order: Order): Token | null {
       order.asset?.contract?.toLowerCase() ?? BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
     chainId: ROBINHOOD_CHAIN.id,
     imageUrl: buildTokenImageUrl(tokenId),
+    metadataVerifiedAt: null,
     name: `#${tokenId}`,
     listingPrice: amount,
     currency: currency ?? DEFAULT_PAYMENT_CURRENCY,
