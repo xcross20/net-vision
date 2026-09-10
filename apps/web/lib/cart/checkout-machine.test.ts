@@ -19,6 +19,13 @@ describe('checkout state machine', () => {
     expect(canTransition('APPROVAL_CONFIRMED', 'LISTING_REVALIDATING_FINAL')).toBe(true);
   });
 
+  it('auto-advances wallet and network recognition into revalidation', () => {
+    expect(canTransition('BROWSING', 'WALLET_REQUIRED')).toBe(true);
+    expect(canTransition('WALLET_REQUIRED', 'NETWORK_REQUIRED')).toBe(true);
+    expect(canTransition('NETWORK_REQUIRED', 'REVALIDATING')).toBe(true);
+    expect(canTransition('WALLET_REQUIRED', 'REVALIDATING')).toBe(true);
+  });
+
   it('allows the USDG happy path', () => {
     const path = [
       'BROWSING',

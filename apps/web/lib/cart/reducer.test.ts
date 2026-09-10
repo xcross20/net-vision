@@ -27,5 +27,17 @@ describe('cart reducer', () => {
     const upserted = cartReducer(added, { type: 'UPSERT', item: item('777', '0xnew') });
     expect(upserted.items).toHaveLength(1);
     expect(upserted.items[0]?.displayedOrderHash).toBe('0xnew');
+    expect(upserted.revision).toBe(2);
+  });
+
+  it('REMOVE by contract+tokenId increments revision', () => {
+    const added = cartReducer(initialCartState, { type: 'ADD', item: item('20343', '0xa') });
+    const removed = cartReducer(added, {
+      type: 'REMOVE',
+      tokenId: '20343',
+      contractAddress: '0xe5143de9d3ccbc31ffb4e7fc66d8320e0e2693d2',
+    });
+    expect(removed.items).toHaveLength(0);
+    expect(removed.revision).toBe(added.revision + 1);
   });
 });

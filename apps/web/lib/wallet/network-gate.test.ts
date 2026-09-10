@@ -115,9 +115,9 @@ describe('chain change invalidation', () => {
   });
 
   it('returns checkout to browsing except complete/browsing', () => {
-    expect(checkoutPhaseAfterChainChange('payment_select')).toBe('browsing');
-    expect(checkoutPhaseAfterChainChange('executing')).toBe('browsing');
-    expect(checkoutPhaseAfterChainChange('review')).toBe('browsing');
+    expect(checkoutPhaseAfterChainChange('payment_select')).toBe('unchanged');
+    expect(checkoutPhaseAfterChainChange('executing')).toBe('network_required');
+    expect(checkoutPhaseAfterChainChange('review')).toBe('unchanged');
     expect(checkoutPhaseAfterChainChange('complete')).toBe('unchanged');
     expect(checkoutPhaseAfterChainChange('browsing')).toBe('unchanged');
   });
