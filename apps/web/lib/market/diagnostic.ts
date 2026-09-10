@@ -6,7 +6,7 @@
  */
 import {
   BUTTON_PRESSER_COLLECTION,
-  ROBINHOOD_CHAIN,
+  OPENSEA_CHAIN_SLUG,
 } from '@net-vision/chain-config';
 import { createOpenSeaClient } from '@net-vision/opensea-client';
 
@@ -87,6 +87,5 @@ function envFallbackChain(): string | null {
   // The opensea-client documents Robinhood Chain's slug as 'robinhood'.
   // Resolve lazily so we don't burn an API call when the caller passes
   // OPENSEA_CHAIN explicitly.
-  if (ROBINHOOD_CHAIN.id === 1311) return 'robinhood';
-  return null;
+  return OPENSEA_CHAIN_SLUG;
 }

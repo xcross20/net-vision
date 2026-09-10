@@ -7,6 +7,7 @@ import { ConnectButton } from '@/components/ConnectButton';
 import { BuyDrawer } from '@/components/BuyDrawer';
 import { AddToCartButton } from '@/components/cart';
 import { ArrowUR, WalletIcon } from '@/components/icons';
+import { ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 
 export function TokenCommercePanel({
   tokenId,
@@ -58,7 +59,7 @@ export function TokenCommercePanel({
             token: {
               tokenId,
               contractAddress,
-              chainId: 1311,
+              chainId: ROBINHOOD_CHAIN.id,
               imageUrl,
               name: `#${tokenId}`,
               listingPrice: ask,

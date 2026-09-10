@@ -6,7 +6,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, beforeEach } from 'vitest';
-import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
+import { BUTTON_PRESSER_COLLECTION, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 import { applyMarketEvent } from './apply-event';
 import { streamMessageToMarketEvent } from './market-event';
 import { listingRecord, resetIndexForTests } from './store';
@@ -36,7 +36,7 @@ describe('golden path: list then cancel', () => {
     const token: Token = {
       tokenId: '756',
       contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
-      chainId: 1311,
+      chainId: ROBINHOOD_CHAIN.id,
       imageUrl: '/x',
       name: '#756',
       listingPrice: 650,

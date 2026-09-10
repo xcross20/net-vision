@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Hexagon } from '@phosphor-icons/react/dist/ssr';
+import { CHAIN_DISPLAY } from '@net-vision/chain-config';
 
 export function Footer() {
   return (
@@ -36,7 +37,7 @@ export function Footer() {
           </FooterColumn>
           <FooterColumn title="Ecosystem">
             <FooterLink href="https://opensea.io" external>OpenSea</FooterLink>
-            <FooterLink href="https://explorer.robinhood.com" external>
+            <FooterLink href={CHAIN_DISPLAY.explorerUrl} external>
               Robinhood explorer
             </FooterLink>
           </FooterColumn>
