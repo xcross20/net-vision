@@ -138,7 +138,7 @@ export function CategoryMarket({
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CategoryTabs value={tab} onChange={setTab} listedCount={liveMetrics.listedCount} />
-          {tab === 'listings' ? (
+          {tab === 'listings' && process.env.NEXT_PUBLIC_SWEEP_ENABLED === 'true' ? (
             <button
               type="button"
               className="nv-button nv-button-ghost"
@@ -221,15 +221,19 @@ export function CategoryMarket({
         {tab === 'offers' ? <CategoryOffers slug={metrics.slug} /> : null}
         {tab === 'analytics' ? <CategoryAnalytics slug={metrics.slug} metrics={liveMetrics} /> : null}
       </div>
-      <SelectionBar tokens={selectedTokens} onClear={() => setSelected({})} />
-      <SweepDrawer
-        open={sweepOpen}
-        onClose={() => setSweepOpen(false)}
-        slug={metrics.slug}
-        name={metrics.name}
-        tokens={tokens}
-        enabled={liveMetrics.marketStatus === 'live'}
-      />
+      {process.env.NEXT_PUBLIC_SWEEP_ENABLED === 'true' ? (
+        <>
+          <SelectionBar tokens={selectedTokens} onClear={() => setSelected({})} />
+          <SweepDrawer
+            open={sweepOpen}
+            onClose={() => setSweepOpen(false)}
+            slug={metrics.slug}
+            name={metrics.name}
+            tokens={tokens}
+            enabled={liveMetrics.marketStatus === 'live'}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

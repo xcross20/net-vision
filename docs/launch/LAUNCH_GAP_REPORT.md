@@ -430,6 +430,23 @@ Open P1 on market-data, wallet, or consistency is also public-release BLOCK (`RE
 7. Fletcher-bounded polish.
 8. `RELEASE_READINESS.md` → LAUNCH PASS or BLOCK.
 
+## Trade-path audit (2026-09-10, flags off)
+
+These are **P0 before `TRADING_ENABLED` may be flipped**. They are not an excuse to skip Buy E2E; they are why the flag stays off.
+
+| ID | Symptom | Gate today |
+| --- | --- | --- |
+| P0-BUY-DRAWER | BuyDrawer omits `acceptedPriceRaw`; 400 once flags on | UI now hidden unless public trading flag |
+| P0-BUY-RECEIPT | BuyDrawer treats tx hash as success; no `waitForTransactionReceipt` | Same |
+| P0-BUY-CHAIN | `sendTransactionAsync` has no `chainId: 1311` | Same |
+| P0-BUY-VALUE | ERC-20 USDG buy can still send native `msg.value` | Policy now rejects non-zero value when ERC-20 amount is set |
+| P0-BUY-SWEEP | Master flag would enable sequential multi-buy via cart; Sweep UI ignored `SWEEP_ENABLED` | Sweep UI hidden unless `NEXT_PUBLIC_SWEEP_ENABLED` |
+| P0-BUY-DECODE | Recipient is calldata substring; signed payload not ABI-decoded | Blocks flag-on until commerce track |
+| P0-BUY-USDG | No allowance/approve step | Blocks real-money E2E |
+| P1-CART-RAW | Revalidate uses OpenSea envelope; SQL has no `priceRaw`; null snapshot skips drift | Blocks public Buy |
+
+`LIST_ENABLED` / `OFFER_ENABLED` now **default false**. Do not flip `TRADING_ENABLED` until P0-BUY-* plus a real receipt.
+
 Do not enable production trading, sweep, offers, native listing, or Gear to make the report look greener.
 
 ---

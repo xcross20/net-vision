@@ -167,6 +167,15 @@ export function validateTradeAction(input: TradeValidationInput): PolicyDecision
         `spend=${spend} cap=${cap}`,
       );
     }
+    // ERC-20 buys must not carry an uncapped native msg.value.
+    if (action.paymentAmountRaw !== undefined && action.paymentAmountRaw > 0n) {
+      record(
+        checks,
+        'native-value-zero-for-erc20',
+        (action.valueRaw ?? 0n) === 0n,
+        `valueRaw=${action.valueRaw ?? 0n}`,
+      );
+    }
   } else if (
     input.expectedMaximumSpendRaw !== undefined &&
     action.valueRaw !== undefined

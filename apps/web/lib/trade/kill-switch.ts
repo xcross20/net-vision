@@ -26,9 +26,9 @@ export function isSurfaceEnabled(surface: TradeSurface): boolean {
     case 'buy':
       return flag('BUY_ENABLED', true);
     case 'list':
-      return flag('LIST_ENABLED', true);
+      return flag('LIST_ENABLED', false);
     case 'offer':
-      return flag('OFFER_ENABLED', true);
+      return flag('OFFER_ENABLED', false);
     case 'sweep':
       return flag('SWEEP_ENABLED', false);
     case 'accept_offer':

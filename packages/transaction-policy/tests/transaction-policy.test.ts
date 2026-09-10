@@ -62,6 +62,14 @@ describe('validateTradeAction', () => {
     expect(decision.allowed === false && decision.reason).toMatch(/max-spend/);
   });
 
+  it('rejects ERC-20 buy when native msg.value is non-zero', () => {
+    const decision = baseBuy({
+      openseaAction: baseAction({ valueRaw: 1n }),
+    });
+    expect(decision.allowed).toBe(false);
+    expect(decision.allowed === false && decision.reason).toMatch(/native-value-zero-for-erc20/);
+  });
+
   it('rejects buy when payment exceeds cap', () => {
     const decision = baseBuy({
       openseaAction: baseAction({ paymentAmountRaw: 2_000_000n }),
