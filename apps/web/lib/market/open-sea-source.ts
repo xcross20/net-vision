@@ -1026,12 +1026,10 @@ class OpenSeaMarketSource implements MarketSource {
 
   async listCategories(): Promise<CategoryMetrics[]> {
     await this.ensurePipeline();
-    const rows: CategoryMetrics[] = [];
-    for (const entry of VIRTUAL_COLLECTION_CATALOG) {
-      const metrics = await this.composeCategoryMetrics(entry.slug);
-      if (metrics) rows.push(metrics);
-    }
-    return rows;
+    const rows = await Promise.all(
+      VIRTUAL_COLLECTION_CATALOG.map((entry) => this.composeCategoryMetrics(entry.slug)),
+    );
+    return rows.filter((metrics): metrics is CategoryMetrics => metrics != null);
   }
 
   async listRecentSales(limit = 20): Promise<Sale[]> {

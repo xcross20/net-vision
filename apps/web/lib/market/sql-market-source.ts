@@ -15,8 +15,8 @@ import {
   realtimeHealth,
 } from './sql-readiness';
 import { guardCollectionSnapshot } from './impossible-states';
-import type { MarketReadRepository } from '../index/market-read-repository';
-import { PgMarketReadRepository } from '../index/market-read-repository';
+import type { CategoryMarketFacts, MarketReadRepository } from '../index/market-read-repository';
+import { emptyCategoryFacts, PgMarketReadRepository } from '../index/market-read-repository';
 import { BUTTON_PRESSER_COLLECTION_ID } from '../index/schema-v2';
 import { getPool } from '../index/pg';
 
@@ -44,6 +44,63 @@ function windowSinceMs(window: SalesWindow | undefined): number | null {
   if (window === '24h') return now - MS_DAY;
   if (window === '7d') return now - 7 * MS_DAY;
   return now - 30 * MS_DAY;
+}
+
+type CategorySaleStats = {
+  latest: { tokenId: string; price: number; occurredAt: number } | null;
+  highest: { tokenId: string; price: number; occurredAt: number } | null;
+  volume24h: number;
+  volume7d: number;
+  volume30d: number;
+  volumeAll: number;
+  sales24h: number;
+  sales7d: number;
+  sales30d: number;
+};
+
+function saleStatsFromRows(
+  rows: Array<{ tokenId: number; price: number; occurredAt: number }>,
+): CategorySaleStats {
+  if (rows.length === 0) {
+    return {
+      latest: null,
+      highest: null,
+      volume24h: 0,
+      volume7d: 0,
+      volume30d: 0,
+      volumeAll: 0,
+      sales24h: 0,
+      sales7d: 0,
+      sales30d: 0,
+    };
+  }
+  const now = Date.now();
+  const inWindow = (ms: number) => rows.filter((row) => row.occurredAt >= now - ms);
+  const sum = (list: typeof rows) => list.reduce((acc, row) => acc + row.price, 0);
+  const d24 = inWindow(MS_DAY);
+  const d7 = inWindow(7 * MS_DAY);
+  const d30 = inWindow(30 * MS_DAY);
+  const latest = {
+    tokenId: String(rows[0].tokenId),
+    price: rows[0].price,
+    occurredAt: rows[0].occurredAt,
+  };
+  const highestRow = rows.reduce((best, row) => (row.price > best.price ? row : best), rows[0]);
+  return {
+    latest,
+    highest: {
+      tokenId: String(highestRow.tokenId),
+      price: highestRow.price,
+      occurredAt: highestRow.occurredAt,
+    },
+    volume24h: sum(d24),
+    volume7d: sum(d7),
+    volume30d: sum(d30),
+    volumeAll: sum(rows),
+    sales24h: d24.length,
+    sales7d: d7.length,
+    sales30d: d30.length,
+  };
 }
 
 function expectedSupply(slug: string, memberCount: number): number {
@@ -136,77 +193,45 @@ export class SqlMarketSource implements MarketSource {
   async getCategoryMetrics(slug: string): Promise<CategoryMetrics | null> {
     const meta = VIRTUAL_COLLECTION_CATALOG.find((entry) => entry.slug === slug);
     if (!meta) return null;
-    const facts = await this.reads.categoryFacts(this.collectionId, slug);
-    if (!facts) return null;
-    const snapshot = await this.getCollectionSnapshot();
-    const expected = expectedSupply(slug, facts.memberCount);
-    const membershipCoverage =
-      meta.source === 'metadata' ? bootstrapCoverage(facts.memberCount, expected) : 1;
-    const coverage = bootstrapCoverage(facts.establishedCount, expected);
-    const status = bootstrapMarketStatus(Math.min(membershipCoverage, coverage));
-    const floors = categoryFloors(
-      facts.floorPrice != null ? [facts.floorPrice] : [],
-      facts.lastKnownFloor != null ? [facts.lastKnownFloor] : [],
+    const [facts, snapshot, health, saleStats] = await Promise.all([
+      this.reads.categoryFacts(this.collectionId, slug),
+      this.getCollectionSnapshot(),
+      this.reads.workerHealth(),
+      this.categorySaleStats(slug),
+    ]);
+    return this.metricsFromFacts(
+      meta,
+      facts ?? emptyCategoryFacts(slug),
+      snapshot,
+      realtimeHealth(health),
+      saleStats,
     );
-    const health = realtimeHealth(await this.reads.workerHealth());
-    const saleStats = await this.categorySaleStats(slug);
-    return {
-      slug,
-      name: meta.name,
-      family: meta.family,
-      source: meta.source,
-      description: meta.description,
-      memberSupply: expected,
-      filteredMemberSupply: facts.memberCount || expected,
-      totalSupply: snapshot.totalSupply,
-      listedCount: facts.listedCount,
-      staleListedCount: facts.staleListedCount,
-      listedPercentage: expected > 0 ? facts.listedCount / expected : 0,
-      verifiedCount: facts.establishedCount,
-      unknownCount: facts.unknownCount,
-      coveragePercent: Math.min(membershipCoverage, coverage),
-      membershipCoverage,
-      marketCoverage: coverage,
-      marketStatus: status,
-      owners: facts.owners,
-      currency: snapshot.currency,
-      floorPrice: floors.floorPrice,
-      lastKnownFloorPrice: floors.lastKnownFloorPrice,
-      ceilingPrice: facts.ceilingPrice,
-      medianAsk: null,
-      lastSalePrice: saleStats.latest?.price ?? null,
-      topOfferPrice: null,
-      offerCount: 0,
-      topSalePrice: saleStats.highest?.price ?? null,
-      highestSale: saleStats.highest,
-      volume24h: saleStats.volume24h,
-      volume7d: saleStats.volume7d,
-      volume30d: saleStats.volume30d,
-      volumeAllTracked: saleStats.volumeAll,
-      volume24hNative: 0,
-      volume7dNative: 0,
-      sales24h: saleStats.sales24h,
-      sales7d: saleStats.sales7d,
-      sales30d: saleStats.sales30d,
-      averageSale: null,
-      medianSale: null,
-      floorChange24h: null,
-      floorChange7d: null,
-      floorChange30d: null,
-      trendingScore: 0,
-      trackedSince: snapshot.refreshedAt,
-      bootstrapCoverage: coverage,
-      realtimeHealth: health,
-    };
   }
 
   async listCategories(): Promise<CategoryMetrics[]> {
-    const rows: CategoryMetrics[] = [];
-    for (const entry of VIRTUAL_COLLECTION_CATALOG) {
-      const metrics = await this.getCategoryMetrics(entry.slug);
-      if (metrics) rows.push(metrics);
+    const [snapshot, facts, health, sales] = await Promise.all([
+      this.getCollectionSnapshot(),
+      this.reads.allCategoryFacts(this.collectionId),
+      this.reads.workerHealth(),
+      this.reads.listAllCategorySales(this.collectionId),
+    ]);
+    const bySlug = new Map(facts.map((row) => [row.slug, row]));
+    const salesBySlug = new Map<string, typeof sales>();
+    for (const row of sales) {
+      const list = salesBySlug.get(row.slug) ?? [];
+      list.push(row);
+      salesBySlug.set(row.slug, list);
     }
-    return rows;
+    const realtime = realtimeHealth(health);
+    return VIRTUAL_COLLECTION_CATALOG.map((entry) =>
+      this.metricsFromFacts(
+        entry,
+        bySlug.get(entry.slug) ?? emptyCategoryFacts(entry.slug),
+        snapshot,
+        realtime,
+        saleStatsFromRows(salesBySlug.get(entry.slug) ?? []),
+      ),
+    );
   }
 
   async listRecentSales(limit = 20): Promise<Sale[]> {
@@ -287,45 +312,75 @@ export class SqlMarketSource implements MarketSource {
     };
   }
 
-  private async categorySaleStats(slug: string): Promise<{
-    latest: { tokenId: string; price: number; occurredAt: number } | null;
-    highest: { tokenId: string; price: number; occurredAt: number } | null;
-    volume24h: number;
-    volume7d: number;
-    volume30d: number;
-    volumeAll: number;
-    sales24h: number;
-    sales7d: number;
-    sales30d: number;
-  }> {
-    const rows = await this.reads.listCategorySales(this.collectionId, slug, 500, null);
-    const now = Date.now();
-    const inWindow = (ms: number) => rows.filter((row) => row.occurredAt >= now - ms);
-    const sum = (list: typeof rows) => list.reduce((acc, row) => acc + row.price, 0);
-    const d24 = inWindow(MS_DAY);
-    const d7 = inWindow(7 * MS_DAY);
-    const d30 = inWindow(30 * MS_DAY);
-    const latest = rows[0]
-      ? { tokenId: String(rows[0].tokenId), price: rows[0].price, occurredAt: rows[0].occurredAt }
-      : null;
-    const highestRow = rows.reduce<(typeof rows)[0] | null>(
-      (best, row) => (best == null || row.price > best.price ? row : best),
-      null,
+  private metricsFromFacts(
+    meta: (typeof VIRTUAL_COLLECTION_CATALOG)[number],
+    facts: CategoryMarketFacts,
+    snapshot: CollectionSnapshot,
+    health: ReturnType<typeof realtimeHealth>,
+    saleStats: CategorySaleStats,
+  ): CategoryMetrics {
+    const expected = expectedSupply(meta.slug, facts.memberCount);
+    const membershipCoverage =
+      meta.source === 'metadata' ? bootstrapCoverage(facts.memberCount, expected) : 1;
+    const coverage = bootstrapCoverage(facts.establishedCount, expected);
+    const status = bootstrapMarketStatus(Math.min(membershipCoverage, coverage));
+    const floors = categoryFloors(
+      facts.floorPrice != null ? [facts.floorPrice] : [],
+      facts.lastKnownFloor != null ? [facts.lastKnownFloor] : [],
     );
-    const highest = highestRow
-      ? { tokenId: String(highestRow.tokenId), price: highestRow.price, occurredAt: highestRow.occurredAt }
-      : null;
     return {
-      latest,
-      highest,
-      volume24h: sum(d24),
-      volume7d: sum(d7),
-      volume30d: sum(d30),
-      volumeAll: sum(rows),
-      sales24h: d24.length,
-      sales7d: d7.length,
-      sales30d: d30.length,
+      slug: meta.slug,
+      name: meta.name,
+      family: meta.family,
+      source: meta.source,
+      description: meta.description,
+      memberSupply: expected,
+      filteredMemberSupply: facts.memberCount || expected,
+      totalSupply: snapshot.totalSupply,
+      listedCount: facts.listedCount,
+      staleListedCount: facts.staleListedCount,
+      listedPercentage: expected > 0 ? facts.listedCount / expected : 0,
+      verifiedCount: facts.establishedCount,
+      unknownCount: facts.unknownCount,
+      coveragePercent: Math.min(membershipCoverage, coverage),
+      membershipCoverage,
+      marketCoverage: coverage,
+      marketStatus: status,
+      owners: facts.owners,
+      currency: snapshot.currency,
+      floorPrice: floors.floorPrice,
+      lastKnownFloorPrice: floors.lastKnownFloorPrice,
+      ceilingPrice: facts.ceilingPrice,
+      medianAsk: null,
+      lastSalePrice: saleStats.latest?.price ?? null,
+      topOfferPrice: null,
+      offerCount: 0,
+      topSalePrice: saleStats.highest?.price ?? null,
+      highestSale: saleStats.highest,
+      volume24h: saleStats.volume24h,
+      volume7d: saleStats.volume7d,
+      volume30d: saleStats.volume30d,
+      volumeAllTracked: saleStats.volumeAll,
+      volume24hNative: 0,
+      volume7dNative: 0,
+      sales24h: saleStats.sales24h,
+      sales7d: saleStats.sales7d,
+      sales30d: saleStats.sales30d,
+      averageSale: null,
+      medianSale: null,
+      floorChange24h: null,
+      floorChange7d: null,
+      floorChange30d: null,
+      trendingScore: 0,
+      trackedSince: snapshot.refreshedAt,
+      bootstrapCoverage: coverage,
+      realtimeHealth: health,
     };
+  }
+
+  private async categorySaleStats(slug: string): Promise<CategorySaleStats> {
+    const rows = await this.reads.listCategorySales(this.collectionId, slug, 500, null);
+    return saleStatsFromRows(rows);
   }
 
   private toSale(row: {

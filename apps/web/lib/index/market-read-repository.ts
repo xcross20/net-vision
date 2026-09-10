@@ -8,6 +8,8 @@ import type { ListingState } from '../market/listing-state';
 import { BUTTON_PRESSER_COLLECTION_ID } from './schema-v2';
 import {
   SQL_ACCOUNT_TOKENS,
+  SQL_ALL_CATEGORY_MARKET_FACTS,
+  SQL_ALL_CATEGORY_SALES,
   SQL_CATEGORY_LISTED_TOKENS,
   SQL_CATEGORY_MARKET_FACTS,
   SQL_CATEGORY_SALES,
@@ -81,9 +83,25 @@ export class OwnerIndexIncompleteError extends Error {
   }
 }
 
+export function emptyCategoryFacts(slug: string): CategoryMarketFacts {
+  return {
+    slug,
+    memberCount: 0,
+    listedCount: 0,
+    staleListedCount: 0,
+    establishedCount: 0,
+    unknownCount: 0,
+    floorPrice: null,
+    lastKnownFloor: null,
+    ceilingPrice: null,
+    owners: 0,
+  };
+}
+
 export interface MarketReadRepository {
   collectionFacts(collectionId: string): Promise<CollectionMarketFacts>;
   categoryFacts(collectionId: string, slug: string): Promise<CategoryMarketFacts | null>;
+  allCategoryFacts(collectionId: string): Promise<CategoryMarketFacts[]>;
   listListedTokens(
     collectionId: string,
     slug: string | null,
@@ -101,6 +119,7 @@ export interface MarketReadRepository {
     limit: number,
     sinceMs: number | null,
   ): Promise<SaleReadRow[]>;
+  listAllCategorySales(collectionId: string): Promise<Array<SaleReadRow & { slug: string }>>;
   workerHealth(): Promise<ReadWorkerHealth>;
 }
 
@@ -186,21 +205,23 @@ export class MemoryMarketReadRepository implements MarketReadRepository {
     };
   }
 
+  async allCategoryFacts(collectionId: string): Promise<CategoryMarketFacts[]> {
+    const slugs = new Set<string>();
+    for (const row of this.mem.facetRows(collectionId)) {
+      for (const facet of row.facets) slugs.add(facet.slug);
+    }
+    const out: CategoryMarketFacts[] = [];
+    for (const slug of slugs) {
+      const facts = await this.categoryFacts(collectionId, slug);
+      if (facts) out.push(facts);
+    }
+    return out;
+  }
+
   async categoryFacts(collectionId: string, slug: string): Promise<CategoryMarketFacts | null> {
     const members = this.members(collectionId, slug);
     if (members.length === 0) {
-      return {
-        slug,
-        memberCount: 0,
-        listedCount: 0,
-        staleListedCount: 0,
-        establishedCount: 0,
-        unknownCount: 0,
-        floorPrice: null,
-        lastKnownFloor: null,
-        ceilingPrice: null,
-        owners: 0,
-      };
+      return emptyCategoryFacts(slug);
     }
     const market = new Map(
       this.mem
@@ -362,6 +383,23 @@ export class MemoryMarketReadRepository implements MarketReadRepository {
       .map(saleReadRow);
   }
 
+  async listAllCategorySales(collectionId: string): Promise<Array<SaleReadRow & { slug: string }>> {
+    const attributions = this.mem.attributionRows(collectionId);
+    const sales = new Map(
+      this.mem
+        .saleRows(collectionId)
+        .filter((row) => isOfficialExistingTokenId(row.tokenId))
+        .map((row) => [row.saleEventId, row]),
+    );
+    const out: Array<SaleReadRow & { slug: string }> = [];
+    for (const attr of attributions) {
+      const sale = sales.get(attr.saleEventId);
+      if (!sale) continue;
+      out.push({ ...saleReadRow(sale), slug: attr.categorySlug });
+    }
+    return out.sort((a, b) => b.occurredAt - a.occurredAt);
+  }
+
   async workerHealth(): Promise<ReadWorkerHealth> {
     return { ...this.health };
   }
@@ -395,35 +433,16 @@ export class PgMarketReadRepository implements MarketReadRepository {
     };
   }
 
+  async allCategoryFacts(collectionId: string): Promise<CategoryMarketFacts[]> {
+    const result = await this.pool.query(SQL_ALL_CATEGORY_MARKET_FACTS, [collectionId]);
+    return result.rows.map((row) => pgCategoryFacts(row));
+  }
+
   async categoryFacts(collectionId: string, slug: string): Promise<CategoryMarketFacts | null> {
     const result = await this.pool.query(SQL_CATEGORY_MARKET_FACTS, [collectionId, slug]);
     const row = result.rows[0];
-    if (!row) {
-      return {
-        slug,
-        memberCount: 0,
-        listedCount: 0,
-        staleListedCount: 0,
-        establishedCount: 0,
-        unknownCount: 0,
-        floorPrice: null,
-        lastKnownFloor: null,
-        ceilingPrice: null,
-        owners: 0,
-      };
-    }
-    return {
-      slug: row.slug,
-      memberCount: Number(row.member_count ?? 0),
-      listedCount: Number(row.listed_count ?? 0),
-      staleListedCount: Number(row.stale_listed_count ?? 0),
-      establishedCount: Number(row.established_count ?? 0),
-      unknownCount: Number(row.unknown_count ?? 0),
-      floorPrice: num(row.floor_price),
-      lastKnownFloor: num(row.last_known_floor),
-      ceilingPrice: num(row.ceiling_price),
-      owners: Number(row.owners ?? 0),
-    };
+    if (!row) return emptyCategoryFacts(slug);
+    return pgCategoryFacts(row);
   }
 
   async listListedTokens(
@@ -502,6 +521,11 @@ export class PgMarketReadRepository implements MarketReadRepository {
     return result.rows.map(pgSaleRow);
   }
 
+  async listAllCategorySales(collectionId: string): Promise<Array<SaleReadRow & { slug: string }>> {
+    const result = await this.pool.query(SQL_ALL_CATEGORY_SALES, [collectionId]);
+    return result.rows.map((row) => ({ ...pgSaleRow(row), slug: String(row.slug) }));
+  }
+
   async workerHealth(): Promise<ReadWorkerHealth> {
     const result = await this.pool.query<{ payload: Record<string, unknown> | null }>(
       `SELECT payload FROM index_blob WHERE id = $1`,
@@ -521,6 +545,32 @@ export class PgMarketReadRepository implements MarketReadRepository {
       heartbeatAgeMs,
     };
   }
+}
+
+function pgCategoryFacts(row: {
+  slug: string;
+  member_count: unknown;
+  listed_count: unknown;
+  stale_listed_count: unknown;
+  established_count: unknown;
+  unknown_count: unknown;
+  floor_price: unknown;
+  last_known_floor: unknown;
+  ceiling_price: unknown;
+  owners: unknown;
+}): CategoryMarketFacts {
+  return {
+    slug: row.slug,
+    memberCount: Number(row.member_count ?? 0),
+    listedCount: Number(row.listed_count ?? 0),
+    staleListedCount: Number(row.stale_listed_count ?? 0),
+    establishedCount: Number(row.established_count ?? 0),
+    unknownCount: Number(row.unknown_count ?? 0),
+    floorPrice: num(row.floor_price),
+    lastKnownFloor: num(row.last_known_floor),
+    ceilingPrice: num(row.ceiling_price),
+    owners: Number(row.owners ?? 0),
+  };
 }
 
 function pgListedRow(row: {

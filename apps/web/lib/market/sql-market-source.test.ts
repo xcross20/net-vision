@@ -213,6 +213,27 @@ describe('SqlMarketSource', () => {
     expect(typeof snapshot.snapshotRevision).toBe('number');
   });
 
+  it('lists every catalog category from one facts pass without inventing listed zeros', async () => {
+    const mem = new MemoryMarketRepository();
+    await seedToken(mem, 1, 'LISTED', 41, ['digits-1']);
+    await seedToken(mem, 11, 'LISTED', 12, ['digits-2', 'repdigit']);
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const listed = await source.listCategories();
+    const digits1 = listed.find((c) => c.slug === 'digits-1');
+    const digits2 = listed.find((c) => c.slug === 'digits-2');
+    const brass = listed.find((c) => c.slug === 'material-brass');
+    expect(listed.length).toBeGreaterThan(10);
+    expect(digits1?.listedCount).toBe(1);
+    expect(digits1?.floorPrice).toBe(41);
+    expect(digits2?.listedCount).toBe(1);
+    expect(digits2?.floorPrice).toBe(12);
+    expect(brass?.listedCount).toBe(0);
+    expect(brass?.floorPrice).toBeNull();
+    expect(brass?.marketStatus).toBe('syncing');
+    expect(digits1?.volume24h).toBe(0);
+    expect(digits1?.sales24h).toBe(0);
+  });
+
   it('does not treat UNKNOWN as unlisted or as listed', async () => {
     const mem = new MemoryMarketRepository();
     await seedToken(mem, 1, 'UNKNOWN', null, ['digits-1']);
@@ -288,6 +309,9 @@ describe('SqlMarketSource', () => {
     const metrics = await source.getCategoryMetrics('digits-1');
     expect(metrics?.lastSalePrice).toBe(80);
     expect(metrics?.highestSale?.tokenId).toBe('1');
+    const listed = await source.listCategories();
+    expect(listed.find((c) => c.slug === 'digits-1')?.lastSalePrice).toBe(80);
+    expect(listed.find((c) => c.slug === 'material-brass')?.lastSalePrice).toBeNull();
   });
 
   it('does not use COUNT of market-state rows as collection supply', async () => {
