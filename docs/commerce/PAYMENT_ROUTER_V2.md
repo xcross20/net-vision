@@ -19,6 +19,10 @@ Cloudflare Stock Token `rh-net-cloudflare` (18 decimals) is not NetNet `netnet-n
 
 `GET /api/payment/methods` reads `CF-IPCountry`. US and unknown regions cannot execute Stock Tokens. The server repeats this at quote/prepare.
 
+`POST /api/payment/quote` is fail-closed: only `usdg` can receive an executable quote. Routed rails require a live listing bind the client cannot supply. Quote TTL is 20s. HMAC authorization binds fee, router, amounts, and buyer (`PAYMENT_QUOTE_SIGNING_SECRET`). Backend never holds user keys.
+
+Stock Token contracts provided 2026-09-10 are pinned by address (AAPL/SPY/AMZN/TSLA/COIN/SPCX/MSFT). GOOGL remains RESEARCH (no contract). Cloudflare Stock Token NET is identity-pinned and hidden from checkout so it cannot collide with NetNet NET.
+
 ## Fee
 
 Integer USDG: `ceil(listing * feeBps / 10_000)`. USDG/ETH/NET = 0 bps. Stock Tokens = 200 bps. Conversion-service fee (stated at sign time): earned on conversion, not refunded if the listing later disappears; user keeps USDG.

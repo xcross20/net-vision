@@ -4,7 +4,9 @@ export {
   checkConfiguredChainId,
 } from './chain';
 export {
+  CHECKOUT_HIDDEN_ASSET_IDS,
   PAYMENT_ASSETS,
+  checkoutVisibleAssets,
   findAssetByContract,
   getEnabledPaymentAssets,
   getPaymentAsset,
@@ -24,13 +26,23 @@ export {
   initialPhaseAfterQuote,
   transition,
 } from './machine';
+export { QUOTE_TTL_MS, createPaymentQuote, quoteToJson } from './quote';
+export {
+  authorizationFromQuote,
+  canonicalAuthorization,
+  signAuthorization,
+  verifyAuthorization,
+} from './authorization';
+export { EXECUTOR_DEPLOYED, ZERO_ADDRESS, validateExecutorCall } from './executor';
 export type {
   CheckoutPhase,
   HexAddress,
   Jurisdiction,
+  LiveListingBind,
   PaymentAsset,
   PaymentAssetKind,
   PaymentAssetStatus,
+  PaymentAuthorization,
   PaymentPolicyDecision,
   PaymentQuote,
   PaymentVenue,

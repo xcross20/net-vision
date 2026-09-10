@@ -158,7 +158,11 @@ export function validateSwapProof(input: {
   );
   record(checks, 'proof-fresh', input.nowMs - input.proof.occurredAtMs <= maxAge);
   record(checks, 'proof-unused', !input.seenTxHashes.has(input.proof.txHash.toLowerCase()));
-  record(checks, 'output-token-is-usdg', true);
+  record(
+    checks,
+    'output-token-is-usdg',
+    input.proof.outputToken.toLowerCase() === PAYMENT_TOKENS.USDG.contractAddress.toLowerCase(),
+  );
 
   const missed = checks.find((c) => !c.passed);
   if (missed) return fail(checks, missed.name);

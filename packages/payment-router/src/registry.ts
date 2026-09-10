@@ -49,7 +49,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
   },
   {
     assetId: 'rh-net-cloudflare',
-    displayName: 'Cloudflare • Robinhood Token',
+    displayName: 'Cloudflare, Inc. Class A common stock • Robinhood Token',
     symbol: 'NET',
     chainId: CHAIN,
     kind: 'stock-token',
@@ -153,7 +153,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
   },
   {
     assetId: 'rh-spcx',
-    displayName: 'Space Exploration Technologies Corp. Class A • Robinhood Token',
+    displayName: 'Space Exploration Technologies Corp. Class A Common Stock • Robinhood Token',
     symbol: 'SPCX',
     chainId: CHAIN,
     kind: 'stock-token',
@@ -184,6 +184,13 @@ export function getPaymentAsset(assetId: string): PaymentAsset | undefined {
 
 export function getEnabledPaymentAssets(): PaymentAsset[] {
   return PAYMENT_ASSETS.filter((asset) => asset.status === 'ENABLED');
+}
+
+/** Identity-pinned but not a launch checkout method (ticker collision with NetNet). */
+export const CHECKOUT_HIDDEN_ASSET_IDS: ReadonlySet<string> = new Set(['rh-net-cloudflare']);
+
+export function checkoutVisibleAssets(): PaymentAsset[] {
+  return PAYMENT_ASSETS.filter((asset) => !CHECKOUT_HIDDEN_ASSET_IDS.has(asset.assetId));
 }
 
 export function findAssetByContract(chainId: number, address: string): PaymentAsset | undefined {

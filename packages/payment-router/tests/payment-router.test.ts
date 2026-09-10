@@ -243,6 +243,7 @@ describe('swap proof', () => {
     const proof: SwapProof = {
       txHash: '0xabc',
       inputToken: 'native',
+      outputToken: PAYMENT_TOKENS.USDG.contractAddress,
       inputAmountSoldRaw: 1n,
       usdgReceivedRaw: 1_360_000n,
       fromAddress: USER,

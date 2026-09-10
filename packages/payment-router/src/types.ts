@@ -62,10 +62,31 @@ export type PaymentQuote = {
 export type SwapProof = {
   txHash: HexAddress;
   inputToken: HexAddress | 'native';
+  outputToken: HexAddress;
   inputAmountSoldRaw: bigint;
   usdgReceivedRaw: bigint;
   fromAddress: HexAddress;
   occurredAtMs: number;
+};
+
+export type PaymentAuthorization = {
+  quoteId: string;
+  user: HexAddress;
+  inputAsset: HexAddress | 'native';
+  router: HexAddress | 'direct';
+  maxInputRaw: bigint;
+  minUsdgOutRaw: bigint;
+  listingUsdgRaw: bigint;
+  feeUsdgRaw: bigint;
+  expiresAt: number;
+  nonce: bigint;
+  chainId: number;
+  policyVersion: string;
+};
+
+export type LiveListingBind = {
+  orderHash: string;
+  usdgRaw: bigint;
 };
 
 export type PolicyCheck = { name: string; passed: boolean; detail?: string };

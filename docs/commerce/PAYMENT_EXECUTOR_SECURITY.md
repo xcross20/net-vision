@@ -1,6 +1,6 @@
 # Payment executor security
 
-Not deployed. Day-1 rails do not require an on-chain executor because only USDG direct is ENABLED.
+Not deployed (`EXECUTOR_DEPLOYED = false`). Spec: `packages/payment-router/contracts/NetVisionPaymentExecutor.sol`. Day-1 rails do not require it because only USDG direct is ENABLED.
 
 When routed rails launch, the executor must:
 
