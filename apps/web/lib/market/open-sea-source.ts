@@ -311,6 +311,11 @@ class OpenSeaMarketSource implements MarketSource {
       },
       async (tokenId) => {
         try {
+          const n = Number(tokenId);
+          if (Number.isInteger(n)) {
+            const { isCanonicalVerified } = await import('../index/canonical-metadata-store');
+            if (await isCanonicalVerified(n)) return { kind: 'found' as const };
+          }
           const nft = await this.fetchNFT(tokenId);
           return nft ? { kind: 'found' as const } : { kind: 'missing' as const };
         } catch (err) {

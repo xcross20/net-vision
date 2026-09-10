@@ -5,6 +5,7 @@
 import { startStandaloneMarketIndexer } from '../market/open-sea-source';
 import { hydrateIndexFromPostgres, saveIndex } from './store';
 import { ensureSchema, databaseUrl } from './pg';
+import { startCanonicalMetadataBootstrap } from './canonical-metadata-bootstrap';
 
 export async function bootMarketWorker(): Promise<void> {
   console.log('[market-worker] boot starting');
@@ -24,6 +25,7 @@ export async function bootMarketWorker(): Promise<void> {
   }
 
   startStandaloneMarketIndexer();
+  startCanonicalMetadataBootstrap();
   saveIndex();
   console.log('[market-worker] indexer loops started — heartbeat every 15s');
 }
