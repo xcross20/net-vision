@@ -81,12 +81,20 @@ export const OPENSEA_CHAIN_SLUG = 'robinhood' as const;
  * Allowlisted protocol addresses. The transaction policy engine must
  * reject any executable action whose target is not in this list.
  *
- * Seaport v1.5 is the OpenSea execution protocol used for ERC-721
- * orderbook fulfillment on supported chains.
+ * Seaport at this address returns `information().version === "1.6"` on
+ * Robinhood RPC. USDG allowance is NOT granted to Seaport when the
+ * order's fulfillerConduitKey is non-zero — resolve the conduit via
+ * ConduitController.getConduit(key) and approve that address.
  */
 export const ALLOWLISTED_PROTOCOLS = {
+  seaport16: '0x0000000000000068F116a894984e2DB1123eB395' as const,
+  /** @deprecated same address as seaport16 */
   seaport15: '0x0000000000000068F116a894984e2DB1123eB395' as const,
+  conduitController: '0x00000000F9490004C11Cef243f5400493c00Ad63' as const,
 } as const;
+
+export const ZERO_CONDUIT_KEY =
+  '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
 
 /**
  * Settlement assets allowed for Button Presser purchases.
@@ -108,7 +116,8 @@ export const ALLOWLISTED_PAYMENT_TOKEN_SET = new Set<string>(
 
 export const ALLOWLISTED_CONTRACT_SET = new Set<string>([
   BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
-  ALLOWLISTED_PROTOCOLS.seaport15.toLowerCase(),
+  ALLOWLISTED_PROTOCOLS.seaport16.toLowerCase(),
+  ALLOWLISTED_PROTOCOLS.conduitController.toLowerCase(),
   ...ALLOWLISTED_PAYMENT_TOKEN_SET,
 ]);
 

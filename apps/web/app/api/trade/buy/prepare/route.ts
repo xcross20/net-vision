@@ -11,7 +11,9 @@
  */
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { BuyPrepareBody } from '@/lib/trade/prepare-body';
 import {
+  ALLOWLISTED_PROTOCOLS,
   BUTTON_PRESSER_COLLECTION,
   PAYMENT_TOKENS,
   ROBINHOOD_CHAIN,
@@ -25,17 +27,12 @@ import { getMarketSource } from '@/lib/market';
 import { createOpenSeaClient } from '@net-vision/opensea-client';
 import { isSurfaceEnabled, tradingDisabledResponse } from '@/lib/trade/kill-switch';
 import { simulateTradeTransaction } from '@/lib/trade/simulate';
+import { encodeSeaportFulfillment } from '@/lib/trade/encode-seaport-fulfillment';
+import { resolveApprovalSpender } from '@/lib/trade/resolve-conduit';
 
 export const dynamic = 'force-dynamic';
 
-const Body = z.object({
-  tokenId: z.string().regex(/^\d+$/),
-  buyerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
-  /** Mandatory reviewed spend cap (smallest units). */
-  acceptedPriceRaw: z.string().regex(/^\d+$/),
-  /** Mandatory reviewed live order hash. No UI may prepare without it. */
-  acceptedOrderHash: z.string().min(1),
-});
+const Body = BuyPrepareBody;
 
 export async function POST(request: Request) {
   if (!isSurfaceEnabled('buy')) {
@@ -132,10 +129,12 @@ export async function POST(request: Request) {
       );
     }
 
+    const protocolAddress = listing.protocol_address ?? ALLOWLISTED_PROTOCOLS.seaport16;
     const fulfillment = await client.getListingFulfillmentData({
       orderHash: listing.order_hash,
       fulfillerAddress: parsed.buyerAddress,
       chain: freshness.resolvedChainSlug,
+      protocolAddress,
     });
 
     const raw = fulfillment.raw as Record<string, unknown>;
@@ -144,17 +143,21 @@ export async function POST(request: Request) {
       (raw?.['transaction'] as Record<string, unknown> | undefined) ??
       raw;
 
-    const txTo = String((txCandidate as { to?: string })?.to ?? listing.protocol_address);
-    const txData =
-      typeof (txCandidate as { data?: unknown })?.data === 'string'
-        ? (txCandidate as { data: string }).data
-        : undefined;
-    const txValueRaw =
-      typeof (txCandidate as { value?: unknown })?.value === 'string'
-        ? BigInt((txCandidate as { value: string }).value)
-        : typeof (txCandidate as { value?: unknown })?.value === 'number'
-          ? BigInt(Math.trunc((txCandidate as { value: number }).value))
-          : 0n;
+    let encoded;
+    try {
+      encoded = encodeSeaportFulfillment(txCandidate as Record<string, unknown>);
+    } catch (err) {
+      return NextResponse.json(
+        {
+          error: 'unable to encode fulfillment transaction',
+          detail: err instanceof Error ? err.message : String(err),
+        },
+        { status: 422 },
+      );
+    }
+    const txTo = encoded.to;
+    const txData = encoded.data;
+    const txValueRaw = encoded.value;
 
     const recipientVerified = calldataMentionsAddress(txData, parsed.buyerAddress);
     if (!recipientVerified) {
@@ -177,6 +180,25 @@ export async function POST(request: Request) {
     const paymentToken =
       semantics.paymentTokenAddress ?? PAYMENT_TOKENS.USDG.contractAddress;
 
+    const listingConduitKey =
+      typeof listing.protocol_data.parameters.conduitKey === 'string'
+        ? listing.protocol_data.parameters.conduitKey
+        : null;
+    let resolvedSpender: Awaited<ReturnType<typeof resolveApprovalSpender>> | null = null;
+    try {
+      resolvedSpender = await resolveApprovalSpender(listingConduitKey);
+    } catch (err) {
+      if (!semantics.paymentIsNative) {
+        return NextResponse.json(
+          {
+            error: 'unable to resolve USDG approval spender',
+            detail: err instanceof Error ? err.message : String(err),
+          },
+          { status: 422 },
+        );
+      }
+    }
+
     const policyDecision = validateTradeAction({
       expectedChainId: ROBINHOOD_CHAIN.id,
       expectedWallet: parsed.buyerAddress,
@@ -185,6 +207,7 @@ export async function POST(request: Request) {
       expectedActionType: 'buy',
       expectedMaximumSpendRaw: BigInt(parsed.acceptedPriceRaw),
       expectedPaymentToken: paymentToken,
+      extraAllowlistedSpenders: resolvedSpender ? [resolvedSpender.spender] : [],
       openseaAction: {
         chainId: ROBINHOOD_CHAIN.id,
         target: txTo,
@@ -199,6 +222,15 @@ export async function POST(request: Request) {
         recipient: parsed.buyerAddress,
         recipientVerifiedFromCalldata: recipientVerified,
         orderExpiry: semantics.orderExpiry ?? undefined,
+        approvals: resolvedSpender
+          ? [
+              {
+                token: paymentToken,
+                spender: resolvedSpender.spender,
+                amountRaw: semantics.paymentAmountRaw,
+              },
+            ]
+          : undefined,
       },
       simulation: {
         ok: simulation.ok,
@@ -235,7 +267,20 @@ export async function POST(request: Request) {
         validUntil: listing.protocol_data.parameters.endTime ?? null,
         extractedTokenIds: semantics.tokenIds,
       },
-      transaction: txCandidate,
+      transaction: {
+        to: encoded.to,
+        data: encoded.data,
+        value: encoded.value.toString(),
+      },
+      approval: resolvedSpender
+        ? {
+            token: paymentToken,
+            spender: resolvedSpender.spender,
+            amountRaw: livePriceRaw,
+            source: resolvedSpender.source,
+            conduitKey: resolvedSpender.conduitKey,
+          }
+        : null,
       policy: { allowed: true, checks: policyDecision.checks },
       simulation: { ok: true },
       review: {
