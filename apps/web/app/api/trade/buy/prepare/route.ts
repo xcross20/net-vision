@@ -159,7 +159,10 @@ export async function POST(request: Request) {
     const txData = encoded.data;
     const txValueRaw = encoded.value;
 
-    const recipientVerified = calldataMentionsAddress(txData, parsed.buyerAddress);
+    // Efficient basic orders send the NFT to msg.sender; buyer is not in calldata.
+    const recipientVerified = encoded.recipientIsMsgSender
+      ? true
+      : calldataMentionsAddress(txData, parsed.buyerAddress);
     if (!recipientVerified) {
       return NextResponse.json(
         {
