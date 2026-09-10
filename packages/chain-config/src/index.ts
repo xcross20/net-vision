@@ -12,7 +12,7 @@
  */
 import { defineChain } from 'viem';
 
-export const CONFIG_VERSION = 1;
+export const CONFIG_VERSION = 2;
 
 export const BUTTON_PRESSER_COLLECTION = {
   name: 'Button Presser',
@@ -52,26 +52,30 @@ export function isOfficialExistingTokenId(tokenId: number): boolean {
 }
 
 /**
- * Robinhood Chain.
+ * Robinhood Chain mainnet.
  *
- * NOTE: The numeric chain ID below is the value documented at the time of
- * the v1.1 specification. The deployment pipeline must cross-check the
- * current official Robinhood Chain chain ID before any live trade is
- * enabled. See docs/integrations/opensea.md for the verification step.
+ * Canonical record: `docs/launch/CHAIN_AUTHORITY.md` (2026-09-10).
+ * Official docs + live RPC `eth_chainId` = 4663. The v1.1 value 1311 is retired.
  */
 export const ROBINHOOD_CHAIN = defineChain({
-  id: 1311,
+  id: 4663,
   name: 'Robinhood Chain',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
     default: {
-      http: ['https://rpc.robinhood.com/mainnet'],
+      http: ['https://rpc.mainnet.chain.robinhood.com'],
     },
   },
   blockExplorers: {
-    default: { name: 'Robinhood Explorer', url: 'https://explorer.robinhood.com' },
+    default: {
+      name: 'Robinhood Chain Explorer',
+      url: 'https://robinhoodchain.blockscout.com',
+    },
   },
 });
+
+/** OpenSea v2 path slug for this chain. Not a numeric id. */
+export const OPENSEA_CHAIN_SLUG = 'robinhood' as const;
 
 /**
  * Allowlisted protocol addresses. The transaction policy engine must
@@ -91,7 +95,7 @@ export const ALLOWLISTED_PROTOCOLS = {
 export const PAYMENT_TOKENS = {
   USDG: {
     symbol: 'USDG',
-    chainId: 1311,
+    chainId: ROBINHOOD_CHAIN.id,
     /** Observed on live button-presser Seaport consideration items. */
     contractAddress: '0x5fc5360d0400a0fd4f2af552add042d716f1d168' as const,
     decimals: 6,

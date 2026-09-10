@@ -166,7 +166,7 @@ describe('ChainInfoSchema', () => {
   it('parses a minimal chain info record', () => {
     const r = ChainInfoSchema.safeParse({
       chain: 'robinhood',
-      chain_id: 1311,
+      chain_id: 4663,
       name: 'Robinhood Chain',
     });
     expect(r.success).toBe(true);
@@ -233,7 +233,7 @@ describe('OpenSeaClient getChains / resolveChainSlug', () => {
           body: {
             chains: [
               { chain: 'ethereum', chain_id: 1, name: 'Ethereum' },
-              { chain: 'robinhood', chain_id: 1311, name: 'Robinhood Chain' },
+              { chain: 'robinhood', chain_id: 4663, name: 'Robinhood Chain' },
             ],
           },
         },
@@ -241,7 +241,7 @@ describe('OpenSeaClient getChains / resolveChainSlug', () => {
     });
     const resolved = await client.resolveChainSlug();
     expect(resolved.chain).toBe('robinhood');
-    expect(resolved.chain_id).toBe(1311);
+    expect(resolved.chain_id).toBe(4663);
   });
 
   it('throws when the chain id is not advertised', async () => {

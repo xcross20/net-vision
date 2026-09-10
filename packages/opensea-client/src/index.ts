@@ -18,6 +18,7 @@
  */
 
 import { z } from 'zod';
+import { ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 
 const HEX_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const OPTIONAL_HEX_ADDRESS = z
@@ -863,7 +864,7 @@ export class OpenSeaClient {
 /*  Factory                                                                    */
 /* -------------------------------------------------------------------------- */
 
-const ROBINHOOD_CHAIN_ID = 1311;
+const ROBINHOOD_CHAIN_ID = ROBINHOOD_CHAIN.id;
 
 /**
  * Build a client from the server environment. This is the only entry

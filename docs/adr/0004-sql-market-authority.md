@@ -19,7 +19,7 @@ So the normalized model is a recovery projection, not an operational store. Web 
 
 That will not survive Button Presser + NetNet Gear + category markets + sales history: `tokens.token_id INTEGER PRIMARY KEY` makes `#68` globally unique.
 
-Numbers (verified): official supply 62,093; discovery max 62,095; chain id 1311; contract `0xE5143de9D3CcBc31Ffb4e7Fc66d8320e0E2693D2`.
+Numbers (verified): official supply 62,093; discovery max 62,095; contract `0xE5143de9D3CcBc31Ffb4e7Fc66d8320e0E2693D2`. Chain id **1311 in this ADR is historical** — canonical mainnet is **4663** (`docs/launch/CHAIN_AUTHORITY.md`).
 
 ## Decision
 

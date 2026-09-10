@@ -2,11 +2,24 @@ import { describe, expect, it } from 'vitest';
 import {
   ALLOWLISTED_PROTOCOLS,
   BUTTON_PRESSER_COLLECTION,
+  OPENSEA_CHAIN_SLUG,
+  PAYMENT_TOKENS,
+  ROBINHOOD_CHAIN,
   isAllowlistedContract,
   isOfficialExistingTokenId,
 } from '../src/index';
 
 describe('chain-config', () => {
+  it('canonical mainnet chain id is official 4663', () => {
+    expect(ROBINHOOD_CHAIN.id).toBe(4663);
+    expect(PAYMENT_TOKENS.USDG.chainId).toBe(ROBINHOOD_CHAIN.id);
+    expect(ROBINHOOD_CHAIN.rpcUrls.default.http[0]).toBe(
+      'https://rpc.mainnet.chain.robinhood.com',
+    );
+    expect(ROBINHOOD_CHAIN.blockExplorers.default.url).toContain('blockscout.com');
+    expect(OPENSEA_CHAIN_SLUG).toBe('robinhood');
+  });
+
   it('allows the Button Presser contract', () => {
     expect(isAllowlistedContract(BUTTON_PRESSER_COLLECTION.contractAddress)).toBe(true);
     expect(isAllowlistedContract(BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase())).toBe(true);
