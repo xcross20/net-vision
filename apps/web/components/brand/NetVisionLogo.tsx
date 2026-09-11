@@ -24,7 +24,14 @@ export function NetVisionLogo({
       <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[rgba(72,235,145,0.12)] text-[var(--color-net-green)] nv-glow">
         <NetVisionMark size={markSize} />
       </span>
-      {size === 'mark' ? null : <span className="uppercase">Net Vision</span>}
+      {size === 'mark' ? null : (
+        <span className="flex items-baseline gap-2">
+          <span className="uppercase">Net Vision</span>
+          <span className="text-[10px] font-semibold tracking-[0.22em] text-[var(--color-text-tertiary)]">
+            by HELIX
+          </span>
+        </span>
+      )}
     </span>
   );
   if (!href) return inner;

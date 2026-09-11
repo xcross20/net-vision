@@ -981,10 +981,10 @@ export function CartCheckout() {
                       });
                     }}
                     className={cn(
-                      'flex w-full items-start justify-between rounded-[var(--radius-sm)] border px-3 py-2 text-left text-[12px]',
+                      'flex w-full items-start justify-between rounded-[16px] border px-4 py-3 text-left text-[12px]',
                       selected && offered
-                        ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.08)]'
-                        : 'border-[var(--color-border-subtle)]',
+                        ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.08)] shadow-[0_0_24px_rgba(72,235,145,0.16)]'
+                        : 'border-[var(--color-border-subtle)] bg-[rgba(7,14,11,0.45)]',
                       (!offered || !cartId) && 'cursor-not-allowed opacity-50',
                     )}
                   >
