@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Footer } from '@/components/ui/Footer';
 import { MarketHeaderClient } from '@/components/ui/MarketHeaderClient';
+import { PageContainer } from '@/components/shell/PageContainer';
 import { CartDrawer, CartProvider } from '@/components/cart';
 import { WatchlistProvider } from '@/lib/watchlist/WatchlistProvider';
 import { WalletProvider } from '@/lib/wallet/WalletProvider';
@@ -44,9 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="flex min-h-[100dvh] flex-col">
               <MarketHeaderClient />
               <main className="flex-1">
-                <div className="mx-auto w-full max-w-7xl px-4 pb-16 pt-10 md:px-8 md:pb-24 md:pt-16">
+                <PageContainer size="wide" className="pb-16 pt-10 md:pb-24 md:pt-16">
                   {children}
-                </div>
+                </PageContainer>
               </main>
               <Footer />
             </div>

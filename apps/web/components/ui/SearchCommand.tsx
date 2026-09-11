@@ -114,7 +114,7 @@ export function SearchCommand({
                   setQ(e.target.value);
                   onQuery?.(e.target.value);
                 }}
-                placeholder="Search tokens or categories"
+                placeholder="Search numbers or categories"
                 className="flex-1 bg-transparent text-[15px] tracking-tight text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)] focus:outline-none"
               />
               <button

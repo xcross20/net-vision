@@ -53,6 +53,21 @@
   --radius-md:              10px;
   --radius-lg:              14px;
   --radius-xl:              20px;
+  --radius-card:            14px;
+  --radius-hero:            20px;
+
+  /* Shell widths */
+  --content-standard:       90rem;
+  --content-max:            100rem;
+  --content-wide:           107.5rem;
+
+  /* Elevation / glass */
+  --shadow-green-soft:      0 0 0 1px rgba(72, 235, 145, 0.12), 0 18px 48px -28px rgba(72, 235, 145, 0.35);
+  --shadow-green-active:    0 0 0 1px rgba(72, 235, 145, 0.28), 0 16px 40px -20px rgba(72, 235, 145, 0.45);
+  --glass-panel:            color-mix(in srgb, var(--color-surface-1) 78%, transparent);
+  --glass-panel-strong:     color-mix(in srgb, var(--color-surface-2) 88%, transparent);
+  --hero-overlay:           linear-gradient(180deg, rgba(5, 9, 8, 0.12) 0%, rgba(5, 9, 8, 0.72) 100%);
+  --hero-vignette:          radial-gradient(120% 80% at 50% 20%, transparent 40%, rgba(5, 9, 8, 0.72) 100%);
 
   /* Motion */
   --ease-out:               cubic-bezier(0.16, 1, 0.3, 1);
@@ -162,6 +177,21 @@ button {
     background-color: var(--color-surface-2);
     border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-lg);
+  }
+
+  .nv-glass {
+    background: var(--glass-panel);
+    border: 1px solid var(--color-border-subtle);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .nv-glass {
+      background: var(--color-surface-1);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
   }
 
   .nv-divider {
