@@ -1,5 +1,7 @@
+import Image from 'next/image';
 import { Cube, Graph, Globe, Hash } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
+import { isPlateMaterialSlug, showroomHeroForCategory } from '@/lib/brand/media';
 import type { CategoryMetrics } from '@/lib/market';
 
 const FAMILY_ICON = {
@@ -34,6 +36,25 @@ export function CategoryGlyph({
   const Icon = FAMILY_ICON[metrics.family as keyof typeof FAMILY_ICON] ?? Cube;
   const box =
     size === 'lg' ? 'h-16 w-16 text-[1.35rem]' : size === 'sm' ? 'h-9 w-9 text-[11px]' : 'h-12 w-12 text-sm';
+  if (isPlateMaterialSlug(metrics.slug)) {
+    return (
+      <span
+        className={cn(
+          'relative inline-flex shrink-0 overflow-hidden rounded-[12px] border border-[var(--color-border-subtle)]',
+          box,
+        )}
+        aria-hidden="true"
+      >
+        <Image
+          src={showroomHeroForCategory(metrics.slug)}
+          alt=""
+          fill
+          sizes="64px"
+          className="object-cover object-center"
+        />
+      </span>
+    );
+  }
   return (
     <span
       className={cn(

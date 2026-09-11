@@ -11,7 +11,7 @@ import { TokenCommercePanel } from '@/components/TokenCommercePanel';
 import { SalesOffersList, type SaleOrOfferEntry } from '@/components/ui/SalesOffersList';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AssetCard } from '@/components/ui/AssetCard';
-import { SHOWROOM_MEDIA } from '@/lib/brand/media';
+import { SHOWROOM_MEDIA, showroomHeroForCategory } from '@/lib/brand/media';
 import { address, compact, payment, relative } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -48,6 +48,10 @@ export default async function TokenDetailPage({
   const lastSale = token.lastSalePrice;
   const traits = token.traits.filter((t) => t.family !== 'digits' && t.family !== 'number');
   const topCategory = traits[0];
+  const materialTrait = token.traits.find((t) => t.family === 'material');
+  const atmosphereSrc = materialTrait
+    ? showroomHeroForCategory(materialTrait.slug)
+    : SHOWROOM_MEDIA.categoryHero;
   const snapshot = await getMarketSource().getCollectionSnapshot().catch(() => null);
   const explorerContract = `${CHAIN_DISPLAY.explorerUrl}/address/${token.contractAddress}`;
   const saleEntries: SaleOrOfferEntry[] = sales
@@ -99,10 +103,10 @@ export default async function TokenDetailPage({
           </div>
           <div className="relative min-h-[28rem] flex-1 overflow-hidden rounded-[24px] border border-[var(--color-border-subtle)]">
             <Image
-              src={SHOWROOM_MEDIA.categoryHero}
+              src={atmosphereSrc}
               alt=""
               fill
-              className="object-cover opacity-70"
+              className="object-cover object-center opacity-70"
               priority
             />
             <Image

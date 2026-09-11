@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { BRAND_MEDIA, SHOWROOM_MEDIA, isShowroomPath } from './media';
+import {
+  BRAND_MEDIA,
+  PLATE_MATERIAL_SLUGS,
+  SHOWROOM_MEDIA,
+  isPlateMaterialSlug,
+  isShowroomPath,
+  showroomHeroForCategory,
+} from './media';
 
 describe('brand media', () => {
   it('keeps showroom plates under /brand/showroom', () => {
@@ -14,5 +21,27 @@ describe('brand media', () => {
     expect(isShowroomPath(BRAND_MEDIA.references.homepage)).toBe(true);
     expect(isShowroomPath('/api/media/token/966')).toBe(false);
     expect(isShowroomPath('https://raw2.seadn.io/robinhood/example.svg')).toBe(false);
+  });
+
+  it('gives each official Plate material its own category-detail atmosphere', () => {
+    const heroes = PLATE_MATERIAL_SLUGS.map((slug) => showroomHeroForCategory(slug));
+    expect(new Set(heroes).size).toBe(PLATE_MATERIAL_SLUGS.length);
+    expect(showroomHeroForCategory('material-brass')).toBe(SHOWROOM_MEDIA.categoryHero);
+    expect(showroomHeroForCategory('material-steel')).toBe(SHOWROOM_MEDIA.categoryHeroSteel);
+    expect(showroomHeroForCategory('material-anodised-aluminium')).toBe(
+      SHOWROOM_MEDIA.categoryHeroAnodisedAluminium,
+    );
+    expect(showroomHeroForCategory('material-printed-phenolic')).toBe(
+      SHOWROOM_MEDIA.categoryHeroPrintedPhenolic,
+    );
+    for (const src of heroes) {
+      expect(isShowroomPath(src)).toBe(true);
+    }
+  });
+
+  it('does not invent a material plate for non-material categories', () => {
+    expect(isPlateMaterialSlug('palindrome')).toBe(false);
+    expect(showroomHeroForCategory('palindrome')).toBe(SHOWROOM_MEDIA.categoryHero);
+    expect(showroomHeroForCategory('digits-3')).toBe(SHOWROOM_MEDIA.categoryHero);
   });
 });

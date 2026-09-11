@@ -26,8 +26,11 @@ export function Footer() {
           </FooterColumn>
           <FooterColumn title="Categories">
             <FooterLink href="/categories">All categories</FooterLink>
-            <FooterLink href="/categories/digits-3">3 Digit</FooterLink>
             <FooterLink href="/categories/material-brass">Brass</FooterLink>
+            <FooterLink href="/categories/material-steel">Steel</FooterLink>
+            <FooterLink href="/categories/material-anodised-aluminium">Anodised Aluminium</FooterLink>
+            <FooterLink href="/categories/material-printed-phenolic">Printed Phenolic</FooterLink>
+            <FooterLink href="/categories/digits-3">3 Digit</FooterLink>
             <FooterLink href="/categories/palindrome">Palindromes</FooterLink>
           </FooterColumn>
           <FooterColumn title="Activity">
