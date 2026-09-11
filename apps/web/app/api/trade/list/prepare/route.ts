@@ -35,7 +35,15 @@ export async function POST(request: Request) {
       feeRecipient: recipient,
     });
     return NextResponse.json({
-      parameters: params,
+      parameters: {
+        ...params,
+        split: {
+          listingUsdgRaw: params.split.listingUsdgRaw.toString(),
+          marketplaceFeeUsdgRaw: params.split.marketplaceFeeUsdgRaw.toString(),
+          sellerProceedsUsdgRaw: params.split.sellerProceedsUsdgRaw.toString(),
+          feeBps: params.split.feeBps.toString(),
+        },
+      },
       review: {
         tokenId: params.tokenId,
         price: `${formatUsdgRaw(params.split.listingUsdgRaw)} USDG`,
