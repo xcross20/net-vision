@@ -8,6 +8,7 @@ import { CollectibleCard } from '@/components/market/CollectibleCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Tabs } from '@/components/ui/Tabs';
 import { ListDrawer } from '@/components/listing/ListDrawer';
+import { OffersPanel } from '@/components/offers/OffersPanel';
 import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
 import { payment } from '@/lib/format';
 import { VIRTUAL_COLLECTION_CATALOG } from '@net-vision/taxonomy';
@@ -173,9 +174,11 @@ export function PortfolioView() {
         </div>
       ) : null}
 
-      {tab === 'offers' || tab === 'activity' ? (
+      {tab === 'offers' ? <OffersPanel /> : null}
+
+      {tab === 'activity' ? (
         <p className="text-sm text-[var(--color-text-tertiary)]">
-          Offers and activity appear as the indexer records them for this wallet.
+          Activity appears as the indexer records it for this wallet.
         </p>
       ) : null}
     </div>

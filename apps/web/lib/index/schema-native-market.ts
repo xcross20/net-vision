@@ -50,14 +50,19 @@ CREATE TABLE IF NOT EXISTS native_offer_groups (
 );
 
 CREATE TABLE IF NOT EXISTS native_offers (
-  seaport_order_hash TEXT PRIMARY KEY,
-  offer_group_id TEXT NOT NULL REFERENCES native_offer_groups(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  offer_group_id TEXT REFERENCES native_offer_groups(id) ON DELETE SET NULL,
   ecosystem_id TEXT NOT NULL,
   collection_id TEXT NOT NULL,
   token_id INTEGER NOT NULL,
   buyer_address TEXT NOT NULL,
   offer_usdg_raw TEXT NOT NULL,
+  seaport_order_hash TEXT NOT NULL UNIQUE,
+  seaport_protocol_address TEXT NOT NULL,
+  conduit_key TEXT NOT NULL,
+  zone TEXT NOT NULL,
   signature TEXT,
+  parameters_json JSONB NOT NULL,
   start_time BIGINT NOT NULL,
   end_time BIGINT NOT NULL,
   status TEXT NOT NULL,
@@ -68,4 +73,9 @@ CREATE INDEX IF NOT EXISTS idx_native_offers_group
   ON native_offers (offer_group_id, status);
 CREATE INDEX IF NOT EXISTS idx_native_offers_token
   ON native_offers (collection_id, token_id, status);
+CREATE INDEX IF NOT EXISTS idx_native_offers_buyer
+  ON native_offers (buyer_address, status);
+
+ALTER TABLE native_offer_groups ADD COLUMN IF NOT EXISTS requested_asset_count INTEGER;
+ALTER TABLE native_offer_groups ADD COLUMN IF NOT EXISTS starts_at BIGINT;
 `;

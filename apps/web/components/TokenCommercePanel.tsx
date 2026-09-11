@@ -3,7 +3,9 @@
 import { motion } from 'framer-motion';
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@/components/ConnectButton';
+import { useState } from 'react';
 import { AddToCartButton, BuyNowButton } from '@/components/cart';
+import { MakeOfferDrawer } from '@/components/offers/MakeOfferDrawer';
 import { ArrowUR, WalletIcon } from '@/components/icons';
 import { ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 import type { Token } from '@/lib/market';
@@ -30,6 +32,7 @@ export function TokenCommercePanel({
   listingPriceRaw?: string | null;
 }) {
   const { isConnected } = useAccount();
+  const [offerOpen, setOfferOpen] = useState(false);
   const token: Token = {
     tokenId,
     contractAddress,
@@ -64,13 +67,14 @@ export function TokenCommercePanel({
         <AddToCartButton variant="primary" draft={draft} />
         <motion.button
           type="button"
-          className="nv-button nv-button-ghost nv-button-disabled"
-          disabled
+          className="nv-button nv-button-ghost"
+          onClick={() => setOfferOpen(true)}
           whileTap={{ scale: 0.98 }}
         >
           Make offer
         </motion.button>
       </div>
+      <MakeOfferDrawer open={offerOpen} onClose={() => setOfferOpen(false)} tokenId={tokenId} />
 
       <div className="flex items-center gap-3 text-xs text-[var(--nv-muted)]">
         <a

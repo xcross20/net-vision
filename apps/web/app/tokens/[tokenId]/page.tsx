@@ -6,6 +6,7 @@ import { getToken, getTokenOffers, getTokenSales, listTokens } from '@/lib/data/
 import { getMarketSource } from '@/lib/market';
 import { BUTTON_PRESSER_COLLECTION, CHAIN_DISPLAY } from '@net-vision/chain-config';
 import { OfferActions } from '@/components/OfferActions';
+import { OffersPanel } from '@/components/offers/OffersPanel';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { TokenCommercePanel } from '@/components/TokenCommercePanel';
 import { SalesOffersList, type SaleOrOfferEntry } from '@/components/ui/SalesOffersList';
@@ -259,7 +260,10 @@ export default async function TokenDetailPage({
         )}
         <div>
           <h3 className="text-display mb-4 text-xl">Offer activity</h3>
-          <OfferActions tokenId={token.tokenId} ownerAddress={token.ownerAddress} offers={offers} />
+          <div className="flex flex-col gap-4">
+            <OffersPanel tokenId={token.tokenId} isOwner={false} />
+            <OfferActions tokenId={token.tokenId} ownerAddress={token.ownerAddress} offers={offers} />
+          </div>
         </div>
       </section>
 
