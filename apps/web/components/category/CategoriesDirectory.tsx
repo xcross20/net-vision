@@ -11,7 +11,7 @@ import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
 import { cn } from '@/lib/cn';
 
 const FAMILIES = [
-  { value: 'all', label: 'All' },
+  { value: 'all', label: 'All Categories' },
   { value: 'number', label: 'Number' },
   { value: 'material', label: 'Material' },
   { value: 'pattern', label: 'Pattern' },
@@ -63,11 +63,11 @@ export function CategoriesDirectory({ categories }: { categories: CategoryMetric
             label={syncing ? 'Syncing market data' : 'Live'}
           />
         </div>
-        <h1 className="text-display text-[clamp(2.25rem,5vw,3.5rem)] text-[var(--color-text-primary)]">
-          Categories
+        <h1 className="text-display text-[clamp(2.25rem,5vw,3.75rem)] text-[var(--color-text-primary)]">
+          Explore the possibilities.
         </h1>
-        <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
-          Explore the Button Presser market by number, material, and pattern. Material comes from
+        <p className="text-body max-w-[62ch] text-[var(--color-text-secondary)]">
+          Browse number collections by type, material, pattern, and culture. Material comes from
           official Plate metadata. Number and pattern are derived. Unknown listings are never shown
           as zero.
         </p>
@@ -120,15 +120,17 @@ export function CategoriesDirectory({ categories }: { categories: CategoryMetric
         />
       ) : (
         <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
-          <div className="hidden grid-cols-[2.25rem_minmax(0,1fr)_6rem_5rem_5rem_6rem_5rem_5rem_2.5rem] items-center gap-3 border-b border-[var(--color-border-subtle)] px-6 py-3 text-eyebrow-muted md:grid">
+          <div className="hidden grid-cols-[2.25rem_minmax(0,1.4fr)_5.5rem_6rem_5rem_5rem_6rem_5rem_5rem_5rem_2.5rem] items-center gap-3 border-b border-[var(--color-border-subtle)] px-6 py-3 text-eyebrow-muted lg:grid">
             <span />
             <span>Category</span>
+            <span>Type</span>
             <span className="text-right">Floor</span>
             <span className="text-right">24h</span>
             <span className="text-right">7d</span>
-            <span className="text-right">Vol 24h</span>
+            <span className="text-right">Volume</span>
             <span className="text-right">Sales</span>
             <span className="text-right">Listed</span>
+            <span className="text-right">Items</span>
             <span />
           </div>
           <div className="flex flex-col divide-y divide-[var(--color-border-subtle)]">

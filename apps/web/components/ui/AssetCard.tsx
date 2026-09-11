@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
-import { Heart, Eye } from '@phosphor-icons/react/dist/ssr';
+import { Heart } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
 import { buildTokenImageUrl, isProxyImageUrl } from '@/lib/data/media';
@@ -118,25 +118,31 @@ export function AssetCard({
 
         <div className="flex flex-1 flex-col gap-3 p-4">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-col gap-1">
-              <span className="text-numeral text-base font-semibold tracking-tight text-[var(--color-text-primary)]">
-                #{token.tokenId}
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <span className="truncate text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+                Button Presser #{token.tokenId}
               </span>
-              <span className="truncate text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
-                {topTraits.length === 0
-                  ? 'Button Presser'
-                  : topTraits.map((t) => t.label).join(' / ')}
+              <span className="flex flex-wrap gap-1">
+                {topTraits.length === 0 ? (
+                  <span className="nv-chip">Button Presser</span>
+                ) : (
+                  topTraits.map((trait) => (
+                    <span key={trait.slug} className="nv-chip">
+                      {trait.label}
+                    </span>
+                  ))
+                )}
               </span>
             </div>
-            <Price value={ask} currency={token.currency} size="md" align="right" />
           </div>
-          <div className="mt-auto flex items-center justify-between text-[11px] text-[var(--color-text-tertiary)]">
-            <span className="inline-flex items-center gap-1">
-              <Eye size={11} weight="duotone" className="text-[var(--color-text-tertiary)]" />
-              Open
-            </span>
-            <span className="text-numeral">
-              {token.rarityRank !== null ? `Rank #${token.rarityRank.toLocaleString()}` : 'Unranked'}
+          <div className="mt-auto flex items-end justify-between gap-3">
+            <Price value={ask} currency={token.currency} size="md" align="left" />
+            <span className="text-numeral text-[11px] text-[var(--color-text-tertiary)]">
+              {token.lastSalePrice !== null
+                ? `Last ${token.lastSalePrice.toFixed(2)} ${token.currency}`
+                : token.rarityRank !== null
+                  ? `Rank #${token.rarityRank.toLocaleString()}`
+                  : 'Unranked'}
             </span>
           </div>
         </div>
