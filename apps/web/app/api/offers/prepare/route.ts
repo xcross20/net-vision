@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { parseUsdgDecimalToRaw } from '@/lib/native-market/fees';
 import { configuredFeeRecipient, prepareNativeOffer } from '@/lib/offers/service';
 
 export const dynamic = 'force-dynamic';
@@ -46,5 +45,3 @@ export async function POST(request: Request) {
     );
   }
 }
-
-export { parseUsdgDecimalToRaw };
