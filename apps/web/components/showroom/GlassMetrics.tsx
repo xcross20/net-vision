@@ -66,23 +66,23 @@ export function GlassMetrics({
       {items.map((item) => (
         <div
           key={item.label}
-          className="nv-glass inline-flex min-w-[7.5rem] items-center gap-2.5 rounded-[14px] px-3 py-2.5"
+          className="nv-glass-2 inline-flex min-w-[9.5rem] items-center gap-3 rounded-[16px] px-4 py-3.5"
         >
           {item.icon ? (
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[rgba(72,235,145,0.12)] text-[var(--color-net-green)]">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] bg-[rgba(72,235,145,0.12)] text-[var(--color-net-green)]">
               {item.icon}
             </span>
           ) : null}
           <div className="flex min-w-0 flex-col">
             <span
               className={cn(
-                'text-numeral text-[15px] font-semibold tracking-tight',
+                'text-numeral text-[1.35rem] font-semibold tracking-tight leading-none md:text-[1.55rem]',
                 item.emphasis ? 'text-[var(--color-net-green)]' : 'text-[var(--color-text-primary)]',
               )}
             >
               {item.value}
             </span>
-            <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">
+            <span className="mt-1 text-[10px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
               {item.label}
             </span>
           </div>
