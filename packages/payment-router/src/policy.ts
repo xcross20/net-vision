@@ -26,14 +26,14 @@ export function evaluateAssetPolicy(
   country: string | null,
 ): PaymentPolicyDecision {
   const { jurisdiction, reasonCode } = jurisdictionForAsset(asset, country);
-  const routeStatus: RouteStatus =
-    asset.status === 'ENABLED' && asset.settlementRoutes.length > 0 ? 'AVAILABLE' : 'UNAVAILABLE';
-  const available =
-    asset.status === 'ENABLED' && jurisdiction === 'ALLOWED' && routeStatus === 'AVAILABLE';
+  const hasExecutableRoute = asset.settlementRoutes.some(
+    (route) => route.venue === 'direct' || Boolean(route.router),
+  );
+  const routeStatus: RouteStatus = hasExecutableRoute ? 'AVAILABLE' : 'UNAVAILABLE';
+  const available = asset.status === 'ENABLED' && jurisdiction === 'ALLOWED';
   let code = reasonCode;
   if (!available && !code) {
     if (asset.status !== 'ENABLED') code = 'ASSET_DISABLED';
-    else if (routeStatus !== 'AVAILABLE') code = 'ROUTE_UNAVAILABLE';
   }
   return {
     assetId: asset.assetId,
@@ -105,17 +105,25 @@ export function validateSwapQuote(input: {
   record(checks, 'asset-known', asset !== undefined);
   record(checks, 'asset-enabled', asset?.status === 'ENABLED');
   record(checks, 'policy-available', policy?.available === true, policy?.reasonCode);
+  record(checks, 'fee-from-asset-id', input.quote.serviceFeeBps === (asset?.feeBps ?? -1));
+  const expectedFee = asset ? feeAmountUsdg(input.quote.listingUsdgRaw, BigInt(asset.feeBps)) : -1n;
+  record(checks, 'fee-amount', input.quote.serviceFeeUsdgRaw === expectedFee, 'client cannot alter fee');
+  record(checks, 'route-available', policy?.routeStatus === 'AVAILABLE');
   record(checks, 'not-direct', input.quote.route.venue !== 'direct');
   record(
     checks,
     'router-pinned',
     typeof input.quote.route.router === 'string' && input.quote.route.router.startsWith('0x'),
   );
+  record(
+    checks,
+    'router-on-asset',
+    (asset?.settlementRoutes ?? []).some(
+      (route) => route.router?.toLowerCase() === (input.quote.route.router ?? '').toLowerCase(),
+    ),
+  );
   record(checks, 'quote-unexpired', input.nowMs <= input.quote.expiresAtMs);
   record(checks, 'policy-version', input.quote.policyVersion === PAYMENT_POLICY_VERSION);
-  record(checks, 'fee-from-asset-id', input.quote.serviceFeeBps === (asset?.feeBps ?? -1));
-  const expectedFee = asset ? feeAmountUsdg(input.quote.listingUsdgRaw, BigInt(asset.feeBps)) : -1n;
-  record(checks, 'fee-amount', input.quote.serviceFeeUsdgRaw === expectedFee, 'client cannot alter fee');
   const required = asset ? requiredUsdgOut(input.quote.listingUsdgRaw, BigInt(asset.feeBps)) : -1n;
   record(checks, 'required-usdg', input.quote.requiredUsdgRaw === required);
   record(checks, 'max-input-positive', input.quote.inputAmountRaw > 0n);

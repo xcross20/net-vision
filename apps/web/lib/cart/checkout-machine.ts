@@ -41,7 +41,19 @@ export type CheckoutKind =
   | 'USER_REJECTED'
   | 'RECOVERY';
 
-export type PaymentAssetId = 'USDG' | 'ETH' | 'NET' | 'NVDA';
+export type PaymentAssetId =
+  | 'USDG'
+  | 'ETH'
+  | 'NET'
+  | 'AAPL'
+  | 'NVDA'
+  | 'TSLA'
+  | 'MSFT'
+  | 'AMZN'
+  | 'GOOGL'
+  | 'COIN'
+  | 'SPCX'
+  | 'SPY';
 
 export type PaymentRouteStatus = 'verified_enabled' | 'coming_soon' | 'unavailable';
 
@@ -84,6 +96,70 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     symbol: 'NVDA',
     label: 'NVDA',
     routeLabel: 'NVDA → USDG',
+    status: 'coming_soon',
+    recommended: false,
+  },
+  {
+    id: 'AAPL',
+    symbol: 'AAPL',
+    label: 'AAPL',
+    routeLabel: 'AAPL → USDG',
+    status: 'coming_soon',
+    recommended: false,
+  },
+  {
+    id: 'TSLA',
+    symbol: 'TSLA',
+    label: 'TSLA',
+    routeLabel: 'TSLA → USDG',
+    status: 'coming_soon',
+    recommended: false,
+  },
+  {
+    id: 'MSFT',
+    symbol: 'MSFT',
+    label: 'MSFT',
+    routeLabel: 'MSFT → USDG',
+    status: 'coming_soon',
+    recommended: false,
+  },
+  {
+    id: 'AMZN',
+    symbol: 'AMZN',
+    label: 'AMZN',
+    routeLabel: 'AMZN → USDG',
+    status: 'coming_soon',
+    recommended: false,
+  },
+  {
+    id: 'GOOGL',
+    symbol: 'GOOGL',
+    label: 'GOOGL',
+    routeLabel: 'GOOGL → USDG',
+    status: 'coming_soon',
+    recommended: false,
+  },
+  {
+    id: 'COIN',
+    symbol: 'COIN',
+    label: 'COIN',
+    routeLabel: 'COIN → USDG',
+    status: 'coming_soon',
+    recommended: false,
+  },
+  {
+    id: 'SPCX',
+    symbol: 'SPCX',
+    label: 'SPCX',
+    routeLabel: 'SPCX → USDG',
+    status: 'coming_soon',
+    recommended: false,
+  },
+  {
+    id: 'SPY',
+    symbol: 'SPY',
+    label: 'SPY',
+    routeLabel: 'SPY → USDG',
     status: 'coming_soon',
     recommended: false,
   },
@@ -150,7 +226,15 @@ const ROUTER_ASSET_ID: Record<PaymentAssetId, string> = {
   USDG: 'usdg',
   ETH: 'eth',
   NET: 'netnet-net',
+  AAPL: 'rh-aapl',
   NVDA: 'rh-nvda',
+  TSLA: 'rh-tsla',
+  MSFT: 'rh-msft',
+  AMZN: 'rh-amzn',
+  GOOGL: 'rh-googl',
+  COIN: 'rh-coin',
+  SPCX: 'rh-spcx',
+  SPY: 'rh-spy',
 };
 
 export function isExecutablePaymentAsset(id: PaymentAssetId): boolean {

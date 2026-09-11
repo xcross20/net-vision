@@ -6,22 +6,22 @@
 
 **NET PAYMENT BLOCK** — NetNet `netnet-net` DISABLED; 9 decimals pinned.
 
-**AAPL STOCK TOKEN PAYMENT BLOCK** — contract pinned; DISABLED; US geo blocked; no route/quote/E2E.
+**AAPL STOCK TOKEN PAYMENT BLOCK** — geo-allowed outside US; conversion route not live.
 
-**NVDA STOCK TOKEN PAYMENT BLOCK** — contract pinned; DISABLED; US geo blocked; no route/quote/E2E.
+**NVDA STOCK TOKEN PAYMENT BLOCK** — geo-allowed outside US; conversion route not live.
 
-**TSLA STOCK TOKEN PAYMENT BLOCK** — contract pinned; DISABLED; US geo blocked; no route/quote/E2E.
+**TSLA STOCK TOKEN PAYMENT BLOCK** — geo-allowed outside US; conversion route not live.
 
-**MSFT STOCK TOKEN PAYMENT BLOCK** — contract pinned; DISABLED; US geo blocked; no route/quote/E2E.
+**MSFT STOCK TOKEN PAYMENT BLOCK** — geo-allowed outside US; conversion route not live.
 
-**AMZN STOCK TOKEN PAYMENT BLOCK** — contract pinned; DISABLED; US geo blocked; no route/quote/E2E.
+**AMZN STOCK TOKEN PAYMENT BLOCK** — geo-allowed outside US; conversion route not live.
 
-**GOOGL STOCK TOKEN PAYMENT BLOCK** — RESEARCH; no contract pinned.
+**GOOGL STOCK TOKEN PAYMENT BLOCK** — contract pinned (`0x2e0847E8…4FE3`); geo-allowed outside US; conversion route not live.
 
-**COIN STOCK TOKEN PAYMENT BLOCK** — contract pinned; DISABLED; US geo blocked; no route/quote/E2E.
+**COIN STOCK TOKEN PAYMENT BLOCK** — geo-allowed outside US; conversion route not live.
 
-**SPCX STOCK TOKEN PAYMENT BLOCK** — contract pinned; DISABLED; US geo blocked; no route/quote/E2E.
+**SPCX STOCK TOKEN PAYMENT BLOCK** — geo-allowed outside US; conversion route not live.
 
-**SPY STOCK TOKEN PAYMENT BLOCK** — contract pinned; DISABLED; US geo blocked; no route/quote/E2E.
+**SPY STOCK TOKEN PAYMENT BLOCK** — geo-allowed outside US; conversion route not live.
 
 Executor not deployed. Do not report a generic STOCK TOKENS PASS.

@@ -101,6 +101,8 @@ describe('checkout state machine', () => {
     expect(isExecutablePaymentAsset('ETH')).toBe(false);
     expect(isExecutablePaymentAsset('NET')).toBe(false);
     expect(isExecutablePaymentAsset('NVDA')).toBe(false);
+    expect(isExecutablePaymentAsset('GOOGL')).toBe(false);
+    expect(isExecutablePaymentAsset('AAPL')).toBe(false);
     expect(() => assertCanSelectPaymentAsset('ETH')).toThrow(/not verified/);
     expect(() => assertCanSelectPaymentAsset('USDG')).not.toThrow();
   });

@@ -46,8 +46,22 @@ function usdgQuote(overrides: Partial<PaymentQuote> = {}): PaymentQuote {
 }
 
 describe('registry', () => {
-  it('enables only USDG for public checkout', () => {
-    expect(getEnabledPaymentAssets().map((a) => a.assetId)).toEqual(['usdg']);
+  it('enables USDG plus launch Stock Tokens; ETH/NET/Cloudflare stay off', () => {
+    expect(getEnabledPaymentAssets().map((a) => a.assetId).sort()).toEqual([
+      'rh-aapl',
+      'rh-amzn',
+      'rh-coin',
+      'rh-googl',
+      'rh-msft',
+      'rh-nvda',
+      'rh-spcx',
+      'rh-spy',
+      'rh-tsla',
+      'usdg',
+    ]);
+    expect(getPaymentAsset('eth')?.status).toBe('DISABLED');
+    expect(getPaymentAsset('netnet-net')?.status).toBe('DISABLED');
+    expect(getPaymentAsset('rh-net-cloudflare')?.status).toBe('DISABLED');
   });
 
   it('does not treat Cloudflare NET and NetNet NET as the same asset', () => {
@@ -68,7 +82,7 @@ describe('registry', () => {
       '0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9',
     );
     expect(aapl?.assetId).toBe('rh-aapl');
-    expect(aapl?.status).toBe('DISABLED');
+    expect(aapl?.status).toBe('ENABLED');
     expect(aapl?.feeBps).toBe(200);
   });
 
@@ -107,11 +121,12 @@ describe('jurisdiction', () => {
     expect(nvda?.jurisdiction).toBe('UNKNOWN');
   });
 
-  it('non-US still cannot execute Stock Tokens until the asset is ENABLED and routed', () => {
+  it('non-US may use launch Stock Tokens; conversion route stays unavailable', () => {
     const nvda = listPaymentMethods('FR').find((m) => m.assetId === 'rh-nvda');
     expect(nvda?.jurisdiction).toBe('ALLOWED');
-    expect(nvda?.available).toBe(false);
-    expect(nvda?.reasonCode).toBe('ASSET_DISABLED');
+    expect(nvda?.available).toBe(true);
+    expect(nvda?.feeBps).toBe(200);
+    expect(nvda?.routeStatus).toBe('UNAVAILABLE');
   });
 });
 
@@ -221,10 +236,9 @@ describe('swap quotes stay fail-closed', () => {
     expect(decision.allowed === false && decision.reason).toMatch(/asset-enabled|fee-from-asset-id|policy-available/);
   });
 
-  it('one asset PASS never enables sibling Stock Tokens', () => {
-    expect(getPaymentAsset('rh-aapl')?.status).toBe('DISABLED');
-    expect(getPaymentAsset('rh-nvda')?.status).toBe('DISABLED');
-    expect(getEnabledPaymentAssets().some((a) => a.kind === 'stock-token')).toBe(false);
+  it('Cloudflare NET is not enabled with the launch Stock Token set', () => {
+    expect(getPaymentAsset('rh-net-cloudflare')?.status).toBe('DISABLED');
+    expect(getEnabledPaymentAssets().some((a) => a.assetId === 'rh-net-cloudflare')).toBe(false);
   });
 });
 

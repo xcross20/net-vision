@@ -76,11 +76,34 @@ type RevalidateItem =
   | { tokenId: string; state: 'error'; cartItem: CartItem; message: string };
 
 function cartPaymentId(assetId: string): PaymentAssetId | null {
-  if (assetId === 'usdg') return 'USDG';
-  if (assetId === 'eth') return 'ETH';
-  if (assetId === 'netnet-net') return 'NET';
-  if (assetId === 'rh-nvda') return 'NVDA';
-  return null;
+  switch (assetId) {
+    case 'usdg':
+      return 'USDG';
+    case 'eth':
+      return 'ETH';
+    case 'netnet-net':
+      return 'NET';
+    case 'rh-aapl':
+      return 'AAPL';
+    case 'rh-nvda':
+      return 'NVDA';
+    case 'rh-tsla':
+      return 'TSLA';
+    case 'rh-msft':
+      return 'MSFT';
+    case 'rh-amzn':
+      return 'AMZN';
+    case 'rh-googl':
+      return 'GOOGL';
+    case 'rh-coin':
+      return 'COIN';
+    case 'rh-spcx':
+      return 'SPCX';
+    case 'rh-spy':
+      return 'SPY';
+    default:
+      return null;
+  }
 }
 
 function asCheckoutItems(rows: RevalidateItem[]): CheckoutItem[] {
@@ -113,7 +136,13 @@ export function CartCheckout() {
   const [acceptedPriceDrift, setAcceptedPriceDrift] = useState(false);
   const [usdgStatus, setUsdgStatus] = useState<UsdgStatus | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<
-    Array<{ assetId: string; available: boolean; feeBps: number; reasonCode?: string }>
+    Array<{
+      assetId: string;
+      available: boolean;
+      feeBps: number;
+      routeStatus?: string;
+      reasonCode?: string;
+    }>
   >([]);
   const [usdgQuote, setUsdgQuote] = useState<{
     listingUsdgRaw: string;
@@ -331,6 +360,13 @@ export function CartCheckout() {
 
   const onCheckout = useCallback(async () => {
     if (phase.kind !== 'review' && phase.kind !== 'payment_select') return;
+    if (phase.kind === 'payment_select' && phase.payment.assetId !== 'USDG') {
+      setPhase({
+        kind: 'error',
+        message: 'Stock Token conversion to USDG is not live. Pay with USDG.',
+      });
+      return;
+    }
     if (!address) {
       onConnectWallet();
       return;
@@ -636,7 +672,18 @@ export function CartCheckout() {
     let cancelled = false;
     void fetch('/api/payment/methods')
       .then((res) => (res.ok ? res.json() : null))
-      .then((json: { methods?: Array<{ assetId: string; available: boolean; feeBps: number; reasonCode?: string }> } | null) => {
+      .then(
+        (
+          json: {
+            methods?: Array<{
+              assetId: string;
+              available: boolean;
+              feeBps: number;
+              routeStatus?: string;
+              reasonCode?: string;
+            }>;
+          } | null,
+        ) => {
         if (!cancelled && json?.methods) setPaymentMethods(json.methods);
       })
       .catch(() => {
@@ -867,6 +914,7 @@ export function CartCheckout() {
   }
 
   if (phase.kind === 'payment_select') {
+    const stockSelected = phase.payment.assetId !== 'USDG';
     const insufficient = usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT';
     const needsApprove = usdgStatus?.allowance.state === 'KNOWN_INSUFFICIENT';
     return (
@@ -960,19 +1008,38 @@ export function CartCheckout() {
           {checkoutVisibleAssets()
             .filter((asset) => asset.kind === 'stock-token')
             .map((asset) => {
+              const cartId = cartPaymentId(asset.assetId);
               const method = paymentMethods.find((m) => m.assetId === asset.assetId);
-              const regionBlocked = method?.reasonCode === 'REGION_RESTRICTED';
+              const regionBlocked =
+                method?.reasonCode === 'REGION_RESTRICTED' || method?.reasonCode === 'REGION_UNKNOWN';
+              const geoAllowed = method?.available === true;
+              const selected = cartId !== null && phase.payment.assetId === cartId;
               const feeLabel = `+${((method?.feeBps ?? asset.feeBps) / 100).toFixed(1)}%`;
               return (
                 <li key={asset.assetId}>
                   <button
                     type="button"
-                    disabled
-                    className="flex w-full cursor-not-allowed items-start justify-between rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-3 py-2 text-left text-[12px] opacity-50"
+                    disabled={!geoAllowed || !cartId}
+                    onClick={() => {
+                      if (!cartId || !geoAllowed) return;
+                      setPhase({
+                        kind: 'payment_select',
+                        items: displayItems,
+                        payment: { assetId: cartId },
+                      });
+                    }}
+                    className={cn(
+                      'flex w-full items-start justify-between rounded-[var(--radius-sm)] border px-3 py-2 text-left text-[12px]',
+                      selected && geoAllowed
+                        ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.08)]'
+                        : 'border-[var(--color-border-subtle)]',
+                      (!geoAllowed || !cartId) && 'cursor-not-allowed opacity-50',
+                    )}
                   >
                     <span className="flex flex-col gap-0.5">
                       <span className="font-semibold text-[var(--color-text-primary)]">
-                        ○ {asset.symbol}
+                        {selected ? '● ' : '○ '}
+                        {asset.symbol}
                       </span>
                       <span className="text-[var(--color-text-tertiary)]">
                         {asset.symbol} → USDG
@@ -981,8 +1048,8 @@ export function CartCheckout() {
                     <span className="text-[var(--color-text-tertiary)]">
                       {regionBlocked
                         ? 'Unavailable in your region'
-                        : asset.status === 'RESEARCH'
-                          ? 'Unverified'
+                        : geoAllowed
+                          ? `${feeLabel} · convert to USDG`
                           : `Coming soon · ${feeLabel}`}
                     </span>
                   </button>
@@ -1011,7 +1078,17 @@ export function CartCheckout() {
             balance covers {payment(currentTotal, currency)}.
           </div>
         ) : null}
-        {needsApprove && !insufficient ? (
+        {stockSelected ? (
+          <div className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-3 py-2 text-[12px] text-[var(--color-text-primary)]">
+            {phase.payment.assetId} is allowed outside the US. Conversion to USDG is not live yet —
+            complete this purchase with USDG.
+          </div>
+        ) : null}
+        {stockSelected ? (
+          <button type="button" disabled className="nv-button w-full cursor-not-allowed opacity-50">
+            Conversion to USDG not live
+          </button>
+        ) : needsApprove && !insufficient ? (
           <button type="button" onClick={() => void onApproveUsdg()} className="nv-button w-full">
             Approve {payment(currentTotal, currency)}
           </button>

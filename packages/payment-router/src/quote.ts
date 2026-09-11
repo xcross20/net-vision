@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { OFFICIAL_ROBINHOOD_MAINNET_CHAIN_ID, checkConfiguredChainId } from './chain';
 import { feeAmountUsdg, requiredUsdgOut } from './fees';
 import { PAYMENT_POLICY_VERSION } from './jurisdiction';
@@ -27,7 +26,10 @@ export type CreateQuoteResult =
   | { ok: false; reasonCode: string };
 
 function newQuoteId(nowMs: number): string {
-  return `q_${nowMs}_${randomBytes(8).toString('hex')}`;
+  const bytes = new Uint8Array(8);
+  globalThis.crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `q_${nowMs}_${hex}`;
 }
 
 export function createPaymentQuote(input: CreateQuoteInput): CreateQuoteResult {

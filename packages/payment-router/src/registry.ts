@@ -7,7 +7,9 @@ const CHAIN = ROBINHOOD_CHAIN.id;
  * Identity is assetId + contract, never ticker.
  * Cloudflare Stock Token NET ≠ NetNet $NET (9 decimals).
  *
- * Only USDG is ENABLED until each rail earns its own E2E PASS.
+ * USDG is the only direct settlement rail. Launch Stock Tokens are ENABLED
+ * for non-US geography; conversion to USDG stays fail-closed until a router
+ * is pinned. Cloudflare NET is not a launch checkout method.
  */
 export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
   {
@@ -69,7 +71,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     contractAddress: '0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC',
     decimals: 18,
     issuer: 'Robinhood',
-    status: 'DISABLED',
+    status: 'ENABLED',
     feeBps: 200,
     settlementRoutes: [],
   },
@@ -82,7 +84,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     contractAddress: '0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9',
     decimals: 18,
     issuer: 'Robinhood',
-    status: 'DISABLED',
+    status: 'ENABLED',
     feeBps: 200,
     settlementRoutes: [],
   },
@@ -95,7 +97,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     contractAddress: '0x322F0929c4625eD5bAd873c95208D54E1c003b2d',
     decimals: 18,
     issuer: 'Robinhood',
-    status: 'DISABLED',
+    status: 'ENABLED',
     feeBps: 200,
     settlementRoutes: [],
   },
@@ -108,7 +110,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     contractAddress: '0xe93237C50D904957Cf27E7B1133b510C669c2e74',
     decimals: 18,
     issuer: 'Robinhood',
-    status: 'DISABLED',
+    status: 'ENABLED',
     feeBps: 200,
     settlementRoutes: [],
   },
@@ -121,7 +123,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     contractAddress: '0x12f190a9F9d7D37a250758b26824B97CE941bF54',
     decimals: 18,
     issuer: 'Robinhood',
-    status: 'DISABLED',
+    status: 'ENABLED',
     feeBps: 200,
     settlementRoutes: [],
   },
@@ -134,7 +136,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     contractAddress: '0x6330D8C3178a418788dF01a47479c0ce7CCF450b',
     decimals: 18,
     issuer: 'Robinhood',
-    status: 'DISABLED',
+    status: 'ENABLED',
     feeBps: 200,
     settlementRoutes: [],
   },
@@ -147,7 +149,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     contractAddress: '0x117cc2133c37B721F49dE2A7a74833232B3B4C0C',
     decimals: 18,
     issuer: 'Robinhood',
-    status: 'DISABLED',
+    status: 'ENABLED',
     feeBps: 200,
     settlementRoutes: [],
   },
@@ -160,19 +162,20 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     contractAddress: '0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa',
     decimals: 18,
     issuer: 'Robinhood',
-    status: 'DISABLED',
+    status: 'ENABLED',
     feeBps: 200,
     settlementRoutes: [],
   },
   {
     assetId: 'rh-googl',
-    displayName: 'Alphabet • Robinhood Token',
+    displayName: 'Alphabet Class A • Robinhood Token',
     symbol: 'GOOGL',
     chainId: CHAIN,
     kind: 'stock-token',
+    contractAddress: '0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3',
     decimals: 18,
     issuer: 'Robinhood',
-    status: 'RESEARCH',
+    status: 'ENABLED',
     feeBps: 200,
     settlementRoutes: [],
   },

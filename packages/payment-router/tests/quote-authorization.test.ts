@@ -1,19 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { PAYMENT_TOKENS, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 import {
-  EXECUTOR_DEPLOYED,
   PAYMENT_ASSETS,
-  QUOTE_TTL_MS,
-  authorizationFromQuote,
   createPaymentQuote,
   feeAmountUsdg,
   findAssetByContract,
   getPaymentAsset,
-  signAuthorization,
   validateDirectUsdgQuote,
+} from '../src';
+import {
+  EXECUTOR_DEPLOYED,
+  QUOTE_TTL_MS,
+  authorizationFromQuote,
+  signAuthorization,
   validateExecutorCall,
   verifyAuthorization,
-} from '../src';
+} from '../src/server';
 
 const BUYER = '0x0000000000000000000000000000000000000abc' as const;
 const SECRET = 'test-quote-secret';
@@ -28,6 +30,7 @@ const PINNED: Array<{ assetId: string; address: `0x${string}`; symbol: string; d
   { assetId: 'rh-spcx', address: '0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa', symbol: 'SPCX', decimals: 18 },
   { assetId: 'rh-msft', address: '0xe93237C50D904957Cf27E7B1133b510C669c2e74', symbol: 'MSFT', decimals: 18 },
   { assetId: 'rh-nvda', address: '0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC', symbol: 'NVDA', decimals: 18 },
+  { assetId: 'rh-googl', address: '0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3', symbol: 'GOOGL', decimals: 18 },
 ];
 
 describe('on-chain identity pins', () => {
@@ -39,7 +42,7 @@ describe('on-chain identity pins', () => {
       expect(byContract?.assetId).toBe(row.assetId);
       expect(byId?.symbol).toBe(row.symbol);
       expect(byId?.decimals).toBe(row.decimals);
-      expect(byId?.status).toBe('DISABLED');
+      expect(byId?.status).toBe('ENABLED');
       expect(byId?.feeBps).toBe(200);
       expect(byId?.kind).toBe('stock-token');
     }
@@ -61,14 +64,13 @@ describe('on-chain identity pins', () => {
     );
   });
 
-  it('GOOGL stays RESEARCH without a pinned contract', () => {
+  it('GOOGL is pinned and enabled independently of Cloudflare NET', () => {
     const googl = getPaymentAsset('rh-googl');
-    expect(googl?.status).toBe('RESEARCH');
-    expect(googl?.contractAddress).toBeUndefined();
-  });
-
-  it('one Stock Token pin never enables siblings', () => {
-    expect(PINNED.every((row) => getPaymentAsset(row.assetId)?.status === 'DISABLED')).toBe(true);
+    expect(googl?.status).toBe('ENABLED');
+    expect(googl?.contractAddress?.toLowerCase()).toBe(
+      '0x2e0847e8910a9732eb3fb1bb4b70a580adad4fe3',
+    );
+    expect(getPaymentAsset('rh-net-cloudflare')?.status).toBe('DISABLED');
   });
 });
 
@@ -132,7 +134,7 @@ describe('createPaymentQuote', () => {
     expect(created.reasonCode).toBe('REGION_UNKNOWN');
   });
 
-  it('non-US still cannot quote NVDA without enablement, live listing, and route', () => {
+  it('non-US still cannot quote NVDA without a live listing bind and route', () => {
     const created = createPaymentQuote({
       configuredChainId: ROBINHOOD_CHAIN.id,
       buyer: BUYER,
@@ -144,7 +146,23 @@ describe('createPaymentQuote', () => {
     });
     expect(created.ok).toBe(false);
     if (created.ok) return;
-    expect(created.reasonCode).toBe('ASSET_DISABLED');
+    expect(created.reasonCode).toBe('LIVE_LISTING_REQUIRED');
+  });
+
+  it('non-US Stock Token quote with a live listing still cannot execute without a router', () => {
+    const created = createPaymentQuote({
+      configuredChainId: ROBINHOOD_CHAIN.id,
+      buyer: BUYER,
+      assetId: 'rh-googl',
+      listingOrderHash: '0xorder',
+      listingUsdgRaw: LISTING,
+      country: 'FR',
+      nowMs: 1_000,
+      liveListing: { orderHash: '0xorder', usdgRaw: LISTING },
+    });
+    expect(created.ok).toBe(false);
+    if (created.ok) return;
+    expect(created.reasonCode).toBe('ROUTE_UNAVAILABLE');
   });
 
   it('wrong chain cannot execute', () => {

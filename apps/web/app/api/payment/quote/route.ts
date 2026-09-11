@@ -8,13 +8,13 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ROBINHOOD_CHAIN } from '@net-vision/chain-config';
+import { countryFromHeaders } from '@net-vision/payment-router';
 import {
   authorizationFromQuote,
-  countryFromHeaders,
   createPaymentQuote,
   quoteToJson,
   signAuthorization,
-} from '@net-vision/payment-router';
+} from '@net-vision/payment-router/server';
 
 export const dynamic = 'force-dynamic';
 

@@ -1,6 +1,6 @@
 import type { Jurisdiction, PaymentAsset } from './types';
 
-export const PAYMENT_POLICY_VERSION = 'payment-policy-v1';
+export const PAYMENT_POLICY_VERSION = 'payment-policy-v2';
 
 export function countryFromHeaders(headers: {
   get(name: string): string | null;

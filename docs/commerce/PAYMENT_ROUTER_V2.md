@@ -11,7 +11,7 @@ Supersedes stale PR #21. Rebuilt on current staging. **USDG settlement is sacred
 
 ## Launch flags
 
-Only `usdg` is `ENABLED`. ETH, NetNet NET, and every Stock Token stay `DISABLED` until that asset’s own IDENTITY/POLICY/ROUTE/QUOTE/SIMULATION/LIVE E2E PASS.
+`usdg` is the only direct executable rail. Launch Stock Tokens are `ENABLED` for non-US geography. ETH, NetNet NET, and Cloudflare NET stay `DISABLED`. Stock Token conversion stays fail-closed until a router is pinned.
 
 Cloudflare Stock Token `rh-net-cloudflare` (18 decimals) is not NetNet `netnet-net` (9 decimals).
 
@@ -21,7 +21,7 @@ Cloudflare Stock Token `rh-net-cloudflare` (18 decimals) is not NetNet `netnet-n
 
 `POST /api/payment/quote` is fail-closed: only `usdg` can receive an executable quote. Routed rails require a live listing bind the client cannot supply. Quote TTL is 20s. HMAC authorization binds fee, router, amounts, and buyer (`PAYMENT_QUOTE_SIGNING_SECRET`). Backend never holds user keys.
 
-Stock Token contracts provided 2026-09-10 are pinned by address (AAPL/SPY/AMZN/TSLA/COIN/SPCX/MSFT). GOOGL remains RESEARCH (no contract). Cloudflare Stock Token NET is identity-pinned and hidden from checkout so it cannot collide with NetNet NET.
+Stock Token contracts are pinned by address, including GOOGL `0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3`. Cloudflare Stock Token NET is identity-pinned and hidden from checkout so it cannot collide with NetNet NET.
 
 ## Fee
 
