@@ -27,6 +27,9 @@ export type CanonicalCoverage = {
   unknown: number;
   imagesCached: number;
   lastSuccessAt: string | null;
+  lastTokenId: number;
+  processed: number;
+  checkpointUpdatedAt: string | null;
 };
 
 function sha256Hex(buf: Buffer | string): string {
@@ -253,6 +256,41 @@ export async function isCanonicalVerified(tokenId: number): Promise<boolean> {
   return result.rows.length > 0;
 }
 
+export async function hasCanonicalMedia(tokenId: number): Promise<boolean> {
+  const db = getPool();
+  if (!db) return false;
+  const result = await db.query<{ ok: number }>(
+    `SELECT 1 AS ok FROM token_media WHERE collection_id = $1 AND token_id = $2`,
+    [CANONICAL_COLLECTION_ID, tokenId],
+  );
+  return result.rows.length > 0;
+}
+
+/**
+ * Tokens that still need a fetch: no row, not VERIFIED, or VERIFIED without
+ * a cached image. Ordered so RETRY (transient RPC) goes first.
+ */
+export async function listTokensNeedingBootstrap(limit: number): Promise<number[]> {
+  const db = getPool();
+  if (!db) return [];
+  const cap = Math.max(1, Math.min(500, Math.floor(limit)));
+  const result = await db.query<{ token_id: number }>(
+    `SELECT g.id AS token_id
+       FROM generate_series(1, $2) AS g(id)
+       LEFT JOIN token_canonical_metadata t
+         ON t.collection_id = $1 AND t.token_id = g.id
+       LEFT JOIN token_media m
+         ON m.collection_id = $1 AND m.token_id = g.id
+      WHERE t.token_id IS NULL
+         OR t.metadata_status <> 'VERIFIED'
+         OR m.token_id IS NULL
+      ORDER BY CASE t.metadata_status WHEN 'RETRY' THEN 0 ELSE 1 END, g.id
+      LIMIT $3`,
+    [CANONICAL_COLLECTION_ID, officialSupply(), cap],
+  );
+  return result.rows.map((row) => Number(row.token_id));
+}
+
 export async function readCanonicalCoverage(): Promise<CanonicalCoverage | null> {
   const db = getPool();
   if (!db) return null;
@@ -275,11 +313,21 @@ export async function readCanonicalCoverage(): Promise<CanonicalCoverage | null>
       WHERE collection_id = $1 AND token_id BETWEEN 1 AND $2`,
     [CANONICAL_COLLECTION_ID, officialSupply()],
   );
-  const last = await db.query<{ last_success_at: Date | null }>(
-    `SELECT MAX(last_success_at) AS last_success_at FROM metadata_backfill_checkpoint
+  const last = await db.query<{
+    last_success_at: Date | null;
+    last_token_id: number | null;
+    processed: string | null;
+    updated_at: Date | null;
+  }>(
+    `SELECT MAX(last_success_at) AS last_success_at,
+            MAX(last_token_id) AS last_token_id,
+            SUM(processed)::text AS processed,
+            MAX(updated_at) AS updated_at
+       FROM metadata_backfill_checkpoint
       WHERE collection_id = $1`,
     [CANONICAL_COLLECTION_ID],
   );
+  const checkpoint = last.rows[0];
   return {
     officialSupply: officialSupply(),
     verified,
@@ -289,7 +337,10 @@ export async function readCanonicalCoverage(): Promise<CanonicalCoverage | null>
     identityBlock,
     unknown: Math.max(0, officialSupply() - verified - missing - invalid - retry - identityBlock),
     imagesCached: Number(images.rows[0]?.n ?? 0),
-    lastSuccessAt: last.rows[0]?.last_success_at?.toISOString() ?? null,
+    lastSuccessAt: checkpoint?.last_success_at?.toISOString() ?? null,
+    lastTokenId: Number(checkpoint?.last_token_id ?? 0),
+    processed: Number(checkpoint?.processed ?? 0),
+    checkpointUpdatedAt: checkpoint?.updated_at?.toISOString() ?? null,
   };
 }
 

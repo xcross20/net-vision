@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { buildIndexerHealthReport } from '@/lib/index/health';
 import { refreshIndexFromPostgres } from '@/lib/index/store';
 import { readCanonicalCoverage } from '@/lib/index/canonical-metadata-store';
-import { cacheCoveragePercent, officialSupply } from '@/lib/index/canonical-metadata';
+import { serializeCacheCoverage } from '@/lib/index/canonical-metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,18 +19,24 @@ export async function GET() {
   try {
     const coverage = await readCanonicalCoverage();
     if (coverage) {
+      const serialized = serializeCacheCoverage(coverage);
       canonicalMetadata = {
-        officialSupply: coverage.officialSupply,
-        metadataVerified: coverage.verified,
-        metadataMissing: coverage.missing,
-        metadataInvalid: coverage.invalid,
-        metadataRetry: coverage.retry,
-        metadataIdentityBlock: coverage.identityBlock,
-        metadataUnknown: coverage.unknown,
-        metadataCoveragePct: cacheCoveragePercent(coverage.verified),
-        imagesCached: coverage.imagesCached,
-        imageCoveragePct: cacheCoveragePercent(coverage.imagesCached),
-        lastSuccessfulFetch: coverage.lastSuccessAt,
+        officialSupply: serialized.officialSupply,
+        metadataVerified: serialized.metadataVerified,
+        metadataMissing: serialized.missing,
+        metadataInvalid: serialized.invalid,
+        metadataRetry: serialized.retry,
+        metadataIdentityBlock: serialized.identityBlock,
+        metadataUnknown: serialized.unknown,
+        metadataCoveragePct: serialized.metadataCoveragePct,
+        imagesCached: serialized.imagesCached,
+        imageCoveragePct: serialized.imageCoveragePct,
+        lastSuccessfulFetch: serialized.lastSuccessAt,
+        lastTokenId: serialized.lastTokenId,
+        processed: serialized.processed,
+        complete: serialized.complete,
+        heartbeatFresh: serialized.heartbeatFresh,
+        remaining: serialized.remaining,
       };
     }
   } catch {
