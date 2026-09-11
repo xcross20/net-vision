@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { useCart } from '@/lib/cart/CartProvider';
 import { cartDraftFromToken } from '@/lib/cart/listing-snapshot';
+import { BulkOfferDrawer } from '@/components/offers/BulkOfferDrawer';
 import type { Token } from '@/lib/market';
 import { payment } from '@/lib/format';
 
@@ -13,6 +15,7 @@ export function SelectionBar({
   onClear: () => void;
 }) {
   const { addMany, open, requestReview } = useCart();
+  const [offerOpen, setOfferOpen] = useState(false);
   if (tokens.length === 0) return null;
   const total = tokens.reduce((sum, token) => sum + (token.listingPrice ?? 0), 0);
   const currency = tokens[0]?.currency ?? 'USDG';
@@ -51,11 +54,15 @@ export function SelectionBar({
           <button type="button" onClick={addSelected} className="nv-button nv-button-ghost">
             {typeof window !== 'undefined' && window.innerWidth < 768 ? 'Cart' : 'Add to Cart'}
           </button>
+          <button type="button" onClick={() => setOfferOpen(true)} className="nv-button nv-button-ghost">
+            Make offer
+          </button>
           <button type="button" onClick={buySelected} className="nv-button">
             Buy {tokens.length}
           </button>
         </div>
       </div>
+      <BulkOfferDrawer open={offerOpen} onClose={() => setOfferOpen(false)} tokens={tokens} />
     </div>
   );
 }
