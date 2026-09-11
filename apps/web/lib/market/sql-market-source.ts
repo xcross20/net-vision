@@ -3,9 +3,9 @@
  * Does not rehydrate TokenCatalog. Worker ingest still uses OpenSeaMarketSource.
  */
 import { BUTTON_PRESSER_COLLECTION, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
-import { VIRTUAL_COLLECTION_CATALOG } from '@net-vision/taxonomy';
+import { VIRTUAL_COLLECTION_CATALOG, classifyNumber, type NumberTrait, type TokenFacet } from '@net-vision/taxonomy';
 import { DEFAULT_PAYMENT_CURRENCY, type CategoryMetrics, type CollectionSnapshot, type DataFreshness, type Token } from './types';
-import { buildTokenImageUrl } from '../data/media';
+import { resolveTokenImageUrl } from '../data/media';
 import type { MarketSource, ListTokensFilter, ListTokensPage, Offer, Sale, SalesWindow } from './source';
 import { MS_DAY, type SweepPreview, type SweepPreviewInput, type FloorSnapshot } from './engine';
 import {
@@ -157,23 +157,27 @@ export class SqlMarketSource implements MarketSource {
   async getToken(tokenId: string): Promise<Token | null> {
     const id = Number(tokenId);
     if (!Number.isInteger(id)) return null;
-    const state = await this.reads.getMarketState(this.collectionId, id);
-    if (!state) return null;
-    const listed = state.listingState === 'LISTED';
+    const [state, identity, facets] = await Promise.all([
+      this.reads.getMarketState(this.collectionId, id),
+      this.reads.getTokenIdentity(this.collectionId, id),
+      this.reads.listTokenFacets(this.collectionId, id),
+    ]);
+    if (!state && !identity) return null;
+    const listed = state?.listingState === 'LISTED';
     return {
       tokenId: String(id),
       contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
       chainId: ROBINHOOD_CHAIN.id,
-      imageUrl: buildTokenImageUrl(String(id)),
-      name: null,
-      listingPrice: listed ? state.price : null,
-      currency: state.currency ?? DEFAULT_PAYMENT_CURRENCY,
-      listingOrderHash: listed ? state.orderHash : null,
+      imageUrl: resolveTokenImageUrl(String(id), identity?.imageUrl),
+      name: identity?.name ?? null,
+      listingPrice: listed ? state?.price ?? null : null,
+      currency: state?.currency ?? DEFAULT_PAYMENT_CURRENCY,
+      listingOrderHash: listed ? state?.orderHash ?? null : null,
       lastSalePrice: null,
-      ownerAddress: state.seller,
-      traits: [],
+      ownerAddress: identity?.ownerAddress ?? state?.seller ?? null,
+      traits: traitsForToken(String(id), facets),
       rarityRank: null,
-      listedAt: listed && state.listedAt != null ? Math.floor(state.listedAt / 1000) : null,
+      listedAt: listed && state?.listedAt != null ? Math.floor(state.listedAt / 1000) : null,
       lastSaleAt: null,
     };
   }
@@ -417,17 +421,36 @@ export class SqlMarketSource implements MarketSource {
       tokenId: String(row.tokenId),
       contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
       chainId: ROBINHOOD_CHAIN.id,
-      imageUrl: row.imageUrl ?? buildTokenImageUrl(String(row.tokenId)),
+      imageUrl: resolveTokenImageUrl(String(row.tokenId), row.imageUrl),
       name: row.name,
       listingPrice: row.price,
       currency: row.currency ?? DEFAULT_PAYMENT_CURRENCY,
       listingOrderHash: row.orderHash,
       lastSalePrice: null,
       ownerAddress: row.ownerAddress,
-      traits: [],
+      traits: traitsForToken(String(row.tokenId), []),
       rarityRank: null,
       listedAt: row.listedAt != null ? Math.floor(row.listedAt / 1000) : null,
       lastSaleAt: null,
     };
   }
+}
+
+function traitsForToken(tokenId: string, facets: TokenFacet[]): NumberTrait[] {
+  const derived = classifyNumber(tokenId).traits;
+  const seen = new Set(derived.map((trait) => trait.slug));
+  const extra: NumberTrait[] = [];
+  for (const facet of facets) {
+    if (seen.has(facet.slug)) continue;
+    if (
+      facet.family === 'material' ||
+      facet.family === 'number' ||
+      facet.family === 'pattern' ||
+      facet.family === 'culture'
+    ) {
+      extra.push({ slug: facet.slug, family: facet.family, label: facet.label });
+      seen.add(facet.slug);
+    }
+  }
+  return [...derived, ...extra];
 }

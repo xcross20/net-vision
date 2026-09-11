@@ -12,6 +12,7 @@ import { SalesOffersList, type SaleOrOfferEntry } from '@/components/ui/SalesOff
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AssetCard } from '@/components/ui/AssetCard';
 import { SHOWROOM_MEDIA, showroomHeroForCategory } from '@/lib/brand/media';
+import { isProxyImageUrl } from '@/lib/data/media';
 import { address, compact, payment, relative } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -97,7 +98,13 @@ export default async function TokenDetailPage({
                 key={src}
                 className="relative aspect-square overflow-hidden rounded-[12px] border border-[var(--color-border-active)]"
               >
-                <Image src={src} alt="" fill className="object-contain p-1" />
+                <Image
+                  src={src}
+                  alt=""
+                  fill
+                  unoptimized={isProxyImageUrl(src) || src.endsWith('.svg')}
+                  className="object-contain p-1"
+                />
               </div>
             ))}
           </div>
@@ -114,6 +121,7 @@ export default async function TokenDetailPage({
               alt={`Button Presser #${token.tokenId}`}
               fill
               priority
+              unoptimized={isProxyImageUrl(token.imageUrl) || token.imageUrl.endsWith('.svg')}
               sizes="(min-width: 1024px) 40vw, 100vw"
               className="object-contain p-8"
             />
