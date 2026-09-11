@@ -165,6 +165,23 @@ describe('createPaymentQuote', () => {
     expect(created.reasonCode).toBe('ROUTE_UNAVAILABLE');
   });
 
+  it('ETH and NetNet NET quotes are not region-blocked', () => {
+    for (const assetId of ['eth', 'netnet-net'] as const) {
+      const created = createPaymentQuote({
+        configuredChainId: ROBINHOOD_CHAIN.id,
+        buyer: BUYER,
+        assetId,
+        listingOrderHash: '0xorder',
+        listingUsdgRaw: LISTING,
+        country: 'US',
+        nowMs: 1_000,
+      });
+      expect(created.ok).toBe(false);
+      if (created.ok) return;
+      expect(created.reasonCode).toBe('LIVE_LISTING_REQUIRED');
+    }
+  });
+
   it('wrong chain cannot execute', () => {
     const created = createPaymentQuote({
       configuredChainId: 1311,

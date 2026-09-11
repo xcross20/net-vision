@@ -363,7 +363,7 @@ export function CartCheckout() {
     if (phase.kind === 'payment_select' && phase.payment.assetId !== 'USDG') {
       setPhase({
         kind: 'error',
-        message: 'Stock Token conversion to USDG is not live. Pay with USDG.',
+        message: `${phase.payment.assetId} conversion to USDG is not live. Pay with USDG.`,
       });
       return;
     }
@@ -914,7 +914,7 @@ export function CartCheckout() {
   }
 
   if (phase.kind === 'payment_select') {
-    const stockSelected = phase.payment.assetId !== 'USDG';
+    const routedSelected = phase.payment.assetId !== 'USDG';
     const insufficient = usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT';
     const needsApprove = usdgStatus?.allowance.state === 'KNOWN_INSUFFICIENT';
     return (
@@ -952,22 +952,28 @@ export function CartCheckout() {
             .map((asset) => {
               const cartId = cartPaymentId(asset.assetId);
               const selected = cartId !== null && phase.payment.assetId === cartId;
-              const executable = cartId !== null && isExecutablePaymentAsset(cartId);
+              const usdgExecutable = cartId !== null && isExecutablePaymentAsset(cartId);
               const method = paymentMethods.find((m) => m.assetId === asset.assetId);
+              const offered =
+                cartId === 'USDG'
+                  ? usdgExecutable
+                  : method
+                    ? method.available === true
+                    : asset.status === 'ENABLED';
               const feeLabel =
                 method?.feeBps === 0
                   ? 'FREE'
                   : method?.feeBps
                     ? `+${(method.feeBps / 100).toFixed(1)}%`
-                    : null;
+                    : 'FREE';
               return (
                 <li key={asset.assetId}>
                   <button
                     type="button"
-                    disabled={!executable}
+                    disabled={!offered || !cartId}
                     onClick={() => {
-                      if (!cartId || !executable) return;
-                      assertCanSelectPaymentAsset(cartId);
+                      if (!cartId || !offered) return;
+                      if (cartId === 'USDG') assertCanSelectPaymentAsset(cartId);
                       setPhase({
                         kind: 'payment_select',
                         items: displayItems,
@@ -976,10 +982,10 @@ export function CartCheckout() {
                     }}
                     className={cn(
                       'flex w-full items-start justify-between rounded-[var(--radius-sm)] border px-3 py-2 text-left text-[12px]',
-                      selected && executable
+                      selected && offered
                         ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.08)]'
                         : 'border-[var(--color-border-subtle)]',
-                      !executable && 'cursor-not-allowed opacity-50',
+                      (!offered || !cartId) && 'cursor-not-allowed opacity-50',
                     )}
                   >
                     <span className="flex flex-col gap-0.5">
@@ -992,9 +998,11 @@ export function CartCheckout() {
                       </span>
                     </span>
                     <span className="text-[var(--color-text-tertiary)]">
-                      {executable
-                        ? `Recommended${feeLabel ? ` · ${feeLabel}` : ''}`
-                        : 'Coming soon'}
+                      {cartId === 'USDG'
+                        ? `Recommended · ${feeLabel}`
+                        : offered
+                          ? `${feeLabel} · convert to USDG`
+                          : 'Coming soon'}
                     </span>
                   </button>
                 </li>
@@ -1078,13 +1086,14 @@ export function CartCheckout() {
             balance covers {payment(currentTotal, currency)}.
           </div>
         ) : null}
-        {stockSelected ? (
+        {routedSelected ? (
           <div className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-3 py-2 text-[12px] text-[var(--color-text-primary)]">
-            {phase.payment.assetId} is allowed outside the US. Conversion to USDG is not live yet —
-            complete this purchase with USDG.
+            {phase.payment.assetId === 'ETH' || phase.payment.assetId === 'NET'
+              ? `${phase.payment.assetId === 'NET' ? 'NetNet NET' : 'ETH'} is available in every region. Conversion to USDG is not live yet — complete this purchase with USDG.`
+              : `${phase.payment.assetId} is allowed outside the US. Conversion to USDG is not live yet — complete this purchase with USDG.`}
           </div>
         ) : null}
-        {stockSelected ? (
+        {routedSelected ? (
           <button type="button" disabled className="nv-button w-full cursor-not-allowed opacity-50">
             Conversion to USDG not live
           </button>

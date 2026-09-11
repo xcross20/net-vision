@@ -21,6 +21,6 @@ Live RPC (2026-09-10), 18 decimals unless noted:
 | rh-googl | GOOGL | `0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3` | ENABLED | 200 |
 | rh-net-cloudflare | NET | `0x116F00968269B7bfbaD4109cE591d6E74c0601d4` | DISABLED | 200 |
 
-NetNet `netnet-net` is `0xca9c78dd337a67f6e0077f65f5e9218719d30edf`, symbol NET, **9 decimals**, not a Stock Token. Cloudflare Stock Token NET is hidden from checkout so the ticker cannot be selected as NetNet.
+NetNet `netnet-net` is `0xca9c78dd337a67f6e0077f65f5e9218719d30edf`, symbol NET, **9 decimals**, not a Stock Token, and is available in every jurisdiction. Cloudflare Stock Token NET is identity-only and is omitted from `/api/payment/methods` so the ticker cannot be selected as NetNet.
 
 Feature flags are per `assetId`.

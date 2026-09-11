@@ -11,7 +11,7 @@ Supersedes stale PR #21. Rebuilt on current staging. **USDG settlement is sacred
 
 ## Launch flags
 
-`usdg` is the only direct executable rail. Launch Stock Tokens are `ENABLED` for non-US geography. ETH, NetNet NET, and Cloudflare NET stay `DISABLED`. Stock Token conversion stays fail-closed until a router is pinned.
+`usdg` is the only direct executable rail. ETH and NetNet `$NET` are `ENABLED` in every jurisdiction. Launch Stock Tokens are `ENABLED` for non-US geography. Cloudflare Stock Token NET is never a checkout method. Conversion to USDG stays fail-closed until a router is pinned.
 
 Cloudflare Stock Token `rh-net-cloudflare` (18 decimals) is not NetNet `netnet-net` (9 decimals).
 
