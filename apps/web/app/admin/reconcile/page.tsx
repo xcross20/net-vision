@@ -1,6 +1,8 @@
 import { getMarketSource } from '@/lib/market';
 import { buildIndexerHealthReport } from '@/lib/index/health';
 import { refreshIndexFromPostgres } from '@/lib/index/store';
+import { readCanonicalCoverage } from '@/lib/index/canonical-metadata-store';
+import { cacheCoveragePercent, officialSupply } from '@/lib/index/canonical-metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +21,20 @@ export default async function ReconcilePage() {
   const health = buildIndexerHealthReport();
   const now = Date.now();
   const online = health.workerOnline;
+
+  // Canonical metadata + image cache coverage for the Button Presser
+  // (the whole collection = officialExistingSupply). This is what
+  // tells the operator "how much of the whole collection is cached".
+  let canonical: Awaited<ReturnType<typeof readCanonicalCoverage>> = null;
+  let canonicalError: string | null = null;
+  try {
+    canonical = await readCanonicalCoverage();
+  } catch (err) {
+    canonicalError = err instanceof Error ? err.message : String(err);
+  }
+  const supply = officialSupply();
+  const metadataCoverage = canonical ? cacheCoveragePercent(canonical.verified) : null;
+  const imageCoverage = canonical ? cacheCoveragePercent(canonical.imagesCached) : null;
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-12">
@@ -80,6 +96,34 @@ export default async function ReconcilePage() {
             <dt className="text-eyebrow-muted">Metadata bootstrap</dt>
             <dd className="text-numeral">
               {health.metadataCursor.toLocaleString()} / ~62,095 · {health.metadataProgressPercent}%
+            </dd>
+          </div>
+          <div>
+            <dt className="text-eyebrow-muted">Metadata coverage (verified rows)</dt>
+            <dd className="text-numeral">
+              {canonical
+                ? `${canonical.verified.toLocaleString()} / ${supply.toLocaleString()} · ${metadataCoverage}%`
+                : canonicalError
+                  ? `— (${canonicalError})`
+                  : '— (DATABASE_URL not configured)'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-eyebrow-muted">Image cache (whole collection)</dt>
+            <dd
+              className="text-numeral"
+              data-testid="image-cache-coverage"
+              title={
+                canonical
+                  ? `${canonical.imagesCached.toLocaleString()} cached images out of ${supply.toLocaleString()} tokens`
+                  : 'Database unavailable'
+              }
+            >
+              {canonical
+                ? `${canonical.imagesCached.toLocaleString()} / ${supply.toLocaleString()} · ${imageCoverage}%`
+                : canonicalError
+                  ? `— (${canonicalError})`
+                  : '— (DATABASE_URL not configured)'}
             </dd>
           </div>
           <div>

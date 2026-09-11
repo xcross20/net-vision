@@ -7,6 +7,8 @@ import {
 } from '@/lib/index/store';
 import { isIndexerRunning, isMetadataBootstrapRunning } from '@/lib/index/worker';
 import { buildIndexerHealthReport } from '@/lib/index/health';
+import { readCanonicalCoverage } from '@/lib/index/canonical-metadata-store';
+import { cacheCoveragePercent } from '@/lib/index/canonical-metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +22,27 @@ export async function GET() {
   const worker = workerCheckpoint();
   const metadataWorker = metadataCheckpoint();
   const indexer = buildIndexerHealthReport();
+  let cacheCoverage: {
+    officialSupply: number;
+    metadataVerified: number;
+    metadataCoveragePct: number;
+    imagesCached: number;
+    imageCoveragePct: number;
+  } | null = null;
+  try {
+    const coverage = await readCanonicalCoverage();
+    if (coverage) {
+      cacheCoverage = {
+        officialSupply: coverage.officialSupply,
+        metadataVerified: coverage.verified,
+        metadataCoveragePct: cacheCoveragePercent(coverage.verified),
+        imagesCached: coverage.imagesCached,
+        imageCoveragePct: cacheCoveragePercent(coverage.imagesCached),
+      };
+    }
+  } catch {
+    cacheCoverage = null;
+  }
   return NextResponse.json({
     indexerRunning: isIndexerRunning(),
     metadataBootstrapRunning: isMetadataBootstrapRunning(),
@@ -29,6 +52,8 @@ export async function GET() {
     brassMetadataVerified: indexer.brassMetadataVerified,
     brassExpected: indexer.brassExpected,
     retriesQueued: indexer.retriesQueued,
+    /** How much of the whole collection is cached. Null until Postgres is wired. */
+    cacheCoverage,
     /** Prefer /api/v1/health/indexer for the full operator surface. */
     indexerHealthPath: '/api/v1/health/indexer',
     categories: categories.map((c) => ({

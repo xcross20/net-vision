@@ -172,3 +172,26 @@ export function coverageTotalsMustSum(input: {
     input.unknown;
   return sum === officialSupply();
 }
+
+/**
+ * Pure helper: how much of the whole collection (official supply)
+ * is covered by the supplied count. Returns a percent rounded to
+ * two decimals, exactly as the operator-facing JSON surfaces it.
+ *
+ * The denominator is `officialSupply()` (62,093 for Button Presser)
+ * — NOT `imagesCached + missingDelta`, NOT `verified + missing`, NOT
+ * any in-flight worker cursor. The whole collection is fixed; cache
+ * coverage is a strict subset.
+ *
+ * 0 / supply            → 0%
+ * 1 / supply            → 0.00% (rounds down)
+ * supply / supply       → 100%
+ * supply * 1.5 / supply → 100% (clamped — never report > 100%)
+ */
+export function cacheCoveragePercent(cachedCount: number): number {
+  const supply = officialSupply();
+  if (supply <= 0) return 0;
+  const ratio = cachedCount / supply;
+  const clamped = Math.max(0, Math.min(1, ratio));
+  return Math.round(clamped * 10000) / 100;
+}

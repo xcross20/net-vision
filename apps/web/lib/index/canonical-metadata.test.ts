@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import {
+  cacheCoveragePercent,
   canonicalMediaPath,
   coverageTotalsMustSum,
   decodeSvgFromDataUri,
@@ -85,6 +86,54 @@ describe('canonical universe', () => {
         unknown: 1,
       }),
     ).toBe(false);
+  });
+});
+
+describe('cacheCoveragePercent — whole-collection image cache percentage', () => {
+  const SUPPLY = officialSupply();
+  it('uses official supply (62,093) as the denominator, never anything else', () => {
+    expect(SUPPLY).toBe(62093);
+  });
+
+  it('returns 0 when nothing is cached', () => {
+    expect(cacheCoveragePercent(0)).toBe(0);
+  });
+
+  it('returns 0.00% for a single cached token (rounds to two decimals)', () => {
+    // 1 / 62093 ≈ 0.00161 % → rounds to 0.00
+    expect(cacheCoveragePercent(1)).toBe(0);
+  });
+
+  it('matches the documented math for partial coverage', () => {
+    // 100 / 62093 ≈ 0.1611% → 0.16
+    expect(cacheCoveragePercent(100)).toBeCloseTo(0.16, 2);
+    // 1000 / 62093 ≈ 1.6105% → 1.61
+    expect(cacheCoveragePercent(1000)).toBeCloseTo(1.61, 2);
+    // 10000 / 62093 ≈ 16.1049% → 16.10
+    expect(cacheCoveragePercent(10_000)).toBeCloseTo(16.1, 2);
+  });
+
+  it('reports 100% when the entire collection is cached', () => {
+    expect(cacheCoveragePercent(SUPPLY)).toBe(100);
+  });
+
+  it('clamps negative counts to 0%', () => {
+    expect(cacheCoveragePercent(-5)).toBe(0);
+  });
+
+  it('clamps values larger than supply to 100%', () => {
+    expect(cacheCoveragePercent(SUPPLY * 2)).toBe(100);
+  });
+
+  it('half-collection is exactly 50.00%', () => {
+    expect(cacheCoveragePercent(SUPPLY / 2)).toBe(50);
+  });
+
+  it('rounds to two decimal places (not three, not four)', () => {
+    // 1234 / 62093 = 0.0198722… → 1.99%
+    expect(cacheCoveragePercent(1234)).toBe(1.99);
+    // 9876 / 62093 = 0.1590552… → 15.91%
+    expect(cacheCoveragePercent(9876)).toBe(15.91);
   });
 });
 

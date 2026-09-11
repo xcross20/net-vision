@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { buildIndexerHealthReport } from '@/lib/index/health';
 import { refreshIndexFromPostgres } from '@/lib/index/store';
 import { readCanonicalCoverage } from '@/lib/index/canonical-metadata-store';
-import { officialSupply } from '@/lib/index/canonical-metadata';
+import { cacheCoveragePercent, officialSupply } from '@/lib/index/canonical-metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +19,6 @@ export async function GET() {
   try {
     const coverage = await readCanonicalCoverage();
     if (coverage) {
-      const denom = officialSupply() || 1;
       canonicalMetadata = {
         officialSupply: coverage.officialSupply,
         metadataVerified: coverage.verified,
@@ -28,9 +27,9 @@ export async function GET() {
         metadataRetry: coverage.retry,
         metadataIdentityBlock: coverage.identityBlock,
         metadataUnknown: coverage.unknown,
-        metadataCoveragePct: Math.round((coverage.verified / denom) * 10000) / 100,
+        metadataCoveragePct: cacheCoveragePercent(coverage.verified),
         imagesCached: coverage.imagesCached,
-        imageCoveragePct: Math.round((coverage.imagesCached / denom) * 10000) / 100,
+        imageCoveragePct: cacheCoveragePercent(coverage.imagesCached),
         lastSuccessfulFetch: coverage.lastSuccessAt,
       };
     }
