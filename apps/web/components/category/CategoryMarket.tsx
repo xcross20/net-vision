@@ -133,22 +133,15 @@ export function CategoryMarket({
 
   return (
     <div className="flex flex-col gap-10 pb-24">
-      <CategoryHero metrics={liveMetrics} />
+      <CategoryHero
+        metrics={liveMetrics}
+        heroToken={tokens[0] ?? initialTokens[0] ?? null}
+        onSweep={() => setSweepOpen(true)}
+        sweepDisabled={liveMetrics.marketStatus === 'syncing'}
+      />
       <CategoryMetricsStrip metrics={liveMetrics} />
       <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <CategoryTabs value={tab} onChange={setTab} listedCount={liveMetrics.listedCount} />
-          {tab === 'listings' ? (
-            <button
-              type="button"
-              className="nv-button nv-button-ghost"
-              onClick={() => setSweepOpen(true)}
-              disabled={liveMetrics.marketStatus === 'syncing'}
-            >
-              Sweep {liveMetrics.name}
-            </button>
-          ) : null}
-        </div>
+        <CategoryTabs value={tab} onChange={setTab} listedCount={liveMetrics.listedCount} />
 
         {tab === 'listings' ? (
           <div className="flex flex-col gap-4">

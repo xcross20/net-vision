@@ -4,10 +4,11 @@ import { LayeredHeroArt } from '@/components/ui/LayeredHeroArt';
 import { CollectionPulse } from '@/components/ui/CollectionPulse';
 import { CategoryCard } from '@/components/ui/CategoryCard';
 import { AssetCard } from '@/components/ui/AssetCard';
-import { AssetSkeleton } from '@/components/ui/Skeleton';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { SalesOffersList, type SaleOrOfferEntry } from '@/components/ui/SalesOffersList';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { PaymentMethodStrip } from '@/components/commerce/PaymentMethodStrip';
+import { compact, payment } from '@/lib/format';
 import { listCategories } from '@/lib/data/categories';
 import {
   getCollectionSnapshot,
@@ -58,13 +59,20 @@ export default async function HomePage() {
   const heroTokens = tokens.slice(0, 3);
 
   return (
-    <div className="flex flex-col gap-20 md:gap-28">
+    <div className="flex flex-col gap-16 md:gap-24">
       <HeroSection tokens={heroTokens} snapshot={snapshot} freshness={freshness} />
 
-      <TrendingCategoriesSection
-        categories={featuredCategories}
-        unavailable={!categoriesLoad.ok}
-      />
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        <div className="lg:col-span-8">
+          <TrendingCategoriesSection
+            categories={featuredCategories.slice(0, 4)}
+            unavailable={!categoriesLoad.ok}
+          />
+        </div>
+        <aside className="lg:col-span-4">
+          <MarketInsights snapshot={snapshot} freshness={freshness} />
+        </aside>
+      </div>
 
       <MarketActivitySection tokens={tokens} unavailable={!tokensLoad.ok} />
 
@@ -92,6 +100,8 @@ export default async function HomePage() {
           expiresAt: o.expiresAt,
         }))}
       />
+
+      <PaymentMethodStrip />
     </div>
   );
 }
@@ -117,20 +127,18 @@ function HeroSection({
           />
         </div>
 
-        <h1 className="text-display text-[clamp(2.75rem,6.5vw,5rem)] text-[var(--color-text-primary)]">
-          The market
-          <br />
-          for numbers.
+        <h1 className="text-display text-[clamp(2.75rem,6.5vw,5.25rem)] text-[var(--color-text-primary)]">
+          Button Presser
         </h1>
 
         <p className="text-body max-w-[58ch] text-[var(--color-text-secondary)] md:text-[17px]">
-          Discover, collect, and trade the most desirable Button Presser characters by number
-          pattern. Every active ask on Robinhood Chain, every trait category, in one terminal.
+          A cultural icon, now on-chain. Own a piece of NetNet Capital Management history.
+          Real numbers. Real brass. Real owners.
         </p>
 
         <div className="flex flex-wrap items-center gap-3">
           <Link href="/market" className="nv-button">
-            Explore market
+            Explore collection
             <ArrowRight size={14} weight="bold" />
           </Link>
           <Link href="/categories" className="nv-button nv-button-ghost">
@@ -151,7 +159,9 @@ function HeroSection({
       </div>
 
       <div className="relative md:col-span-5">
-        <LayeredHeroArt tokens={tokens} />
+        <div className="md:sticky md:top-24">
+          <LayeredHeroArt tokens={tokens} />
+        </div>
       </div>
     </section>
   );
@@ -191,7 +201,7 @@ function TrendingCategoriesSection({
           tone="warming"
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {categories.map((c) => (
             <CategoryCard key={c.slug} metrics={c} movement={c.floorChange7d} />
           ))}
@@ -286,6 +296,45 @@ function SalesOffersSection({
         }
       />
     </section>
+  );
+}
+
+function MarketInsights({
+  snapshot,
+  freshness,
+}: {
+  snapshot: Awaited<ReturnType<typeof getCollectionSnapshot>>;
+  freshness: Awaited<ReturnType<ReturnType<typeof getMarketSource>['getFreshness']>>;
+}) {
+  const live = snapshot.marketStatus === 'live' && freshness.fresh;
+  return (
+    <div className="flex h-full flex-col gap-4 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-display text-xl text-[var(--color-text-primary)]">Market insights</h2>
+        <LiveIndicator tone={live ? 'green' : 'amber'} size={6} label={live ? 'Live' : 'Syncing'} />
+      </div>
+      <dl className="grid grid-cols-2 gap-4">
+        {(
+          [
+            ['Official supply', snapshot.totalSupply.toLocaleString()],
+            [live ? 'Listed' : 'Known listed', snapshot.listedCount.toLocaleString()],
+            ['Floor', payment(snapshot.floorPrice, snapshot.currency)],
+            ['24h volume', payment(snapshot.volume24hNative, 'ETH')],
+            ['24h sales', compact(snapshot.sales24h)],
+            ['Owners', compact(snapshot.owners)],
+            ['Best offer', payment(snapshot.topOfferPrice, snapshot.currency)],
+            ['Highest sale', payment(snapshot.topSalePrice, snapshot.currency)],
+          ] as const
+        ).map(([label, value]) => (
+          <div key={label} className="flex flex-col gap-1">
+            <dt className="text-eyebrow-muted">{label}</dt>
+            <dd className="text-numeral text-[15px] font-semibold text-[var(--color-text-primary)]">
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { MarketView } from '@/components/ui/MarketView';
+import { CollectionPulse } from '@/components/ui/CollectionPulse';
 import { getMarketSource } from '@/lib/market';
 
 export const dynamic = 'force-dynamic';
@@ -33,8 +34,8 @@ export default async function MarketPage() {
           />
         </div>
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <h1 className="text-display text-[clamp(2.25rem,5vw,3.5rem)] text-[var(--color-text-primary)]">
-            Every active listing
+          <h1 className="text-display text-[clamp(2.25rem,5vw,3.75rem)] text-[var(--color-text-primary)]">
+            Button Presser
           </h1>
           <span className="text-eyebrow-muted">
             {listedCount.toLocaleString()} {syncing ? 'known listed' : 'listed'}
@@ -55,6 +56,7 @@ export default async function MarketPage() {
             Recent activity →
           </Link>
         </div>
+        <CollectionPulse snapshot={snapshot} freshness={freshness} />
       </header>
 
       <MarketView tokens={tokens} categories={[]} />
