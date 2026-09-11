@@ -60,7 +60,7 @@ export function CategoryHero({
         eyebrow={`${FAMILY_LABEL[metrics.family] ?? metrics.family} category`}
         title={metrics.name}
         body={metrics.description}
-        minHeightClass="min-h-[26rem] md:min-h-[30rem]"
+        minHeightClass="min-h-[22rem] md:min-h-[26rem]"
         metricsVariant="bar"
         aside={
           <ShowroomAside

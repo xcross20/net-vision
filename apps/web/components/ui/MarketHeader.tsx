@@ -24,7 +24,7 @@ export function MarketHeader({ onOpenSearch }: { onOpenSearch?: () => void }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-30 h-[72px] border-b border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg)_85%,transparent)] backdrop-blur-md">
+    <header className="sticky top-0 z-30 h-[76px] border-b border-[rgba(92,255,153,0.10)] bg-[color-mix(in_srgb,var(--color-bg)_72%,transparent)] backdrop-blur-xl">
       <PageContainer size="cinematic" className="flex h-full items-center gap-6">
         <NetVisionLogo />
 

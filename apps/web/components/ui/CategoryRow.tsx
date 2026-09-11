@@ -16,11 +16,22 @@ import { CategoryGlyph } from '@/components/showroom/CategoryGlyph';
 export function CategoryRow({
   metrics,
   index,
+  volumeWindow = '24h',
 }: {
   metrics: CategoryMetrics;
   movement?: number | null;
   index?: number;
+  volumeWindow?: '24h' | '7d' | '30d' | 'all';
 }) {
+  const volume =
+    volumeWindow === '7d'
+      ? metrics.volume7d
+      : volumeWindow === '30d'
+        ? metrics.volume30d
+        : volumeWindow === 'all'
+          ? metrics.volumeAllTracked
+          : metrics.volume24h;
+  const sales = volumeWindow === '24h' ? metrics.sales24h : metrics.sales7d;
   return (
     <Link
       href={`/categories/${metrics.slug}`}
@@ -72,10 +83,10 @@ export function CategoryRow({
           {metrics.marketStatus === 'syncing' ? '—' : pct(metrics.floorChange7d)}
         </span>
         <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] lg:inline-block lg:w-24 lg:text-right">
-          {metrics.marketStatus === 'syncing' ? '—' : compact(metrics.volume24h)}
+          {metrics.marketStatus === 'syncing' ? '—' : compact(volume)}
         </span>
         <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] lg:inline-block lg:w-20 lg:text-right">
-          {metrics.sales24h.toLocaleString()}
+          {sales.toLocaleString()}
         </span>
         <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] lg:inline-block lg:w-20 lg:text-right">
           {metrics.listedCount.toLocaleString()}

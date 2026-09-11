@@ -35,7 +35,7 @@ export function MarketHero({
         mx.set(0);
         my.set(0);
       }}
-      className="relative isolate min-h-[36rem] overflow-hidden rounded-[28px] border border-[rgba(92,255,153,0.14)] md:min-h-[42rem]"
+      className="relative isolate min-h-[28rem] overflow-hidden rounded-[28px] border border-[rgba(92,255,153,0.16)] md:min-h-[32rem]"
     >
       <motion.div className="absolute -inset-8" style={{ x: bgX, y: bgY }}>
         <Image
@@ -56,25 +56,25 @@ export function MarketHero({
         <div className="nv-showroom-vignette absolute inset-0" />
       </motion.div>
 
-      <div className="relative z-10 flex min-h-[36rem] flex-col justify-between gap-10 p-6 md:min-h-[42rem] md:p-10 lg:p-12">
+      <div className="relative z-10 flex min-h-[28rem] flex-col justify-between gap-8 p-6 pb-8 md:min-h-[32rem] md:p-10 md:pb-9 lg:px-12 lg:pt-12">
         <div className="grid grid-cols-1 lg:grid-cols-12">
-          <div className="flex max-w-[42rem] flex-col gap-6 lg:col-span-7">
+          <div className="flex max-w-[46rem] flex-col gap-5 lg:col-span-7">
             <span className="text-[11px] font-medium uppercase tracking-[0.24em] text-[var(--color-net-green)]">
               Marketplace · Live
             </span>
-            <h1 className="text-display text-[clamp(3.6rem,7.2vw,4.75rem)] leading-[0.94] text-[var(--color-text-primary)]">
+            <h1 className="text-display text-[clamp(3.25rem,6.2vw,4.6rem)] leading-[0.94] text-[var(--color-text-primary)]">
               Button Presser
-              <span className="mt-2 block text-[clamp(2.6rem,5.6vw,4rem)] leading-[1.02] text-[var(--color-net-green)]">
+              <span className="mt-1 block whitespace-nowrap text-[clamp(2.1rem,4.4vw,3.35rem)] leading-[1.02] text-[var(--color-net-green)]">
                 The Market for Numbers.
               </span>
             </h1>
-            <p className="max-w-[38ch] text-[17px] leading-relaxed text-[var(--color-text-secondary)] md:text-[18px]">
+            <p className="max-w-[42ch] text-[16px] leading-relaxed text-[var(--color-text-secondary)] md:text-[17px]">
               Collect. Trade. Build what's next. Iconic numbers. Real ownership. A more connected tomorrow.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Link href="/categories" className="nv-button h-12 px-6 text-[15px]">
                 Explore collection
-                <ArrowRight size={16} weight="bold" className="transition-transform group-hover:translate-x-0.5" />
+                <ArrowRight size={16} weight="bold" />
               </Link>
               <Link href="/activity" className="nv-button nv-button-ghost nv-glass-2 h-12 px-6 text-[15px]">
                 <ChartLine size={16} weight="bold" />
