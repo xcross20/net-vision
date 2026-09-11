@@ -7,11 +7,12 @@ import { SpinnerIcon, WarnIcon, CheckIcon, WalletIcon } from '@/components/icons
 import { cn } from '@/lib/cn';
 import { useCart } from '@/lib/cart/CartProvider';
 import type { CartItem, CheckoutItem } from '@/lib/cart/types';
+import { CheckoutPaymentPicker, type PaymentAvailability } from './CheckoutPaymentPicker';
+import { OrderSummary } from './OrderSummary';
 import {
   assertCanMarkConfirmed,
   assertCanPreparePurchase,
   assertCanSelectPaymentAsset,
-  isExecutablePaymentAsset,
   type PaymentAssetId,
 } from '@/lib/cart/checkout-machine';
 import { PAYMENT_TOKENS, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
@@ -103,6 +104,37 @@ function cartPaymentId(assetId: string): PaymentAssetId | null {
       return 'SPY';
     default:
       return null;
+  }
+}
+
+function paymentAssetIdForPhase(paymentAsset: PaymentAssetId): string {
+  switch (paymentAsset) {
+    case 'USDG':
+      return 'usdg';
+    case 'ETH':
+      return 'eth';
+    case 'NET':
+      return 'netnet-net';
+    case 'AAPL':
+      return 'rh-aapl';
+    case 'NVDA':
+      return 'rh-nvda';
+    case 'TSLA':
+      return 'rh-tsla';
+    case 'MSFT':
+      return 'rh-msft';
+    case 'AMZN':
+      return 'rh-amzn';
+    case 'GOOGL':
+      return 'rh-googl';
+    case 'COIN':
+      return 'rh-coin';
+    case 'SPCX':
+      return 'rh-spcx';
+    case 'SPY':
+      return 'rh-spy';
+    default:
+      return 'usdg';
   }
 }
 
@@ -917,210 +949,132 @@ export function CartCheckout() {
     const routedSelected = phase.payment.assetId !== 'USDG';
     const insufficient = usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT';
     const needsApprove = usdgStatus?.allowance.state === 'KNOWN_INSUFFICIENT';
+    const selectedAssetId = paymentAssetIdForPhase(phase.payment.assetId);
+    const selectedMethod =
+      paymentMethods.find((m) => m.assetId === selectedAssetId) ??
+      checkoutVisibleAssets().find((a) => a.assetId === selectedAssetId);
+    const serviceFeeBps =
+      phase.payment.assetId === 'USDG'
+        ? (usdgQuote?.serviceFeeBps ?? selectedMethod?.feeBps ?? 0)
+        : (selectedMethod?.feeBps ?? 0);
+    const feeLabel =
+      serviceFeeBps === 0 ? '0.00 USDG' : `+${(serviceFeeBps / 100).toFixed(1)}% service fee`;
+    const ctaDisabled =
+      insufficient ||
+      routedSelected ||
+      usdgStatus?.spender.address == null ||
+      needsApprove;
+    const ctaLabel = insufficient
+      ? 'Insufficient USDG'
+      : routedSelected
+        ? 'Conversion to USDG not live'
+        : needsApprove
+          ? `Approve ${payment(currentTotal, currency)}`
+          : 'Continue to Review';
+    const ctaOnClick = () => {
+      if (insufficient || routedSelected) return;
+      if (needsApprove) {
+        void onApproveUsdg();
+        return;
+      }
+      void onCheckout();
+    };
+    const visibleAssets = checkoutVisibleAssets();
+    const pickerAvailability: PaymentAvailability[] = paymentMethods.length
+      ? paymentMethods
+      : visibleAssets.map((a) => ({
+          assetId: a.assetId,
+          available: a.status === 'ENABLED',
+          feeBps: a.feeBps,
+        }));
+
     return (
-      <div className="flex flex-col gap-3">
-        <div className="flex justify-between text-[12px] text-[var(--color-text-secondary)]">
-          <span>Current total</span>
-          <span className="text-numeral text-[var(--color-text-primary)]">
-            {payment(currentTotal, currency)}
-          </span>
+      <div className="flex flex-col gap-4">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+          <CheckoutPaymentPicker
+            assets={visibleAssets}
+            availability={pickerAvailability}
+            selectedAssetId={selectedAssetId}
+            onSelect={(assetId) => {
+              const cartId = cartPaymentId(assetId);
+              if (!cartId) return;
+              setPhase({
+                kind: 'payment_select',
+                items: displayItems,
+                payment: { assetId: cartId },
+              });
+            }}
+            onSelectCrypto={(assetId) => {
+              const cartId = cartPaymentId(assetId);
+              if (!cartId) return;
+              if (cartId === 'USDG') assertCanSelectPaymentAsset(cartId);
+              setPhase({
+                kind: 'payment_select',
+                items: displayItems,
+                payment: { assetId: cartId },
+              });
+            }}
+          />
+
+          <div className="flex flex-col gap-3">
+            <OrderSummary
+              step={2}
+              items={displayItems}
+              currency={currency}
+              subtotal={currentTotal}
+              serviceFee={{ bps: serviceFeeBps, label: feeLabel }}
+              selectedAsset={phase.payment.assetId}
+              ctaLabel={ctaLabel}
+              ctaOnClick={ctaOnClick}
+              ctaDisabled={ctaDisabled}
+              ctaNote={
+                routedSelected
+                  ? `${phase.payment.assetId === 'NET' ? 'NetNet NET' : phase.payment.assetId} conversion to USDG is not live yet — complete this purchase with USDG.`
+                  : 'By continuing, you agree to our Terms of Service and acknowledge our compliance requirements.'
+              }
+            />
+          </div>
         </div>
-        <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
-          Pay with
-        </p>
-        {usdgQuote ? (
-          <div className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
-            <div className="flex justify-between">
-              <span>NFT price</span>
+
+        <div className="flex flex-col gap-2 rounded-[16px] border border-[var(--color-border-subtle)] bg-[rgba(5,9,8,0.5)] p-3 text-[11px] text-[var(--color-text-tertiary)]">
+          <p>
+            Listings are rechecked against OpenSea before checkout. Prices and availability may have
+            changed since you added items.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <span>
+              USDG balance:{' '}
+              <span className="text-numeral text-[var(--color-text-secondary)]">
+                {formatKnowledge(usdgStatus?.balance)}
+              </span>
+            </span>
+            <span>
+              Allowance:{' '}
+              <span className="text-numeral text-[var(--color-text-secondary)]">
+                {formatKnowledge(usdgStatus?.allowance)}
+              </span>
+            </span>
+            <span>
+              Required:{' '}
               <span className="text-numeral text-[var(--color-text-primary)]">
                 {payment(currentTotal, currency)}
               </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Service fee</span>
-              <span>
-                {usdgQuote.serviceFeeBps === 0
-                  ? 'FREE'
-                  : `+${(usdgQuote.serviceFeeBps / 100).toFixed(1)}%`}
-              </span>
-            </div>
+            </span>
           </div>
-        ) : null}
-        <ul className="flex flex-col gap-2">
-          {checkoutVisibleAssets()
-            .filter((asset) => asset.kind !== 'stock-token')
-            .map((asset) => {
-              const cartId = cartPaymentId(asset.assetId);
-              const selected = cartId !== null && phase.payment.assetId === cartId;
-              const usdgExecutable = cartId !== null && isExecutablePaymentAsset(cartId);
-              const method = paymentMethods.find((m) => m.assetId === asset.assetId);
-              const offered =
-                cartId === 'USDG'
-                  ? usdgExecutable
-                  : method
-                    ? method.available === true
-                    : asset.status === 'ENABLED';
-              const feeLabel =
-                method?.feeBps === 0
-                  ? 'FREE'
-                  : method?.feeBps
-                    ? `+${(method.feeBps / 100).toFixed(1)}%`
-                    : 'FREE';
-              return (
-                <li key={asset.assetId}>
-                  <button
-                    type="button"
-                    disabled={!offered || !cartId}
-                    onClick={() => {
-                      if (!cartId || !offered) return;
-                      if (cartId === 'USDG') assertCanSelectPaymentAsset(cartId);
-                      setPhase({
-                        kind: 'payment_select',
-                        items: displayItems,
-                        payment: { assetId: cartId },
-                      });
-                    }}
-                    className={cn(
-                      'flex w-full items-start justify-between rounded-[16px] border px-4 py-3 text-left text-[12px]',
-                      selected && offered
-                        ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.08)] shadow-[0_0_24px_rgba(72,235,145,0.16)]'
-                        : 'border-[var(--color-border-subtle)] bg-[rgba(7,14,11,0.45)]',
-                      (!offered || !cartId) && 'cursor-not-allowed opacity-50',
-                    )}
-                  >
-                    <span className="flex flex-col gap-0.5">
-                      <span className="font-semibold text-[var(--color-text-primary)]">
-                        {selected ? '● ' : '○ '}
-                        {asset.symbol === 'NET' ? 'NET (NetNet)' : asset.symbol}
-                      </span>
-                      <span className="text-[var(--color-text-tertiary)]">
-                        {asset.assetId === 'usdg' ? 'Direct' : `${asset.symbol} → USDG`}
-                      </span>
-                    </span>
-                    <span className="text-[var(--color-text-tertiary)]">
-                      {cartId === 'USDG'
-                        ? `Recommended · ${feeLabel}`
-                        : offered
-                          ? `${feeLabel} · convert to USDG`
-                          : 'Coming soon'}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-        </ul>
-        <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
-          Stock Tokens
-        </p>
-        <ul className="flex flex-col gap-2">
-          {checkoutVisibleAssets()
-            .filter((asset) => asset.kind === 'stock-token')
-            .map((asset) => {
-              const cartId = cartPaymentId(asset.assetId);
-              const method = paymentMethods.find((m) => m.assetId === asset.assetId);
-              const regionBlocked =
-                method?.reasonCode === 'REGION_RESTRICTED' || method?.reasonCode === 'REGION_UNKNOWN';
-              const geoAllowed = method?.available === true;
-              const selected = cartId !== null && phase.payment.assetId === cartId;
-              const feeLabel = `+${((method?.feeBps ?? asset.feeBps) / 100).toFixed(1)}%`;
-              return (
-                <li key={asset.assetId}>
-                  <button
-                    type="button"
-                    disabled={!geoAllowed || !cartId}
-                    onClick={() => {
-                      if (!cartId || !geoAllowed) return;
-                      setPhase({
-                        kind: 'payment_select',
-                        items: displayItems,
-                        payment: { assetId: cartId },
-                      });
-                    }}
-                    className={cn(
-                      'flex w-full items-start justify-between rounded-[var(--radius-sm)] border px-3 py-2 text-left text-[12px]',
-                      selected && geoAllowed
-                        ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.08)]'
-                        : 'border-[var(--color-border-subtle)]',
-                      (!geoAllowed || !cartId) && 'cursor-not-allowed opacity-50',
-                    )}
-                  >
-                    <span className="flex flex-col gap-0.5">
-                      <span className="font-semibold text-[var(--color-text-primary)]">
-                        {selected ? '● ' : '○ '}
-                        {asset.symbol}
-                      </span>
-                      <span className="text-[var(--color-text-tertiary)]">
-                        {asset.symbol} → USDG
-                      </span>
-                    </span>
-                    <span className="text-[var(--color-text-tertiary)]">
-                      {regionBlocked
-                        ? 'Unavailable in your region'
-                        : geoAllowed
-                          ? `${feeLabel} · convert to USDG`
-                          : `Coming soon · ${feeLabel}`}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-        </ul>
-        <div className="text-[11px] text-[var(--color-text-tertiary)]">
-          <p>USDG balance: {formatKnowledge(usdgStatus?.balance)}</p>
-          <p>USDG allowance: {formatKnowledge(usdgStatus?.allowance)}</p>
-          <p>
-            Required:{' '}
-            <span className="text-numeral">{payment(currentTotal, currency)}</span>
-          </p>
-          <p>
-            Spender:{' '}
-            {usdgStatus?.spender.address
-              ? `${usdgStatus.spender.source} ${usdgStatus.spender.address.slice(0, 10)}…`
-              : 'unresolved'}
-          </p>
-          <p>{usdgStatus?.spender.note ?? 'Unknown is never shown as 0.'}</p>
+          {insufficient ? (
+            <p className="text-[var(--color-warning)]">
+              Insufficient USDG. Add funds — this checkout will continue automatically when the
+              balance covers {payment(currentTotal, currency)}.
+            </p>
+          ) : null}
         </div>
-        {insufficient ? (
-          <div className="rounded-[var(--radius-sm)] border border-[var(--color-warning)] px-3 py-2 text-[12px] text-[var(--color-text-primary)]">
-            Insufficient USDG. Add funds — this checkout will continue automatically when the
-            balance covers {payment(currentTotal, currency)}.
-          </div>
-        ) : null}
-        {routedSelected ? (
-          <div className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-3 py-2 text-[12px] text-[var(--color-text-primary)]">
-            {phase.payment.assetId === 'ETH' || phase.payment.assetId === 'NET'
-              ? `${phase.payment.assetId === 'NET' ? 'NetNet NET' : 'ETH'} is available in every region. Conversion to USDG is not live yet — complete this purchase with USDG.`
-              : `${phase.payment.assetId} is allowed outside the US. Conversion to USDG is not live yet — complete this purchase with USDG.`}
-          </div>
-        ) : null}
-        {routedSelected ? (
-          <button type="button" disabled className="nv-button w-full cursor-not-allowed opacity-50">
-            Conversion to USDG not live
-          </button>
-        ) : needsApprove && !insufficient ? (
-          <button type="button" onClick={() => void onApproveUsdg()} className="nv-button w-full">
-            Approve {payment(currentTotal, currency)}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void onCheckout()}
-            disabled={insufficient || usdgStatus?.spender.address == null || needsApprove}
-            className={cn(
-              'nv-button w-full',
-              (insufficient || usdgStatus?.spender.address == null || needsApprove) &&
-                'cursor-not-allowed opacity-50',
-            )}
-          >
-            {insufficient ? 'Insufficient USDG' : 'Review purchase'}
-          </button>
-        )}
+
         <button
           type="button"
           onClick={() => setPhase({ kind: 'review', items: displayItems })}
-          className="text-[12px] text-[var(--color-text-tertiary)]"
+          className="self-start text-[12px] text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-primary)]"
         >
-          Back to listings
+          ← Back to listings
         </button>
       </div>
     );
