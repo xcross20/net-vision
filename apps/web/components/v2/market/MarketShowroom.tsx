@@ -38,14 +38,17 @@ export function MarketShowroom({
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('price-asc');
   const live = snapshot.marketStatus === 'live' && freshness.fresh;
-  const pills = useMemo(
-    () =>
-      [...categories]
-        .filter((c) => c.listedCount > 0)
-        .sort((a, b) => b.listedCount - a.listedCount)
-        .slice(0, 8),
-    [categories],
-  );
+  const PINNED = ['palindrome', 'repdigit', 'digits-3', 'material-brass', 'digits-4', 'digits-5', 'double'];
+  const pills = useMemo(() => {
+    const bySlug = new Map(categories.map((c) => [c.slug, c]));
+    const pinned = PINNED.map((slug) => bySlug.get(slug)).filter(
+      (c): c is CategoryMetrics => Boolean(c),
+    );
+    const rest = categories
+      .filter((c) => !PINNED.includes(c.slug) && c.listedCount > 0)
+      .sort((a, b) => b.listedCount - a.listedCount);
+    return [...pinned, ...rest].slice(0, 7);
+  }, [categories]);
 
   const visible = useMemo(() => {
     let next = tokens;
@@ -69,7 +72,7 @@ export function MarketShowroom({
   }, [tokens, slug, query, sort]);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-5">
       <MarketHero
         metrics={[
           {
@@ -117,28 +120,30 @@ export function MarketShowroom({
         ))}
       </div>
 
-      <div className="nv-glass-2 flex flex-col gap-3 rounded-[20px] p-3 md:flex-row md:items-center md:px-4">
-        <span className="px-2 text-sm text-[var(--color-text-secondary)]">
-          <span className="text-numeral text-base font-semibold text-[var(--color-text-primary)]">
-            {visible.length.toLocaleString()}
-          </span>{' '}
-          shown
-        </span>
+      <div className="nv-glass-2 flex flex-col gap-3 rounded-[18px] p-3 md:flex-row md:items-center md:px-4">
+        <div className="px-2">
+          <div className="text-numeral text-lg font-semibold text-[var(--color-text-primary)]">
+            {snapshot.listedCount.toLocaleString()}
+          </div>
+          <div className="text-[11px] text-[var(--color-text-tertiary)]">
+            {live ? 'Items listed' : 'Known listed'} in Button Presser
+          </div>
+        </div>
         <label className="nv-glass-1 flex min-w-0 flex-1 items-center gap-2 rounded-full px-4">
           <MagnifyingGlass size={15} className="text-[var(--color-text-tertiary)]" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by number, trait, or id..."
-            className="h-12 w-full bg-transparent text-[15px] outline-none"
+            placeholder="Search by number (e.g. 777), trait, or id..."
+            className="h-11 w-full bg-transparent text-[15px] outline-none"
           />
         </label>
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as Sort)}
-          className="nv-glass-1 h-12 rounded-full px-4 text-sm"
+          className="nv-glass-1 h-11 rounded-[14px] px-4 text-sm"
         >
-          <option value="price-asc">Price: Low to High</option>
+          <option value="price-asc">Sort by: Price Low to High</option>
           <option value="price-desc">Price: High to Low</option>
           <option value="recent">Recently listed</option>
         </select>

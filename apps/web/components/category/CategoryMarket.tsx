@@ -150,12 +150,12 @@ export function CategoryMarket({
                 </span>
               </h2>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="nv-glass-2 flex flex-wrap gap-2 rounded-[18px] p-3">
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={`Search in ${liveMetrics.name}...`}
-                className="h-10 min-w-[12rem] flex-1 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-4 text-sm"
+                className="nv-glass-1 h-11 min-w-[12rem] flex-1 rounded-full px-4 text-sm"
               />
               <select
                 value={material}

@@ -58,7 +58,7 @@ export function CinematicHero({
         <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
           <div className="flex max-w-[40rem] flex-col gap-5 lg:col-span-7">
             {eyebrow ? <span className="text-eyebrow">{eyebrow}</span> : null}
-            <h1 className="text-display text-[clamp(2.75rem,7vw,5.5rem)] text-[var(--color-text-primary)]">
+            <h1 className="text-display text-[clamp(3.2rem,7vw,5.6rem)] leading-[0.94] text-[var(--color-text-primary)]">
               {title}
             </h1>
             {kicker ? (
