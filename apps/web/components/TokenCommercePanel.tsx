@@ -55,12 +55,13 @@ export function TokenCommercePanel({
         <Row label="Last sale" value={lastSale} currency={currency} />
       </dl>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
         <BuyNowButton
           draft={draft}
           disabled={!isConnected || ask === null}
           label={isConnected ? 'Buy now' : 'Connect to buy'}
         />
+        <AddToCartButton variant="primary" draft={draft} />
         <motion.button
           type="button"
           className="nv-button nv-button-ghost nv-button-disabled"
@@ -69,7 +70,6 @@ export function TokenCommercePanel({
         >
           Make offer
         </motion.button>
-        <AddToCartButton variant="primary" draft={draft} />
       </div>
 
       <div className="flex items-center gap-3 text-xs text-[var(--nv-muted)]">

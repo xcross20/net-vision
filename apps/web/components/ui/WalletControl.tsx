@@ -71,6 +71,12 @@ export function WalletControl() {
             >
               Portfolio
             </a>
+            <a
+              href="/profile"
+              className="flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]"
+            >
+              Profile & settings
+            </a>
             <button
               type="button"
               onClick={() => {

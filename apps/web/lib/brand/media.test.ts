@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BRAND_MEDIA,
+  FEATURED_CATEGORY_SLUGS,
   PLATE_MATERIAL_SLUGS,
   SHOWROOM_MEDIA,
   isPlateMaterialSlug,
@@ -39,9 +40,16 @@ describe('brand media', () => {
     }
   });
 
-  it('does not invent a material plate for non-material categories', () => {
-    expect(isPlateMaterialSlug('palindrome')).toBe(false);
-    expect(showroomHeroForCategory('palindrome')).toBe(SHOWROOM_MEDIA.categoryHero);
-    expect(showroomHeroForCategory('digits-3')).toBe(SHOWROOM_MEDIA.categoryHero);
+  it('does not invent a material plate for unknown categories', () => {
+    expect(isPlateMaterialSlug('digits-4')).toBe(false);
+    expect(showroomHeroForCategory('digits-4')).toBe(SHOWROOM_MEDIA.categoryHero);
+  });
+
+  it('gives featured explorer categories dedicated atmosphere stills', () => {
+    expect(FEATURED_CATEGORY_SLUGS).toContain('digits-3');
+    expect(showroomHeroForCategory('digits-3')).toBe(SHOWROOM_MEDIA.categoryHeroDigits3);
+    expect(showroomHeroForCategory('palindrome')).toBe(SHOWROOM_MEDIA.categoryHeroPalindrome);
+    expect(showroomHeroForCategory('lucky')).toBe(SHOWROOM_MEDIA.categoryHeroLucky);
+    expect(showroomHeroForCategory('meme')).toBe(SHOWROOM_MEDIA.categoryHeroMeme);
   });
 });

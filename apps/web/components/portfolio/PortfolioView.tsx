@@ -86,8 +86,28 @@ export function PortfolioView() {
         <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
           {unavailable
             ? 'Inventory unavailable — not the same as an empty wallet.'
-            : `${tokens.length} total · Estimated context value ${payment(contextValue, 'USDG')}`}
+            : 'Collect. Trade. Build what\'s next. Live wallet inventory only — no estimated fantasy value.'}
         </p>
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <span className="nv-metric-card">
+            Owned
+            <strong className="text-numeral text-xl text-[var(--color-text-primary)]">{tokens.length}</strong>
+          </span>
+          <span className="nv-metric-card">
+            Listed
+            <strong className="text-numeral text-xl text-[var(--color-text-primary)]">{listed.length}</strong>
+          </span>
+          <span className="nv-metric-card">
+            Watchlist
+            <strong className="text-numeral text-xl text-[var(--color-text-primary)]">{watchedIds.length}</strong>
+          </span>
+          <span className="nv-metric-card">
+            Listed context
+            <strong className="text-numeral text-xl text-[var(--color-text-primary)]">
+              {unavailable ? '—' : payment(contextValue, 'USDG')}
+            </strong>
+          </span>
+        </div>
         </div>
       </header>
 

@@ -17,17 +17,21 @@ export const BRAND_MEDIA = {
     activity: '/brand/references/activity.jpg',
     tokenDetail: '/brand/references/token-detail.jpg',
     categoryBrass: '/brand/references/category-brass.jpg',
-    categoriesDirectory: '/brand/references/categories.jpg',
+    categoriesDirectory: '/brand/references/categories-explorer.jpg',
     homepage: '/brand/references/homepage.jpg',
   },
   showroom: {
     homepageHero: '/brand/showroom/hero-market.jpg',
     marketHero: '/brand/showroom/hero-market.jpg',
-    categoriesHero: '/brand/showroom/hero-netgear-atmosphere.jpg',
+    categoriesHero: '/brand/showroom/hero-categories.jpg',
     categoryHero: '/brand/showroom/hero-plaque-single.jpg',
     categoryHeroSteel: '/brand/showroom/hero-plaque-steel.jpg',
     categoryHeroAnodisedAluminium: '/brand/showroom/hero-plaque-anodised-aluminium.jpg',
     categoryHeroPrintedPhenolic: '/brand/showroom/hero-plaque-printed-phenolic.jpg',
+    categoryHeroDigits3: '/brand/showroom/hero-digits-3.jpg',
+    categoryHeroPalindrome: '/brand/showroom/hero-palindrome.jpg',
+    categoryHeroLucky: '/brand/showroom/hero-lucky.jpg',
+    categoryHeroMeme: '/brand/showroom/hero-meme.jpg',
     brandCrate: '/brand/showroom/brand-crate.jpg',
     cardStage: '/brand/showroom/card-stage.jpg',
     activityHero: '/brand/showroom/hero-plaques.jpg',
@@ -54,18 +58,37 @@ const PLATE_MATERIAL_SHOWROOM: Record<PlateMaterialSlug, string> = {
   'material-printed-phenolic': SHOWROOM_MEDIA.categoryHeroPrintedPhenolic,
 };
 
+/** Featured explorer tiles, matching the approved categories composition. */
+export const FEATURED_CATEGORY_SLUGS = [
+  ...PLATE_MATERIAL_SLUGS,
+  'digits-3',
+  'palindrome',
+  'lucky',
+  'meme',
+] as const;
+
+const CATEGORY_SHOWROOM: Record<string, string> = {
+  ...PLATE_MATERIAL_SHOWROOM,
+  'digits-3': SHOWROOM_MEDIA.categoryHeroDigits3,
+  palindrome: SHOWROOM_MEDIA.categoryHeroPalindrome,
+  lucky: SHOWROOM_MEDIA.categoryHeroLucky,
+  meme: SHOWROOM_MEDIA.categoryHeroMeme,
+};
+
 export function isPlateMaterialSlug(slug: string): slug is PlateMaterialSlug {
   return (PLATE_MATERIAL_SLUGS as readonly string[]).includes(slug);
 }
 
+export function hasCategoryShowroom(slug: string): boolean {
+  return Object.prototype.hasOwnProperty.call(CATEGORY_SHOWROOM, slug);
+}
+
 /**
- * Category-detail atmosphere plate. Material slugs get a distinct still.
- * Other families keep the generic brass-stage fallback. Never use this
- * as a listed token's identity image.
+ * Category-detail atmosphere plate. Featured slugs get a distinct still.
+ * Never use this as a listed token's identity image.
  */
 export function showroomHeroForCategory(slug: string): string {
-  if (isPlateMaterialSlug(slug)) return PLATE_MATERIAL_SHOWROOM[slug];
-  return SHOWROOM_MEDIA.categoryHero;
+  return CATEGORY_SHOWROOM[slug] ?? SHOWROOM_MEDIA.categoryHero;
 }
 
 export function isShowroomPath(src: string): boolean {

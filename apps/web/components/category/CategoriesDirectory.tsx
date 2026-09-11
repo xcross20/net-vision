@@ -18,6 +18,7 @@ import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { CinematicHero, ShowroomAside } from '@/components/showroom/CinematicHero';
 import {
+  FEATURED_CATEGORY_SLUGS,
   PLATE_MATERIAL_SLUGS,
   SHOWROOM_MEDIA,
   showroomHeroForCategory,
@@ -88,9 +89,9 @@ export function CategoriesDirectory({
     return next;
   }, [live, family, sort, query, window]);
 
-  const plateMaterials = useMemo(
+  const featured = useMemo(
     () =>
-      PLATE_MATERIAL_SLUGS.map((slug) => live.find((c) => c.slug === slug)).filter(
+      FEATURED_CATEGORY_SLUGS.map((slug) => live.find((c) => c.slug === slug)).filter(
         (c): c is CategoryMetrics => Boolean(c),
       ),
     [live],
@@ -101,17 +102,27 @@ export function CategoriesDirectory({
       <CinematicHero
         imageSrc={SHOWROOM_MEDIA.categoriesHero}
         imageAlt="Cinematic brand atmosphere for the categories explorer"
-        eyebrow="Categories explorer"
+        eyebrow="Marketplace · Categories"
         title={
           <>
-            Explore the <span className="text-[var(--color-net-green)]">possibilities.</span>
+            Where Numbers
+            <br />
+            <span className="text-[var(--color-net-green)]">Become Assets.</span>
           </>
         }
-        body="Browse number collections by type, material, pattern, and culture. Different categories. A bigger tomorrow."
-        minHeightClass="min-h-[20rem] md:min-h-[24rem]"
+        body="Explore collectible categories by number, material, pattern, and culture. Live market data, real ownership, and a more connected tomorrow."
+        minHeightClass="min-h-[22rem] md:min-h-[26rem]"
         priority
-        aside={<ShowroomAside lines={['Numbers', 'connect', 'worlds.']} />}
+        aside={<ShowroomAside lines={['Same numbers.', 'Bigger', 'possibilities.']} />}
       >
+        <div className="flex flex-wrap items-center gap-2">
+          <a href="#category-table" className="nv-button">
+            Explore Categories
+          </a>
+          <Link href="/market" className="nv-button nv-button-ghost">
+            View Market Data
+          </Link>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           {FAMILIES.map((item) => (
             <button
@@ -132,39 +143,47 @@ export function CategoriesDirectory({
         </div>
       </CinematicHero>
 
-      {plateMaterials.length > 0 && !query && (family === 'all' || family === 'material') ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {plateMaterials.map((c) => (
+      {featured.length > 0 && !query ? (
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {featured.map((c) => (
             <Link
               key={c.slug}
               href={`/categories/${c.slug}`}
-              className="nv-glass-2 group relative isolate overflow-hidden rounded-[20px]"
+              className="nv-glass-2 group relative w-[9.5rem] shrink-0 overflow-hidden rounded-[18px] sm:w-[11rem]"
             >
-              <div className="relative h-36">
+              <div className="relative h-28">
                 <Image
                   src={showroomHeroForCategory(c.slug)}
                   alt=""
                   fill
-                  sizes="(min-width: 1280px) 22rem, 50vw"
-                  className="object-cover object-center transition-transform duration-500 group-hover:scale-[1.04]"
+                  sizes="180px"
+                  className="object-cover object-center transition-transform duration-500 group-hover:scale-[1.05]"
                 />
-                <div className="nv-showroom-scrim pointer-events-none absolute inset-0 opacity-70" />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[rgba(5,9,8,0.92)] via-transparent to-transparent" />
               </div>
-              <div className="relative z-10 flex flex-col gap-1 px-4 py-3">
-                <span className="text-display text-lg text-[var(--color-text-primary)]">{c.name}</span>
-                <span className="text-[12px] text-[var(--color-text-tertiary)]">
-                  {c.listedCount.toLocaleString()} listed · {c.memberSupply.toLocaleString()} items
+              <div className="relative z-10 flex flex-col gap-0.5 px-3 py-2.5">
+                <span className="truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
+                  {c.name}
                 </span>
-                <span className="text-numeral text-sm text-[var(--color-net-green)]">
-                  {c.marketStatus === 'syncing'
-                    ? 'Syncing'
-                    : c.floorPrice !== null
-                      ? payment(c.floorPrice, c.currency)
-                      : '—'}
+                <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
+                  {c.family}
                 </span>
               </div>
             </Link>
           ))}
+          <button
+            type="button"
+            onClick={() => setFamily('all')}
+            className="nv-glass-1 flex w-[7.5rem] shrink-0 flex-col items-center justify-center gap-2 rounded-[18px] text-[12px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] text-lg">
+              +
+            </span>
+            View all
+            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-tertiary)]">
+              {rows.length} categories
+            </span>
+          </button>
         </div>
       ) : null}
 
@@ -220,7 +239,10 @@ export function CategoriesDirectory({
           tone="muted"
         />
       ) : (
-        <div className="overflow-hidden rounded-[20px] border border-[rgba(92,255,153,0.12)] bg-[color-mix(in_srgb,var(--color-surface-1)_80%,transparent)]">
+        <div
+          id="category-table"
+          className="overflow-hidden rounded-[20px] border border-[rgba(92,255,153,0.12)] bg-[color-mix(in_srgb,var(--color-surface-1)_80%,transparent)]"
+        >
           <div className="hidden grid-cols-[2.25rem_minmax(0,1.6fr)_5.5rem_6.5rem_5rem_5rem_6.5rem_5rem_5.5rem_5.5rem_6rem_2.5rem] items-center gap-3 border-b border-[var(--color-border-subtle)] px-5 py-3 text-[10px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)] lg:grid">
             <span>#</span>
             <span>Category</span>
