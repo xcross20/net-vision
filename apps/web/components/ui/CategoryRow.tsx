@@ -83,6 +83,9 @@ export function CategoryRow({
         <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] lg:inline-block lg:w-20 lg:text-right">
           {metrics.memberSupply.toLocaleString()}
         </span>
+        <span className="hidden w-24 justify-end lg:inline-flex">
+          <TrendSpark change24h={metrics.floorChange24h} change7d={metrics.floorChange7d} />
+        </span>
 
         <span className="ml-2 hidden text-[var(--color-text-tertiary)] transition-all group-hover:translate-x-0.5 group-hover:text-[var(--color-net-green)] lg:inline-flex">
           <ArrowRight size={12} weight="bold" />
@@ -121,6 +124,32 @@ export function CategoryRow({
         <ArrowRight size={12} weight="bold" />
       </div>
     </Link>
+  );
+}
+
+function TrendSpark({
+  change24h,
+  change7d,
+}: {
+  change24h: number | null;
+  change7d: number | null;
+}) {
+  const a = change24h ?? 0;
+  const b = change7d ?? 0;
+  const up = b >= 0;
+  const y0 = 14;
+  const y1 = 14 - a * 40;
+  const y2 = 14 - b * 40;
+  const clamp = (n: number) => Math.min(22, Math.max(2, n));
+  return (
+    <svg width="72" height="24" viewBox="0 0 72 24" aria-hidden="true" className="overflow-visible">
+      <polyline
+        fill="none"
+        stroke={up ? 'var(--color-net-green)' : 'var(--color-danger)'}
+        strokeWidth="1.6"
+        points={`2,${clamp(y0)} 36,${clamp(y1)} 70,${clamp(y2)}`}
+      />
+    </svg>
   );
 }
 

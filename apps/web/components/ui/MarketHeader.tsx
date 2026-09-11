@@ -38,7 +38,7 @@ export function MarketHeader({ onOpenSearch }: { onOpenSearch?: () => void }) {
                 className={cn(
                   'relative rounded-md px-3 py-2 text-sm transition-colors',
                   active
-                    ? 'text-[var(--color-text-primary)]'
+                    ? 'text-[var(--color-net-green)]'
                     : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
                 )}
               >
@@ -62,11 +62,11 @@ export function MarketHeader({ onOpenSearch }: { onOpenSearch?: () => void }) {
             type="button"
             aria-label="Search"
             onClick={() => onOpenSearch?.()}
-            className="hidden h-10 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-3 text-sm text-[var(--color-text-tertiary)] transition-colors hover:border-[var(--color-border-default)] hover:text-[var(--color-text-primary)] md:inline-flex"
+            className="nv-glass hidden h-11 min-w-[22rem] items-center gap-2 rounded-full px-4 text-sm text-[var(--color-text-tertiary)] transition-colors hover:border-[var(--color-border-default)] hover:text-[var(--color-text-primary)] lg:inline-flex"
           >
             <MagnifyingGlass size={14} weight="bold" />
-            <span>Search</span>
-            <kbd className="text-numeral ml-3 hidden rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-tertiary)] md:inline">
+            <span className="flex-1 text-left">Search numbers, collections, or addresses...</span>
+            <kbd className="text-numeral hidden rounded-md border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-tertiary)] md:inline">
               K
             </kbd>
           </button>

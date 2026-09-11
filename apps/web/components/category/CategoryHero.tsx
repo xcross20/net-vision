@@ -145,7 +145,13 @@ export function CategoryHero({
             icon: <TrendUp size={16} weight="duotone" />,
           },
         ]}
-      />
+      >
+        <div className="flex flex-wrap gap-2">
+          <span className="nv-chip nv-chip-strong">{FAMILY_LABEL[metrics.family] ?? metrics.family}</span>
+          <span className="nv-chip">{metrics.memberSupply.toLocaleString()} items</span>
+          {metrics.source === 'metadata' ? <span className="nv-chip">Physical craft</span> : null}
+        </div>
+      </CinematicHero>
     </div>
   );
 }

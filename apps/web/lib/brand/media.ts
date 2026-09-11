@@ -21,10 +21,14 @@ export const BRAND_MEDIA = {
     homepage: '/brand/references/homepage.jpg',
   },
   showroom: {
-    homepageHero: '/brand/showroom/hero-plaques.jpg',
+    homepageHero: '/brand/showroom/hero-market.jpg',
+    marketHero: '/brand/showroom/hero-market.jpg',
     categoriesHero: '/brand/showroom/hero-netgear-atmosphere.jpg',
     categoryHero: '/brand/showroom/hero-plaque-single.jpg',
     brandCrate: '/brand/showroom/brand-crate.jpg',
+    cardStage: '/brand/showroom/card-stage.jpg',
+    activityHero: '/brand/showroom/hero-plaques.jpg',
+    portfolioHero: '/brand/showroom/hero-plaques.jpg',
   },
 } as const;
 

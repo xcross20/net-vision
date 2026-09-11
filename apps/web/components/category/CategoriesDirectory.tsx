@@ -15,7 +15,8 @@ import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { CinematicHero, ShowroomAside } from '@/components/showroom/CinematicHero';
 import { SHOWROOM_MEDIA } from '@/lib/brand/media';
-import type { CategoryMetrics } from '@/lib/market';
+import type { CategoryMetrics, CollectionSnapshot } from '@/lib/market';
+import { payment } from '@/lib/format';
 import { useLiveCategories } from '@/lib/market/use-live-metrics';
 import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
 import { cn } from '@/lib/cn';
@@ -36,7 +37,13 @@ type SortKey =
   | 'supply'
   | 'highestSale';
 
-export function CategoriesDirectory({ categories }: { categories: CategoryMetrics[] }) {
+export function CategoriesDirectory({
+  categories,
+  snapshot,
+}: {
+  categories: CategoryMetrics[];
+  snapshot?: CollectionSnapshot | null;
+}) {
   const [family, setFamily] = useState<(typeof FAMILIES)[number]['value']>('all');
   const [sort, setSort] = useState<SortKey>('trending');
   const [query, setQuery] = useState('');
@@ -144,7 +151,7 @@ export function CategoriesDirectory({ categories }: { categories: CategoryMetric
         />
       ) : (
         <div className="overflow-hidden rounded-[20px] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
-          <div className="hidden grid-cols-[2.25rem_minmax(0,1.6fr)_5.5rem_6.5rem_5rem_5rem_6.5rem_5rem_5.5rem_5.5rem_2.5rem] items-center gap-3 border-b border-[var(--color-border-subtle)] px-6 py-3 text-[10px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)] lg:grid">
+          <div className="hidden grid-cols-[2.25rem_minmax(0,1.6fr)_5.5rem_6.5rem_5rem_5rem_6.5rem_5rem_5.5rem_5.5rem_6rem_2.5rem] items-center gap-3 border-b border-[var(--color-border-subtle)] px-6 py-3 text-[10px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)] lg:grid">
             <span>#</span>
             <span>Category</span>
             <span>Type</span>
@@ -155,6 +162,7 @@ export function CategoriesDirectory({ categories }: { categories: CategoryMetric
             <span className="text-right">Sales (24h)</span>
             <span className="text-right">Listed</span>
             <span className="text-right">Items</span>
+            <span className="text-right">Trend (7d)</span>
             <span />
           </div>
           <div className="flex flex-col divide-y divide-[var(--color-border-subtle)]">
@@ -173,6 +181,18 @@ export function CategoriesDirectory({ categories }: { categories: CategoryMetric
           </div>
         </div>
       )}
+
+      <div className="nv-glass flex flex-wrap items-center gap-4 rounded-[16px] px-4 py-3 text-[12px] text-[var(--color-text-secondary)]">
+        <span className="text-eyebrow">Market online</span>
+        <span>Categories {rows.length}</span>
+        {snapshot ? (
+          <>
+            <span>Official supply {snapshot.totalSupply.toLocaleString()}</span>
+            <span>Listed {snapshot.listedCount.toLocaleString()}</span>
+            <span>24h vol {payment(snapshot.volume24hNative, 'ETH')}</span>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { listCategories } from '@/lib/data/categories';
 import { CategoriesDirectory } from '@/components/category/CategoriesDirectory';
+import { getCollectionSnapshot } from '@/lib/data/tokens';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -8,6 +9,9 @@ export const metadata = {
 };
 
 export default async function CategoriesPage() {
-  const categories = await listCategories();
-  return <CategoriesDirectory categories={categories} />;
+  const [categories, snapshot] = await Promise.all([
+    listCategories(),
+    getCollectionSnapshot().catch(() => null),
+  ]);
+  return <CategoriesDirectory categories={categories} snapshot={snapshot} />;
 }
