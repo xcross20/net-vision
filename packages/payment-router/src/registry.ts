@@ -7,9 +7,10 @@ const CHAIN = ROBINHOOD_CHAIN.id;
  * Identity is assetId + contract, never ticker.
  * Cloudflare Stock Token NET ≠ NetNet $NET (9 decimals).
  *
- * USDG is the only direct settlement rail. Launch Stock Tokens are ENABLED
- * for non-US geography; conversion to USDG stays fail-closed until a router
- * is pinned. Cloudflare NET is not a launch checkout method.
+ * USDG is the only direct settlement rail. ETH and NetNet $NET are ENABLED
+ * in every jurisdiction. Launch Stock Tokens are ENABLED for non-US geography.
+ * Conversion to USDG stays fail-closed until a router is pinned.
+ * Cloudflare Stock Token NET is identity-only — never a checkout method.
  */
 export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
   {
@@ -32,7 +33,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     chainId: CHAIN,
     kind: 'native',
     decimals: 18,
-    status: 'DISABLED',
+    status: 'ENABLED',
     feeBps: 0,
     settlementRoutes: [],
   },
@@ -45,7 +46,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     contractAddress: '0xca9c78dd337a67f6e0077f65f5e9218719d30edf',
     decimals: 9,
     issuer: 'NetNet',
-    status: 'DISABLED',
+    status: 'ENABLED',
     feeBps: 0,
     settlementRoutes: [],
   },

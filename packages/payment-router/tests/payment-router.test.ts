@@ -46,8 +46,10 @@ function usdgQuote(overrides: Partial<PaymentQuote> = {}): PaymentQuote {
 }
 
 describe('registry', () => {
-  it('enables USDG plus launch Stock Tokens; ETH/NET/Cloudflare stay off', () => {
+  it('enables USDG, ETH, NetNet NET, and launch Stock Tokens; Cloudflare NET stays off', () => {
     expect(getEnabledPaymentAssets().map((a) => a.assetId).sort()).toEqual([
+      'eth',
+      'netnet-net',
       'rh-aapl',
       'rh-amzn',
       'rh-coin',
@@ -59,8 +61,8 @@ describe('registry', () => {
       'rh-tsla',
       'usdg',
     ]);
-    expect(getPaymentAsset('eth')?.status).toBe('DISABLED');
-    expect(getPaymentAsset('netnet-net')?.status).toBe('DISABLED');
+    expect(getPaymentAsset('eth')?.status).toBe('ENABLED');
+    expect(getPaymentAsset('netnet-net')?.status).toBe('ENABLED');
     expect(getPaymentAsset('rh-net-cloudflare')?.status).toBe('DISABLED');
   });
 
@@ -108,11 +110,23 @@ describe('jurisdiction', () => {
   it('US cannot get an executable Stock Token method', () => {
     const methods = listPaymentMethods('US');
     expect(methods.find((m) => m.assetId === 'usdg')?.available).toBe(true);
-    expect(methods.find((m) => m.assetId === 'eth')?.available).toBe(false);
+    expect(methods.find((m) => m.assetId === 'eth')?.available).toBe(true);
+    expect(methods.find((m) => m.assetId === 'netnet-net')?.available).toBe(true);
+    expect(methods.find((m) => m.assetId === 'rh-net-cloudflare')).toBeUndefined();
     const nvda = methods.find((m) => m.assetId === 'rh-nvda');
     expect(nvda?.available).toBe(false);
     expect(nvda?.jurisdiction).toBe('BLOCKED');
     expect(nvda?.reasonCode).toBe('REGION_RESTRICTED');
+  });
+
+  it('ETH and NetNet NET are available in every jurisdiction', () => {
+    for (const country of ['US', 'FR', null] as const) {
+      const methods = listPaymentMethods(country);
+      expect(methods.find((m) => m.assetId === 'eth')?.available).toBe(true);
+      expect(methods.find((m) => m.assetId === 'netnet-net')?.available).toBe(true);
+      expect(methods.find((m) => m.assetId === 'eth')?.feeBps).toBe(0);
+      expect(methods.find((m) => m.assetId === 'netnet-net')?.feeBps).toBe(0);
+    }
   });
 
   it('UNKNOWN jurisdiction cannot generate an executable Stock Token method', () => {

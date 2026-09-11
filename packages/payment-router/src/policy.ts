@@ -2,7 +2,7 @@ import { PAYMENT_TOKENS } from '@net-vision/chain-config';
 import { checkConfiguredChainId } from './chain';
 import { feeAmountUsdg, requiredUsdgOut } from './fees';
 import { PAYMENT_POLICY_VERSION, jurisdictionForAsset } from './jurisdiction';
-import { PAYMENT_ASSETS, getPaymentAsset } from './registry';
+import { CHECKOUT_HIDDEN_ASSET_IDS, PAYMENT_ASSETS, getPaymentAsset } from './registry';
 import type {
   PaymentAsset,
   PaymentPolicyDecision,
@@ -47,7 +47,9 @@ export function evaluateAssetPolicy(
 }
 
 export function listPaymentMethods(country: string | null): PaymentPolicyDecision[] {
-  return PAYMENT_ASSETS.map((asset) => evaluateAssetPolicy(asset, country));
+  return PAYMENT_ASSETS.filter((asset) => !CHECKOUT_HIDDEN_ASSET_IDS.has(asset.assetId)).map(
+    (asset) => evaluateAssetPolicy(asset, country),
+  );
 }
 
 export function validateDirectUsdgQuote(input: {
