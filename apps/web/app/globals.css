@@ -82,6 +82,10 @@
 
 html, body {
   background-color: var(--color-bg);
+  background-image:
+    radial-gradient(58% 42% at 72% 8%, rgba(79, 255, 137, 0.11), transparent 58%),
+    radial-gradient(48% 36% at 8% 92%, rgba(72, 235, 145, 0.05), transparent 52%);
+  background-attachment: fixed;
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -179,19 +183,43 @@ button {
     border-radius: var(--radius-lg);
   }
 
-  .nv-glass {
-    background: var(--glass-panel);
-    border: 1px solid var(--color-border-subtle);
-    backdrop-filter: blur(18px) saturate(140%);
-    -webkit-backdrop-filter: blur(18px) saturate(140%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  .nv-glass,
+  .nv-glass-1 {
+    background: linear-gradient(135deg, rgba(15, 31, 24, 0.62), rgba(5, 12, 9, 0.46));
+    border: 1px solid rgba(92, 255, 153, 0.14);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 12px 42px rgba(0, 0, 0, 0.28);
+  }
+
+  .nv-glass-2 {
+    background: linear-gradient(135deg, rgba(15, 31, 24, 0.78), rgba(5, 12, 9, 0.62));
+    border: 1px solid rgba(92, 255, 153, 0.16);
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 16px 48px rgba(0, 0, 0, 0.32);
+  }
+
+  .nv-glass-3 {
+    background: linear-gradient(135deg, rgba(18, 38, 28, 0.88), rgba(6, 14, 11, 0.78));
+    border: 1px solid rgba(92, 255, 153, 0.22);
+    backdrop-filter: blur(26px) saturate(160%);
+    -webkit-backdrop-filter: blur(26px) saturate(160%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 20px 56px rgba(0, 0, 0, 0.38),
+      0 0 28px rgba(66, 255, 137, 0.06);
   }
 
   .nv-glass-strong {
-    background: var(--glass-panel-strong);
-    border: 1px solid var(--color-border-default);
-    backdrop-filter: blur(22px) saturate(160%);
-    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    background: linear-gradient(135deg, rgba(15, 31, 24, 0.9), rgba(5, 12, 9, 0.82));
+    border: 1px solid rgba(92, 255, 153, 0.2);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
   }
 
   .nv-glow {
@@ -215,7 +243,11 @@ button {
   }
 
   @media (prefers-reduced-transparency: reduce) {
-    .nv-glass {
+    .nv-glass,
+    .nv-glass-1,
+    .nv-glass-2,
+    .nv-glass-3,
+    .nv-glass-strong {
       background: var(--color-surface-1);
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
@@ -223,19 +255,37 @@ button {
   }
 
   .nv-showroom-scrim {
-    background: linear-gradient(
-      90deg,
-      rgba(5, 9, 8, 0.92) 0%,
-      rgba(5, 9, 8, 0.72) 28%,
-      rgba(5, 9, 8, 0.28) 58%,
-      rgba(5, 9, 8, 0.08) 100%
-    );
+    background:
+      radial-gradient(circle at 64% 42%, rgba(79, 255, 137, 0.14), transparent 38%),
+      linear-gradient(
+        90deg,
+        rgba(3, 8, 6, 0.88) 0%,
+        rgba(3, 8, 6, 0.38) 38%,
+        rgba(3, 8, 6, 0.08) 70%,
+        rgba(3, 8, 6, 0.28) 100%
+      );
   }
 
   .nv-showroom-vignette {
-    background:
-      linear-gradient(180deg, rgba(5, 9, 8, 0.18) 0%, transparent 28%, rgba(5, 9, 8, 0.55) 100%),
-      radial-gradient(80% 70% at 78% 42%, transparent 20%, rgba(5, 9, 8, 0.35) 100%);
+    background: linear-gradient(180deg, transparent 42%, rgba(3, 8, 6, 0.42) 100%);
+  }
+
+  .nv-asset-card {
+    position: relative;
+    isolation: isolate;
+  }
+  .nv-asset-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 28%, rgba(67, 255, 139, 0.14), transparent 48%);
+    opacity: 0.7;
+    transition: opacity 180ms var(--ease-out);
+  }
+  .nv-asset-card:hover::before {
+    opacity: 1;
   }
 
   .nv-divider {

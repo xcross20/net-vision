@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { Heart } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
@@ -41,42 +41,44 @@ export function AssetCard({
 
   return (
     <motion.div
-      whileHover={{ y: -3 }}
-      whileTap={{ scale: 0.985 }}
-      transition={{ type: 'spring', stiffness: 240, damping: 22 }}
+      whileHover={{ y: -6 }}
+      whileTap={{ scale: 0.99 }}
+      transition={{ type: 'spring', stiffness: 260, damping: 22 }}
       className="group/card h-full"
     >
       <div
         className={cn(
-          'flex h-full flex-col overflow-hidden rounded-[18px]',
-          'border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]',
+          'nv-asset-card flex h-full flex-col overflow-hidden rounded-[22px]',
+          'border border-[rgba(92,255,153,0.12)] bg-[rgba(7,14,11,0.88)]',
+          'shadow-[0_18px_40px_rgba(0,0,0,0.28)]',
           'transition-[border-color,box-shadow] duration-200',
-          'hover:border-[var(--color-border-active)] hover:shadow-[var(--shadow-green-active)]',
+          'hover:border-[rgba(83,255,145,0.32)]',
+          'hover:shadow-[0_22px_60px_rgba(0,0,0,0.42),0_0_0_1px_rgba(83,255,145,0.28),0_0_36px_rgba(66,255,137,0.08)]',
         )}
       >
-        <Link href={`/tokens/${token.tokenId}`} className="relative block aspect-square overflow-hidden">
+        <Link href={`/tokens/${token.tokenId}`} className="relative block aspect-[4/5] overflow-hidden">
           <Image
             src={SHOWROOM_MEDIA.cardStage}
             alt=""
             fill
-            sizes="(min-width: 1280px) 18rem, 50vw"
-            className="object-cover opacity-80"
+            sizes="(min-width: 1280px) 24rem, 50vw"
+            className="object-cover"
             priority={priority}
           />
           <Image
             src={mediaSrc}
             alt={`Button Presser #${token.tokenId}`}
             fill
-            sizes="(min-width: 1280px) 18rem, 50vw"
+            sizes="(min-width: 1280px) 24rem, 50vw"
             priority={priority}
             unoptimized={unoptimized}
-            className="object-contain p-6 transition-transform duration-500 ease-out group-hover/card:scale-[1.04]"
+            className="relative z-[2] object-contain p-8 brightness-110 contrast-110 transition-transform duration-500 ease-out group-hover/card:scale-[1.03]"
             onError={() => {
               const fallback = buildTokenImageUrl(token.tokenId);
               if (src !== fallback) setSrc(fallback);
             }}
           />
-          <span className="nv-glass absolute left-3 top-3 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold text-[var(--color-net-green)]">
+          <span className="nv-glass-2 absolute left-3 top-3 z-[3] inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold text-[var(--color-net-green)]">
             #{token.tokenId}
           </span>
           <button
@@ -88,22 +90,22 @@ export function AssetCard({
               setFavorited((v) => !v);
             }}
             className={cn(
-              'absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-md',
+              'absolute right-3 top-3 z-[3] inline-flex h-9 w-9 items-center justify-center rounded-full border backdrop-blur-md',
               favorited
                 ? 'border-[var(--color-border-active)] bg-[rgba(72,235,145,0.16)] text-[var(--color-net-green)]'
-                : 'border-[var(--color-border-default)] bg-[rgba(8,12,10,0.72)] text-[var(--color-text-secondary)]',
+                : 'border-[var(--color-border-default)] bg-[rgba(8,12,10,0.55)] text-[var(--color-text-secondary)]',
             )}
           >
-            <Heart size={13} weight={favorited ? 'fill' : 'regular'} />
+            <Heart size={14} weight={favorited ? 'fill' : 'regular'} />
           </button>
         </Link>
 
-        <div className="flex flex-1 flex-col gap-3 p-4">
-          <Link href={`/tokens/${token.tokenId}`} className="flex flex-col gap-2">
-            <span className="truncate text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+        <div className="relative z-[2] flex flex-1 flex-col gap-4 p-5">
+          <Link href={`/tokens/${token.tokenId}`} className="flex flex-col gap-2.5">
+            <span className="truncate text-[17px] font-semibold tracking-tight text-[var(--color-text-primary)]">
               Button Presser #{token.tokenId}
             </span>
-            <span className="flex flex-wrap gap-1">
+            <span className="flex flex-wrap gap-1.5">
               {topTraits.length === 0 ? (
                 <span className="nv-chip">Button Presser</span>
               ) : (
@@ -116,10 +118,10 @@ export function AssetCard({
             </span>
           </Link>
           <div className="mt-auto flex items-end justify-between gap-3">
-            <Price value={ask} currency={token.currency} size="md" align="left" />
+            <Price value={ask} currency={token.currency} size="lg" align="left" />
             <span
               className={cn(
-                'text-numeral text-[12px]',
+                'text-numeral text-[13px]',
                 delta !== null && delta > 0
                   ? 'text-[var(--color-net-green)]'
                   : delta !== null && delta < 0
@@ -135,10 +137,10 @@ export function AssetCard({
             </span>
           </div>
           {canTrade ? (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2.5">
               <AddToCartButton
                 variant="primary"
-                className="h-10 text-[13px]"
+                className="h-11 text-[14px]"
                 draft={{
                   token,
                   displayedPriceDecimal: ask.toString(),
@@ -152,7 +154,7 @@ export function AssetCard({
                   displayedPriceDecimal: ask.toString(),
                   currencySymbol: token.currency,
                 }}
-                className="nv-button-ghost h-10 px-3 text-[13px] shadow-none"
+                className="nv-button-ghost h-11 px-3 text-[14px] shadow-none"
               />
             </div>
           ) : null}
