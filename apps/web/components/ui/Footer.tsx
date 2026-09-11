@@ -7,7 +7,7 @@ import { PRIMARY_NAV } from '@/lib/nav';
 export function Footer() {
   return (
     <footer className="mt-24 border-t border-[var(--color-border-subtle)]">
-      <PageContainer size="wide" className="flex flex-col gap-6 py-10 md:flex-row md:items-start md:gap-12 md:py-14">
+      <PageContainer size="cinematic" className="flex flex-col gap-6 py-10 md:flex-row md:items-start md:gap-12 md:py-14">
         <div className="flex flex-col gap-3 md:max-w-sm">
           <NetVisionLogo size="footer" />
           <p className="text-sm leading-relaxed text-[var(--color-text-secondary)]">
@@ -44,7 +44,7 @@ export function Footer() {
       </PageContainer>
 
       <div className="border-t border-[var(--color-border-subtle)]">
-        <PageContainer size="wide" className="flex flex-col gap-2 py-5 text-xs text-[var(--color-text-tertiary)] md:flex-row md:items-center">
+        <PageContainer size="cinematic" className="flex flex-col gap-2 py-5 text-xs text-[var(--color-text-tertiary)] md:flex-row md:items-center">
           <span>&copy; {new Date().getFullYear()} Net Vision. Non-custodial.</span>
           <span className="md:ml-auto">
             Button Presser on Robinhood Chain.

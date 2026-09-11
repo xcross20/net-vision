@@ -11,7 +11,7 @@ export function MarketMetricsBar({ items }: { items: MarketMetric[] }) {
   return (
     <div
       className={cn(
-        'grid grid-cols-2 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] sm:grid-cols-4',
+        'nv-glass grid grid-cols-2 overflow-hidden rounded-[18px] sm:grid-cols-4',
         items.length > 4 && 'xl:grid-cols-8',
       )}
     >

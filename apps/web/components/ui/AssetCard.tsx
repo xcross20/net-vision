@@ -47,9 +47,9 @@ export function AssetCard({
       <Link
         href={`/tokens/${token.tokenId}`}
         className={cn(
-          'flex h-full flex-col overflow-hidden rounded-[var(--radius-md)]',
+          'flex h-full flex-col overflow-hidden rounded-[18px]',
           'bg-[var(--color-surface-1)] transition-colors',
-          'border border-transparent hover:border-[var(--color-border-default)]',
+          'border border-[var(--color-border-subtle)] hover:border-[var(--color-border-active)]',
           'focus-visible:border-[var(--color-border-active)]',
         )}
       >
@@ -89,51 +89,24 @@ export function AssetCard({
               <Heart size={13} weight={favorited ? 'fill' : 'regular'} />
             </button>
           </div>
-          {canTrade ? (
-            <>
-              <div className="absolute inset-x-2 bottom-2 z-10 opacity-0 transition-all duration-200 group-hover/card:translate-y-0 group-hover/card:opacity-100 max-md:hidden">
-                <BuyNowButton
-                  draft={{
-                    token,
-                    displayedPriceDecimal: ask.toString(),
-                    currencySymbol: token.currency,
-                  }}
-                  className="h-9 px-3 text-[13px]"
-                />
-              </div>
-              <div className="absolute bottom-2 right-2 z-10 opacity-0 transition-opacity duration-200 group-hover/card:opacity-100 max-md:opacity-100">
-                <AddToCartButton
-                  variant="compact"
-                  className="border-[var(--color-border-default)] bg-[rgba(8,12,10,0.78)] backdrop-blur-md"
-                  draft={{
-                    token,
-                    displayedPriceDecimal: ask.toString(),
-                    currencySymbol: token.currency,
-                  }}
-                />
-              </div>
-            </>
-          ) : null}
         </div>
 
         <div className="flex flex-1 flex-col gap-3 p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <span className="truncate text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)]">
-                Button Presser #{token.tokenId}
-              </span>
-              <span className="flex flex-wrap gap-1">
-                {topTraits.length === 0 ? (
-                  <span className="nv-chip">Button Presser</span>
-                ) : (
-                  topTraits.map((trait) => (
-                    <span key={trait.slug} className="nv-chip">
-                      {trait.label}
-                    </span>
-                  ))
-                )}
-              </span>
-            </div>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <span className="truncate text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+              Button Presser #{token.tokenId}
+            </span>
+            <span className="flex flex-wrap gap-1">
+              {topTraits.length === 0 ? (
+                <span className="nv-chip">Button Presser</span>
+              ) : (
+                topTraits.map((trait) => (
+                  <span key={trait.slug} className="nv-chip">
+                    {trait.label}
+                  </span>
+                ))
+              )}
+            </span>
           </div>
           <div className="mt-auto flex items-end justify-between gap-3">
             <Price value={ask} currency={token.currency} size="md" align="left" />
@@ -145,6 +118,27 @@ export function AssetCard({
                   : 'Unranked'}
             </span>
           </div>
+          {canTrade ? (
+            <div className="flex items-center gap-2" onClick={(e) => e.preventDefault()}>
+              <BuyNowButton
+                draft={{
+                  token,
+                  displayedPriceDecimal: ask.toString(),
+                  currencySymbol: token.currency,
+                }}
+                className="h-10 flex-1 px-3 text-[13px]"
+              />
+              <AddToCartButton
+                variant="compact"
+                className="border-[var(--color-border-default)]"
+                draft={{
+                  token,
+                  displayedPriceDecimal: ask.toString(),
+                  currencySymbol: token.currency,
+                }}
+              />
+            </div>
+          ) : null}
         </div>
       </Link>
     </motion.div>

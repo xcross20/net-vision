@@ -45,7 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="flex min-h-[100dvh] flex-col">
               <MarketHeaderClient />
               <main className="flex-1">
-                <PageContainer size="wide" className="pb-16 pt-10 md:pb-24 md:pt-16">
+                <PageContainer size="cinematic" className="pb-16 pt-6 md:pb-24 md:pt-8">
                   {children}
                 </PageContainer>
               </main>

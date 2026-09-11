@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CategoryMetrics, Token } from '@/lib/market';
 import { useLiveCategory } from '@/lib/market/use-live-metrics';
 import { CategoryHero } from './CategoryHero';
-import { CategoryMetricsStrip } from './CategoryMetrics';
 import { CategoryTabs, type CategoryTab } from './CategoryTabs';
 import { CategoryListings } from './CategoryListings';
 import { CategorySales } from './CategorySales';
@@ -135,27 +134,33 @@ export function CategoryMarket({
     <div className="flex flex-col gap-10 pb-24">
       <CategoryHero
         metrics={liveMetrics}
-        heroToken={tokens[0] ?? initialTokens[0] ?? null}
         onSweep={() => setSweepOpen(true)}
         sweepDisabled={liveMetrics.marketStatus === 'syncing'}
       />
-      <CategoryMetricsStrip metrics={liveMetrics} />
       <div className="flex flex-col gap-6">
         <CategoryTabs value={tab} onChange={setTab} listedCount={liveMetrics.listedCount} />
 
         {tab === 'listings' ? (
           <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-display text-xl text-[var(--color-text-primary)]">
+                {liveMetrics.name} Button Pressers
+                <span className="ml-3 text-[13px] font-normal text-[var(--color-text-tertiary)]">
+                  {liveMetrics.memberSupply.toLocaleString()} items
+                </span>
+              </h2>
+            </div>
             <div className="flex flex-wrap gap-2">
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search this category..."
-                className="h-10 min-w-[12rem] flex-1 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-3 text-sm"
+                placeholder={`Search in ${liveMetrics.name}...`}
+                className="h-10 min-w-[12rem] flex-1 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-4 text-sm"
               />
               <select
                 value={material}
                 onChange={(e) => setMaterial(e.target.value)}
-                className="h-10 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-3 text-sm"
+                className="h-10 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-4 text-sm"
               >
                 <option value="">Material</option>
                 {materials.map((c) => (
@@ -167,7 +172,7 @@ export function CategoryMarket({
               <select
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
-                className="h-10 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-3 text-sm"
+                className="h-10 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-4 text-sm"
               >
                 <option value="">Pattern</option>
                 {patterns.map((c) => (

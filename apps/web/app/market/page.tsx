@@ -1,7 +1,11 @@
 import Link from 'next/link';
+import { ArrowRight } from '@phosphor-icons/react/dist/ssr';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { MarketView } from '@/components/ui/MarketView';
-import { CollectionPulse } from '@/components/ui/CollectionPulse';
+import { CinematicHero, ShowroomAside } from '@/components/showroom/CinematicHero';
+import { SHOWROOM_MEDIA } from '@/lib/brand/media';
+import { compact, payment } from '@/lib/format';
+import { Cube, ListBullets, Tag, Users } from '@phosphor-icons/react/dist/ssr';
 import { getMarketSource } from '@/lib/market';
 
 export const dynamic = 'force-dynamic';
@@ -23,41 +27,52 @@ export default async function MarketPage() {
   const live = snapshot.marketStatus === 'live' && freshness.fresh;
 
   return (
-    <div className="flex flex-col gap-10">
-      <header className="flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <span className="text-eyebrow">Market</span>
-          <LiveIndicator
-            tone={live ? 'green' : 'amber'}
-            size={6}
-            label={live ? 'Live' : 'Syncing'}
-          />
-        </div>
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-          <h1 className="text-display text-[clamp(2.25rem,5vw,3.75rem)] text-[var(--color-text-primary)]">
-            Button Presser
-          </h1>
-          <span className="text-eyebrow-muted">
-            {listedCount.toLocaleString()} {syncing ? 'known listed' : 'listed'}
+    <div className="flex flex-col gap-8">
+      <CinematicHero
+        imageSrc={SHOWROOM_MEDIA.homepageHero}
+        imageAlt="Cinematic Button Presser plaques staged in a showroom environment"
+        eyebrow="Market"
+        title="Button Presser"
+        kicker={
+          <span className="inline-flex items-center gap-2">
+            <LiveIndicator tone={live ? 'green' : 'amber'} size={6} label={live ? 'Live' : 'Syncing'} />
           </span>
-        </div>
-        <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
-          {listedCount === 0
+        }
+        body={
+          listedCount === 0
             ? 'Verified listings are still syncing. Unknown tokens are not treated as unlisted.'
             : syncing
-              ? 'Known verified asks from the worker index. Coverage is still below live threshold — this is not a complete book.'
-              : 'Active verified asks on Button Presser. Connect a wallet to buy or make an offer.'}
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href="/categories" className="nv-button nv-button-ghost">
-            Filter by category
-          </Link>
-          <Link href="/activity" className="text-sm text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]">
-            Recent activity →
-          </Link>
-        </div>
-        <CollectionPulse snapshot={snapshot} freshness={freshness} />
-      </header>
+              ? 'Known verified asks from the worker index. Coverage is still below live threshold - this is not a complete book.'
+              : 'Active verified asks on Button Presser. Connect a wallet to buy or make an offer.'
+        }
+        actions={
+          <>
+            <Link href="/categories" className="nv-button">
+              Filter by category
+              <ArrowRight size={14} weight="bold" />
+            </Link>
+            <Link href="/activity" className="nv-button nv-button-ghost">
+              Recent activity
+            </Link>
+          </>
+        }
+        aside={<ShowroomAside lines={['Real numbers.', 'Real brass.', 'Real owners.']} />}
+        metrics={[
+          { label: 'Items', value: compact(snapshot.totalSupply), icon: <Cube size={16} weight="duotone" /> },
+          {
+            label: 'Floor',
+            value: payment(snapshot.floorPrice, snapshot.currency),
+            icon: <Tag size={16} weight="duotone" />,
+            emphasis: true,
+          },
+          {
+            label: syncing ? 'Known listed' : 'Listed',
+            value: listedCount.toLocaleString(),
+            icon: <ListBullets size={16} weight="duotone" />,
+          },
+          { label: 'Owners', value: compact(snapshot.owners), icon: <Users size={16} weight="duotone" /> },
+        ]}
+      />
 
       <MarketView tokens={tokens} categories={[]} />
     </div>
