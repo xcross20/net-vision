@@ -7,7 +7,7 @@ import { VIRTUAL_COLLECTION_CATALOG, classifyNumber, type NumberTrait, type Toke
 import { DEFAULT_PAYMENT_CURRENCY, type CategoryMetrics, type CollectionSnapshot, type DataFreshness, type Token } from './types';
 import { resolveTokenImageUrl } from '../data/media';
 import type { MarketSource, ListTokensFilter, ListTokensPage, Offer, Sale, SalesWindow } from './source';
-import { MS_DAY, type SweepPreview, type SweepPreviewInput, type FloorSnapshot } from './engine';
+import { MS_DAY, previewFloorSweep, type SweepPreview, type SweepPreviewInput, type FloorSnapshot } from './engine';
 import {
   bootstrapCoverage,
   bootstrapMarketStatus,
@@ -291,14 +291,33 @@ export class SqlMarketSource implements MarketSource {
     return [];
   }
 
-  async previewSweep(_slug: string, _input: SweepPreviewInput): Promise<SweepPreview> {
+  async previewSweep(slug: string, input: SweepPreviewInput): Promise<SweepPreview> {
+    const rows = await this.reads.listListedTokens(this.collectionId, slug, 200, 0);
+    const listings = rows
+      .filter((row) => row.price != null && Number.isFinite(row.price))
+      .map((row) => ({
+        tokenId: String(row.tokenId),
+        price: row.price as number,
+        currency: row.currency ?? DEFAULT_PAYMENT_CURRENCY,
+        listedAt: row.listedAt,
+        ownerAddress: row.ownerAddress,
+        orderHash: row.orderHash,
+      }));
+    const preview = previewFloorSweep(listings, input);
+    const byId = new Map(rows.map((row) => [String(row.tokenId), row]));
     return {
-      strategy: 'floor',
-      items: [],
-      count: 0,
-      total: 0,
-      currency: DEFAULT_PAYMENT_CURRENCY,
-      truncated: false,
+      ...preview,
+      items: preview.items.map((item) => {
+        const row = byId.get(item.tokenId);
+        return {
+          ...item,
+          contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
+          chainId: ROBINHOOD_CHAIN.id,
+          imageUrl: resolveTokenImageUrl(item.tokenId, row?.imageUrl ?? null),
+          name: row?.name ?? `#${item.tokenId}`,
+          listingPriceRaw: row?.price != null ? String(Math.round(row.price * 1_000_000)) : null,
+        };
+      }),
     };
   }
 

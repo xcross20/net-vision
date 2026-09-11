@@ -7,8 +7,8 @@ import type { Token } from '@/lib/market';
 import { CollectibleCard } from '@/components/market/CollectibleCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Tabs } from '@/components/ui/Tabs';
+import { ListDrawer } from '@/components/listing/ListDrawer';
 import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
-import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import { payment } from '@/lib/format';
 import { VIRTUAL_COLLECTION_CATALOG } from '@net-vision/taxonomy';
 
@@ -19,6 +19,7 @@ export function PortfolioView() {
   const [tab, setTab] = useState<Tab>('inventory');
   const [tokens, setTokens] = useState<Token[]>([]);
   const [unavailable, setUnavailable] = useState(false);
+  const [listingToken, setListingToken] = useState<Token | null>(null);
   const { tokens: watchedIds, categories: watchedCategories } = useWatchlist();
 
   useEffect(() => {
@@ -140,11 +141,19 @@ export function PortfolioView() {
           {(tab === 'listed' ? listed : tokens).map((token) => (
             <div key={token.tokenId} className="flex flex-col gap-2">
               <CollectibleCard token={token} selectable={false} />
-              <ListAssetButton token={token} />
+              <button
+                type="button"
+                onClick={() => setListingToken(token)}
+                className="nv-button nv-button-ghost text-center"
+              >
+                {token.listingPrice !== null ? 'Edit listing' : 'List on Net Vision'}
+              </button>
             </div>
           ))}
         </div>
       ) : null}
+
+      <ListDrawer open={listingToken !== null} token={listingToken} onClose={() => setListingToken(null)} />
 
       {tab === 'watchlist' ? (
         <div className="flex flex-col gap-3">
@@ -173,17 +182,4 @@ export function PortfolioView() {
   );
 }
 
-function ListAssetButton({ token }: { token: Token }) {
-  const href = `https://opensea.io/assets/robinhood/${BUTTON_PRESSER_COLLECTION.contractAddress}/${token.tokenId}`;
-  const listed = token.listingPrice !== null;
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="nv-button nv-button-ghost text-center"
-    >
-      {listed ? 'Edit listing' : 'List'}
-    </a>
-  );
-}
+
