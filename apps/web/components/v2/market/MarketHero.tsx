@@ -10,8 +10,10 @@ import { GlassMetrics, type GlassMetric } from '@/components/showroom/GlassMetri
 
 export function MarketHero({
   metrics,
+  coverage,
 }: {
   metrics: GlassMetric[];
+  coverage?: { verified: number; total: number; lastFetchAt: number | null };
 }) {
   const ref = useRef<HTMLElement>(null);
   const mx = useMotionValue(0);
@@ -21,6 +23,10 @@ export function MarketHero({
   const bgX = useTransform(x, [-40, 40], [-12, 12]);
   const bgY = useTransform(y, [-40, 40], [-8, 8]);
   const fogX = useTransform(x, [-40, 40], [8, -8]);
+  const coveragePct =
+    coverage && coverage.total > 0
+      ? Math.round((coverage.verified / coverage.total) * 100)
+      : null;
 
   return (
     <section
@@ -62,14 +68,14 @@ export function MarketHero({
             <span className="text-[11px] font-medium uppercase tracking-[0.24em] text-[var(--color-net-green)]">
               Marketplace · Live
             </span>
-            <h1 className="text-display text-[clamp(3.25rem,6.2vw,4.6rem)] leading-[0.94] text-[var(--color-text-primary)]">
-              Button Presser
-              <span className="mt-1 block whitespace-nowrap text-[clamp(2.1rem,4.4vw,3.35rem)] leading-[1.02] text-[var(--color-net-green)]">
-                The Market for Numbers.
+            <h1 className="text-display text-[clamp(2.6rem,5.2vw,4.1rem)] leading-[0.96] text-[var(--color-text-primary)]">
+              <span className="text-[var(--color-net-green)]">Net Vision</span>
+              <span className="mt-1 block whitespace-nowrap text-[clamp(1.7rem,3.2vw,2.4rem)] leading-[1.06] text-[var(--color-text-primary)]">
+                The Intelligence Layer for the NetNet Economy.
               </span>
             </h1>
-            <p className="max-w-[42ch] text-[16px] leading-relaxed text-[var(--color-text-secondary)] md:text-[17px]">
-              Collect. Trade. Build what's next. Iconic numbers. Real ownership. A more connected tomorrow.
+            <p className="max-w-[58ch] text-[15px] leading-relaxed text-[var(--color-text-secondary)] md:text-[16px]">
+              Markets, collectibles, payments, and opportunity. One interface to understand, track, and act across the NetNet ecosystem.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Link href="/categories" className="nv-button h-12 px-6 text-[15px]">
@@ -80,6 +86,17 @@ export function MarketHero({
                 <ChartLine size={16} weight="bold" />
                 View analytics
               </Link>
+              {coveragePct !== null ? (
+                <Link
+                  href="/admin/coverage"
+                  className="nv-glass-2 inline-flex h-12 items-center gap-2 rounded-full px-4 text-[12px] text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
+                  title="Canonical metadata coverage"
+                >
+                  <ChartLine size={14} weight="duotone" className="text-[var(--color-net-green)]" />
+                  <span className="text-numeral">{coveragePct}%</span>
+                  <span className="text-[var(--color-text-tertiary)]">metadata cached</span>
+                </Link>
+              ) : null}
             </div>
           </div>
           <div className="hidden lg:col-span-5 lg:flex lg:justify-end">

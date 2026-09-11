@@ -18,6 +18,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { compact, payment } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import type { CategoryMetrics, CollectionSnapshot, DataFreshness, Token } from '@/lib/market';
+import type { MetadataCoverage } from '@/lib/index/store';
 
 type Sort = 'recent' | 'price-asc' | 'price-desc';
 
@@ -41,6 +42,26 @@ export function MarketShowroom({
   const [remoteTotal, setRemoteTotal] = useState<number | null>(null);
   const [remoteError, setRemoteError] = useState(false);
   const [remoteLoading, setRemoteLoading] = useState(false);
+  const [coverage, setCoverage] = useState<MetadataCoverage | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/coverage', { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = (await res.json()) as MetadataCoverage;
+        if (!cancelled) setCoverage(json);
+      } catch {
+        if (!cancelled) setCoverage(null);
+      }
+    };
+    void load();
+    const id = window.setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
   const live = snapshot.marketStatus === 'live' && freshness.fresh;
   const PINNED = ['palindrome', 'repdigit', 'digits-3', 'material-brass', 'digits-4', 'digits-5', 'double'];
   const pills = useMemo(() => {
@@ -119,6 +140,11 @@ export function MarketShowroom({
   return (
     <div className="flex flex-col gap-5">
       <MarketHero
+        coverage={
+          coverage
+            ? { verified: coverage.verified, total: coverage.total, lastFetchAt: coverage.lastSuccessAt }
+            : undefined
+        }
         metrics={[
           {
             label: 'Total items',
