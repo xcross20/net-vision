@@ -8,7 +8,7 @@ import {
 import { isIndexerRunning, isMetadataBootstrapRunning } from '@/lib/index/worker';
 import { buildIndexerHealthReport } from '@/lib/index/health';
 import { readCanonicalCoverage } from '@/lib/index/canonical-metadata-store';
-import { cacheCoveragePercent } from '@/lib/index/canonical-metadata';
+import { serializeCacheCoverage } from '@/lib/index/canonical-metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,24 +22,10 @@ export async function GET() {
   const worker = workerCheckpoint();
   const metadataWorker = metadataCheckpoint();
   const indexer = buildIndexerHealthReport();
-  let cacheCoverage: {
-    officialSupply: number;
-    metadataVerified: number;
-    metadataCoveragePct: number;
-    imagesCached: number;
-    imageCoveragePct: number;
-  } | null = null;
+  let cacheCoverage: ReturnType<typeof serializeCacheCoverage> | null = null;
   try {
     const coverage = await readCanonicalCoverage();
-    if (coverage) {
-      cacheCoverage = {
-        officialSupply: coverage.officialSupply,
-        metadataVerified: coverage.verified,
-        metadataCoveragePct: cacheCoveragePercent(coverage.verified),
-        imagesCached: coverage.imagesCached,
-        imageCoveragePct: cacheCoveragePercent(coverage.imagesCached),
-      };
-    }
+    if (coverage) cacheCoverage = serializeCacheCoverage(coverage);
   } catch {
     cacheCoverage = null;
   }

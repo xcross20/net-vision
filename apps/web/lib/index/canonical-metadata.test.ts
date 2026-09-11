@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import {
+  bootstrapHeartbeatFresh,
   cacheCoveragePercent,
   canonicalMediaPath,
+  coverageEtaHours,
   coverageTotalsMustSum,
   decodeSvgFromDataUri,
+  isCanonicalBootstrapComplete,
   isCanonicalTokenId,
   officialSupply,
   parseOnChainTokenUri,
+  serializeCacheCoverage,
   tokenUriCalldata,
   verifyMetadataIdentity,
 } from './canonical-metadata';
+import { planForwardIds, mapPool } from './canonical-metadata-bootstrap';
 import { nextOfficialTokenId } from './canonical-metadata-store';
 
 function dataUri(payload: object): string {
@@ -134,6 +139,87 @@ describe('cacheCoveragePercent — whole-collection image cache percentage', () 
     expect(cacheCoveragePercent(1234)).toBe(1.99);
     // 9876 / 62093 = 0.1590552… → 15.91%
     expect(cacheCoveragePercent(9876)).toBe(15.91);
+  });
+});
+
+describe('coverageEtaHours + complete + heartbeat', () => {
+  it('returns 0 when nothing remains', () => {
+    expect(coverageEtaHours(0, 10)).toBe(0);
+    expect(coverageEtaHours(-1, 10)).toBe(0);
+  });
+
+  it('returns null when rate is unknown', () => {
+    expect(coverageEtaHours(1000, 0)).toBeNull();
+    expect(coverageEtaHours(1000, -4)).toBeNull();
+  });
+
+  it('matches 15-20h envelope at the target rate', () => {
+    // 62093 remaining at 60/min = 17.248 hours
+    const hours = coverageEtaHours(62093, 60);
+    expect(hours).toBeGreaterThan(15);
+    expect(hours).toBeLessThan(20);
+  });
+
+  it('is complete only when both metadata and images cover official supply', () => {
+    expect(
+      isCanonicalBootstrapComplete({ officialSupply: 62093, verified: 62093, imagesCached: 62093 }),
+    ).toBe(true);
+    expect(
+      isCanonicalBootstrapComplete({ officialSupply: 62093, verified: 62093, imagesCached: 10 }),
+    ).toBe(false);
+    expect(
+      isCanonicalBootstrapComplete({ officialSupply: 62093, verified: 0, imagesCached: 0 }),
+    ).toBe(false);
+  });
+
+  it('heartbeat is fresh within 120s and stale after', () => {
+    const now = Date.parse('2026-09-11T18:00:00.000Z');
+    expect(bootstrapHeartbeatFresh('2026-09-11T17:59:00.000Z', now)).toBe(true);
+    expect(bootstrapHeartbeatFresh('2026-09-11T17:57:00.000Z', now)).toBe(false);
+    expect(bootstrapHeartbeatFresh(null, now)).toBe(false);
+  });
+
+  it('serializeCacheCoverage remaining is min(verified, images) gap to supply', () => {
+    const serialized = serializeCacheCoverage({
+      officialSupply: 62093,
+      verified: 1000,
+      missing: 0,
+      invalid: 0,
+      retry: 50,
+      identityBlock: 0,
+      unknown: 61043,
+      imagesCached: 800,
+      lastSuccessAt: '2026-09-11T18:00:00.000Z',
+      lastTokenId: 1000,
+      processed: 1050,
+      checkpointUpdatedAt: '2026-09-11T18:00:00.000Z',
+    });
+    expect(serialized.remaining).toBe(62093 - 800);
+    expect(serialized.complete).toBe(false);
+    expect(serialized.metadataCoveragePct).toBe(cacheCoveragePercent(1000));
+    expect(serialized.imageCoveragePct).toBe(cacheCoveragePercent(800));
+  });
+});
+
+describe('planForwardIds + mapPool', () => {
+  it('plans a contiguous official range from the checkpoint', () => {
+    expect(planForwardIds(0, 0, 1, 5)).toEqual([1, 2, 3, 4, 5]);
+    expect(planForwardIds(62090, 0, 1, 10)).toEqual([62091, 62092, 62093]);
+    expect(planForwardIds(62093, 0, 1, 10)).toEqual([]);
+  });
+
+  it('mapPool respects concurrency and preserves order', async () => {
+    let live = 0;
+    let maxLive = 0;
+    const out = await mapPool([1, 2, 3, 4, 5, 6], 2, async (n) => {
+      live += 1;
+      maxLive = Math.max(maxLive, live);
+      await new Promise((r) => setTimeout(r, 20));
+      live -= 1;
+      return n * 10;
+    });
+    expect(out).toEqual([10, 20, 30, 40, 50, 60]);
+    expect(maxLive).toBe(2);
   });
 });
 

@@ -195,3 +195,96 @@ export function cacheCoveragePercent(cachedCount: number): number {
   const clamped = Math.max(0, Math.min(1, ratio));
   return Math.round(clamped * 10000) / 100;
 }
+
+/**
+ * Hours remaining to finish the uncached remainder at `tokensPerMinute`.
+ * 0 remaining → 0. Null when we have no usable rate yet.
+ */
+export function coverageEtaHours(remaining: number, tokensPerMinute: number): number | null {
+  if (remaining <= 0) return 0;
+  if (!(tokensPerMinute > 0)) return null;
+  return remaining / tokensPerMinute / 60;
+}
+
+export function isCanonicalBootstrapComplete(input: {
+  officialSupply: number;
+  verified: number;
+  imagesCached: number;
+}): boolean {
+  return input.verified >= input.officialSupply && input.imagesCached >= input.officialSupply;
+}
+
+/** Heartbeat is fresh if the checkpoint moved within this window. */
+export const BOOTSTRAP_HEARTBEAT_FRESH_MS = 120_000;
+
+export function bootstrapHeartbeatFresh(
+  lastSuccessAt: string | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (!lastSuccessAt) return false;
+  const ts = Date.parse(lastSuccessAt);
+  if (!Number.isFinite(ts)) return false;
+  return now - ts < BOOTSTRAP_HEARTBEAT_FRESH_MS;
+}
+
+export type SerializedCacheCoverage = {
+  officialSupply: number;
+  metadataVerified: number;
+  metadataCoveragePct: number;
+  imagesCached: number;
+  imageCoveragePct: number;
+  missing: number;
+  invalid: number;
+  retry: number;
+  identityBlock: number;
+  unknown: number;
+  lastTokenId: number;
+  processed: number;
+  lastSuccessAt: string | null;
+  checkpointUpdatedAt: string | null;
+  complete: boolean;
+  heartbeatFresh: boolean;
+  remaining: number;
+};
+
+export function serializeCacheCoverage(
+  coverage: {
+    officialSupply: number;
+    verified: number;
+    missing: number;
+    invalid: number;
+    retry: number;
+    identityBlock: number;
+    unknown: number;
+    imagesCached: number;
+    lastSuccessAt: string | null;
+    lastTokenId: number;
+    processed: number;
+    checkpointUpdatedAt: string | null;
+  },
+  now = Date.now(),
+): SerializedCacheCoverage {
+  const remaining = Math.max(
+    0,
+    coverage.officialSupply - Math.min(coverage.verified, coverage.imagesCached),
+  );
+  return {
+    officialSupply: coverage.officialSupply,
+    metadataVerified: coverage.verified,
+    metadataCoveragePct: cacheCoveragePercent(coverage.verified),
+    imagesCached: coverage.imagesCached,
+    imageCoveragePct: cacheCoveragePercent(coverage.imagesCached),
+    missing: coverage.missing,
+    invalid: coverage.invalid,
+    retry: coverage.retry,
+    identityBlock: coverage.identityBlock,
+    unknown: coverage.unknown,
+    lastTokenId: coverage.lastTokenId,
+    processed: coverage.processed,
+    lastSuccessAt: coverage.lastSuccessAt,
+    checkpointUpdatedAt: coverage.checkpointUpdatedAt,
+    complete: isCanonicalBootstrapComplete(coverage),
+    heartbeatFresh: bootstrapHeartbeatFresh(coverage.lastSuccessAt, now),
+    remaining,
+  };
+}

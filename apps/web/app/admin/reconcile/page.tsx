@@ -46,7 +46,11 @@ export default async function ReconcilePage() {
         <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
           Net Vision counts come from verified listing state. OpenSea column is a
           manual oracle during the rebuild — paste filtered collection counts
-          from the OpenSea UI.
+          from the OpenSea UI.{' '}
+          <a href="/coverage" className="underline underline-offset-4">
+            Live metadata + image cache tracker
+          </a>
+          .
         </p>
       </header>
 
