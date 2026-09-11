@@ -42,15 +42,6 @@ export function CheckoutPaymentPicker({
       aria-label="Select payment method"
       className="nv-glass-2 flex flex-col gap-5 rounded-[20px] p-5"
     >
-      <header className="flex flex-col gap-1">
-        <h2 className="text-display text-[clamp(1.6rem,3vw,2.2rem)] text-[var(--color-text-primary)]">
-          Select <span className="text-[var(--color-net-green)]">Payment Method</span>
-        </h2>
-        <p className="text-[13px] text-[var(--color-text-secondary)]">
-          Choose how you'd like to pay for your Net Vision purchase.
-        </p>
-      </header>
-
       {groups.map((group) => (
         <PaymentGroup
           key={group.kind}
