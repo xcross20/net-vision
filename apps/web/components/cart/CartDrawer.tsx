@@ -58,10 +58,20 @@ export function CartDrawer() {
               ← Continue shopping
             </button>
             <h2 className="text-display text-[clamp(1.8rem,4vw,2.6rem)]">
-              Your <span className="text-[var(--color-net-green)]">Cart</span>
+              {phase.kind === 'payment_select' ? (
+                <>
+                  Select <span className="text-[var(--color-net-green)]">Payment Method</span>
+                </>
+              ) : (
+                <>
+                  Your <span className="text-[var(--color-net-green)]">Cart</span>
+                </>
+              )}
             </h2>
             <p className="text-sm text-[var(--color-text-secondary)]">
-              Review your items, confirm availability, and complete your purchase.
+              {phase.kind === 'payment_select'
+                ? 'Choose how you would like to pay for your Net Vision purchase.'
+                : 'Review your items, confirm availability, and complete your purchase.'}
             </p>
           </div>
           <button
@@ -74,50 +84,56 @@ export function CartDrawer() {
           </button>
         </header>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1.4fr)_24rem]">
-          <div className="px-5 py-5 md:px-8">
-            {items.length === 0 ? (
-              <EmptyCart onBrowse={close} />
-            ) : (
-              <ul className="flex flex-col gap-3">
-                {items.map((item) => (
-                  <CartItemRow
-                    key={`${item.contractAddress}-${item.tokenId}`}
-                    item={item}
-                    executionLocked={!canRemoveCartAsset(phase, item).ok}
-                    onRemove={() => remove(item.tokenId, item.contractAddress)}
-                  />
-                ))}
-              </ul>
-            )}
+        {phase.kind === 'payment_select' && items.length > 0 ? (
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 md:px-8">
+            <CartCheckout />
+          </div>
+        ) : (
+          <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto lg:grid-cols-[minmax(0,1.4fr)_24rem]">
+            <div className="px-5 py-5 md:px-8">
+              {items.length === 0 ? (
+                <EmptyCart onBrowse={close} />
+              ) : (
+                <ul className="flex flex-col gap-3">
+                  {items.map((item) => (
+                    <CartItemRow
+                      key={`${item.contractAddress}-${item.tokenId}`}
+                      item={item}
+                      executionLocked={!canRemoveCartAsset(phase, item).ok}
+                      onRemove={() => remove(item.tokenId, item.contractAddress)}
+                    />
+                  ))}
+                </ul>
+              )}
+              {items.length > 0 ? (
+                <div className="mt-4 flex items-center justify-between text-[12px]">
+                  <span className="text-[var(--color-text-tertiary)]">
+                    {itemCount} item{itemCount === 1 ? '' : 's'} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm('Clear all items from the cart?')) clear();
+                    }}
+                    className="inline-flex items-center gap-1 text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-danger)]"
+                  >
+                    <Trash size={11} weight="bold" />
+                    Remove selected
+                  </button>
+                </div>
+              ) : null}
+            </div>
             {items.length > 0 ? (
-              <div className="mt-4 flex items-center justify-between text-[12px]">
-                <span className="text-[var(--color-text-tertiary)]">
-                  {itemCount} item{itemCount === 1 ? '' : 's'} selected
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirm('Clear all items from the cart?')) clear();
-                  }}
-                  className="inline-flex items-center gap-1 text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-danger)]"
-                >
-                  <Trash size={11} weight="bold" />
-                  Remove selected
-                </button>
+              <div className="flex flex-col gap-3 border-t border-[var(--color-border-subtle)] bg-[rgba(5,9,8,0.45)] px-5 py-5 md:px-6 lg:border-l lg:border-t-0">
+                <p className="text-[11px] leading-relaxed text-[var(--color-text-tertiary)]">
+                  Listings are rechecked against OpenSea before checkout. Prices and availability
+                  may have changed since you added items.
+                </p>
+                <CartCheckout />
               </div>
             ) : null}
           </div>
-          {items.length > 0 ? (
-            <div className="flex flex-col gap-3 border-t border-[var(--color-border-subtle)] bg-[rgba(5,9,8,0.45)] px-5 py-5 md:px-6 lg:border-l lg:border-t-0">
-              <p className="text-[11px] leading-relaxed text-[var(--color-text-tertiary)]">
-                Listings are rechecked against OpenSea before checkout. Prices and availability
-                may have changed since you added items.
-              </p>
-              <CartCheckout />
-            </div>
-          ) : null}
-        </div>
+        )}
       </aside>
     </div>
   );
