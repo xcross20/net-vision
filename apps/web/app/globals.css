@@ -82,6 +82,10 @@
 
 html, body {
   background-color: var(--color-bg);
+  background-image:
+    radial-gradient(70% 45% at 78% 6%, rgba(72, 235, 145, 0.09), transparent 58%),
+    radial-gradient(55% 40% at 8% 88%, rgba(72, 235, 145, 0.045), transparent 52%);
+  background-attachment: fixed;
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -201,6 +205,14 @@ button {
   .nv-glow-active {
     box-shadow: var(--shadow-green-active);
     border-color: var(--color-border-active);
+  }
+
+  .nv-category-grid {
+    display: grid;
+    grid-template-columns:
+      2.25rem minmax(0, 1.7fr) 5.5rem 6.5rem 5rem 5rem 6.5rem 5rem 5.5rem 5.5rem 6.5rem 2.5rem;
+    align-items: center;
+    column-gap: 0.75rem;
   }
 
   .nv-metric-card {
