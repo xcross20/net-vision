@@ -1,13 +1,13 @@
 import Link from 'next/link';
-import { ArrowRight, ArrowUpRight } from '@phosphor-icons/react/dist/ssr';
-import { LayeredHeroArt } from '@/components/ui/LayeredHeroArt';
-import { CollectionPulse } from '@/components/ui/CollectionPulse';
+import Image from 'next/image';
+import { ArrowRight, ChartLine, Cube, ListBullets, Tag, Users } from '@phosphor-icons/react/dist/ssr';
 import { CategoryCard } from '@/components/ui/CategoryCard';
 import { AssetCard } from '@/components/ui/AssetCard';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { SalesOffersList, type SaleOrOfferEntry } from '@/components/ui/SalesOffersList';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PaymentMethodStrip } from '@/components/commerce/PaymentMethodStrip';
+import { CinematicHero, ShowroomAside } from '@/components/showroom/CinematicHero';
 import { compact, payment } from '@/lib/format';
 import { listCategories } from '@/lib/data/categories';
 import {
@@ -18,6 +18,7 @@ import {
 } from '@/lib/data/tokens';
 import { getMarketSource } from '@/lib/market';
 import { baseCollectionSnapshot } from '@/lib/market/collection-facts';
+import { SHOWROOM_MEDIA } from '@/lib/brand/media';
 import type { CategoryMetrics } from '@/lib/market';
 
 export const dynamic = 'force-dynamic';
@@ -55,22 +56,76 @@ export default async function HomePage() {
 
   const featuredCategories = [...categories]
     .sort((a, b) => b.trendingScore - a.trendingScore)
-    .slice(0, 6);
-  const heroTokens = tokens.slice(0, 3);
+    .slice(0, 4);
+  const live = snapshot.marketStatus === 'live' && freshness.fresh;
+  const listedLabel = snapshot.marketStatus === 'syncing' ? 'Known listed' : 'Listed';
 
   return (
-    <div className="flex flex-col gap-16 md:gap-24">
-      <HeroSection tokens={heroTokens} snapshot={snapshot} freshness={freshness} />
+    <div className="flex flex-col gap-12 md:gap-16">
+      <CinematicHero
+        imageSrc={SHOWROOM_MEDIA.homepageHero}
+        imageAlt="Cinematic Button Presser plaques staged in a showroom environment"
+        eyebrow="Numbers today. More tomorrow."
+        title="Button Presser"
+        kicker="A cultural icon, now on-chain."
+        body="Own a piece of NetNet Capital Management history. Real numbers. Real brass. Real owners."
+        priority
+        actions={
+          <>
+            <Link href="/market" className="nv-button">
+              Explore collection
+              <ArrowRight size={14} weight="bold" />
+            </Link>
+            <Link href="/categories" className="nv-button nv-button-ghost">
+              Browse categories
+            </Link>
+          </>
+        }
+        aside={
+          <ShowroomAside
+            lines={['Same numbers.', 'Bigger', 'possibilities.']}
+          />
+        }
+        metrics={[
+          {
+            label: 'Items',
+            value: compact(snapshot.totalSupply),
+            icon: <Cube size={16} weight="duotone" />,
+          },
+          {
+            label: 'Floor',
+            value: payment(snapshot.floorPrice, snapshot.currency),
+            icon: <Tag size={16} weight="duotone" />,
+            emphasis: true,
+          },
+          {
+            label: '24h volume',
+            value: payment(snapshot.volume24hNative, 'ETH'),
+            icon: <ChartLine size={16} weight="duotone" />,
+          },
+          {
+            label: listedLabel,
+            value: snapshot.listedCount.toLocaleString(),
+            icon: <ListBullets size={16} weight="duotone" />,
+          },
+          {
+            label: 'Owners',
+            value: compact(snapshot.owners),
+            icon: <Users size={16} weight="duotone" />,
+          },
+        ]}
+      />
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="lg:col-span-8">
           <TrendingCategoriesSection
-            categories={featuredCategories.slice(0, 4)}
+            categories={featuredCategories}
             unavailable={!categoriesLoad.ok}
           />
         </div>
-        <aside className="lg:col-span-4">
-          <MarketInsights snapshot={snapshot} freshness={freshness} />
+        <aside className="flex flex-col gap-6 lg:col-span-4">
+          <MarketInsights snapshot={snapshot} live={live} />
+          <AtmosphereCard />
         </aside>
       </div>
 
@@ -106,64 +161,27 @@ export default async function HomePage() {
   );
 }
 
-function HeroSection({
-  tokens,
-  snapshot,
-  freshness,
-}: {
-  tokens: Awaited<ReturnType<typeof listTokens>>;
-  snapshot: Awaited<ReturnType<typeof getCollectionSnapshot>>;
-  freshness: Awaited<ReturnType<ReturnType<typeof getMarketSource>['getFreshness']>>;
-}) {
+function AtmosphereCard() {
   return (
-    <section className="grid grid-cols-1 gap-12 md:grid-cols-12 md:gap-10 lg:gap-14">
-      <div className="md:col-span-7 flex flex-col gap-8">
-        <div className="flex items-center gap-3">
-          <span className="text-eyebrow">{snapshot.name}</span>
-          <LiveIndicator
-            tone={snapshot.marketStatus === 'live' && freshness.fresh ? 'green' : 'amber'}
-            size={6}
-            label={snapshot.marketStatus === 'live' && freshness.fresh ? 'Live' : 'Syncing'}
-          />
-        </div>
-
-        <h1 className="text-display text-[clamp(2.75rem,6.5vw,5.25rem)] text-[var(--color-text-primary)]">
-          Button Presser
-        </h1>
-
-        <p className="text-body max-w-[58ch] text-[var(--color-text-secondary)] md:text-[17px]">
-          A cultural icon, now on-chain. Own a piece of NetNet Capital Management history.
-          Real numbers. Real brass. Real owners.
+    <div className="relative overflow-hidden rounded-[20px] border border-[var(--color-border-subtle)]">
+      <Image
+        src={SHOWROOM_MEDIA.brandCrate}
+        alt=""
+        width={1200}
+        height={675}
+        className="h-48 w-full object-cover md:h-56"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-[rgba(5,9,8,0.92)] via-[rgba(5,9,8,0.35)] to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1 p-5">
+        <span className="text-eyebrow">Showroom</span>
+        <p className="text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)]">
+          Same numbers. Bigger possibilities.
         </p>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href="/market" className="nv-button">
-            Explore collection
-            <ArrowRight size={14} weight="bold" />
-          </Link>
-          <Link href="/categories" className="nv-button nv-button-ghost">
-            Browse categories
-          </Link>
-          <a
-            href={`https://opensea.io/assets/robinhood/${snapshot.contractAddress}/1`}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-2 inline-flex items-center gap-1.5 text-[13px] text-[var(--color-text-tertiary)] transition-colors hover:text-[var(--color-text-primary)]"
-          >
-            View on OpenSea
-            <ArrowUpRight size={12} weight="bold" />
-          </a>
-        </div>
-
-        <CollectionPulse snapshot={snapshot} freshness={freshness} />
+        <p className="text-[12px] text-[var(--color-text-secondary)]">
+          Atmospheric brand photography. Not live inventory.
+        </p>
       </div>
-
-      <div className="relative md:col-span-5">
-        <div className="md:sticky md:top-24">
-          <LayeredHeroArt tokens={tokens} />
-        </div>
-      </div>
-    </section>
+    </div>
   );
 }
 
@@ -175,16 +193,16 @@ function TrendingCategoriesSection({
   unavailable?: boolean;
 }) {
   return (
-    <section className="flex flex-col gap-8">
+    <section className="flex flex-col gap-6">
       <SectionHeader
-        eyebrow="Markets"
         title="Trending markets"
+        subtitle="Live categories ranked by activity, not mock volume."
         trailing={
           <Link
             href="/categories"
             className="inline-flex items-center gap-1 text-sm text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-net-green)]"
           >
-            View all
+            View all markets
             <ArrowRight size={12} weight="bold" />
           </Link>
         }
@@ -202,8 +220,8 @@ function TrendingCategoriesSection({
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {categories.map((c) => (
-            <CategoryCard key={c.slug} metrics={c} movement={c.floorChange7d} />
+          {categories.map((c, index) => (
+            <CategoryCard key={c.slug} metrics={c} movement={c.floorChange7d} rank={index + 1} />
           ))}
         </div>
       )}
@@ -219,16 +237,16 @@ function MarketActivitySection({
   unavailable?: boolean;
 }) {
   return (
-    <section className="flex flex-col gap-8">
+    <section className="flex flex-col gap-6">
       <SectionHeader
-        eyebrow="Market"
-        title="Active listings"
+        title="Featured live listings"
+        subtitle="Canonical on-chain media. Live asks only."
         trailing={
           <Link
             href="/market"
             className="inline-flex items-center gap-1 text-sm text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-net-green)]"
           >
-            View all
+            View all listings
             <ArrowRight size={12} weight="bold" />
           </Link>
         }
@@ -250,8 +268,8 @@ function MarketActivitySection({
           }
         />
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:gap-5 xl:grid-cols-4">
-          {tokens.slice(0, 8).map((t, idx) => (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:gap-5 xl:grid-cols-5">
+          {tokens.slice(0, 5).map((t, idx) => (
             <AssetCard key={t.tokenId} token={t} priority={idx < 4} />
           ))}
         </div>
@@ -280,7 +298,7 @@ function SalesOffersSection({
         entries={sales}
         empty={
           salesUnavailable
-            ? 'Sales tape unavailable — not the same as zero trades.'
+            ? 'Sales tape unavailable - not the same as zero trades.'
             : 'No sales have cleared yet. Trades will appear here as soon as the orderbook settles a fill.'
         }
       />
@@ -291,7 +309,7 @@ function SalesOffersSection({
         entries={offers}
         empty={
           offersUnavailable
-            ? 'Offers unavailable — not the same as an empty book.'
+            ? 'Offers unavailable - not the same as an empty book.'
             : 'No open offers right now. Watch a category to be notified when a collector makes a move.'
         }
       />
@@ -301,19 +319,21 @@ function SalesOffersSection({
 
 function MarketInsights({
   snapshot,
-  freshness,
+  live,
 }: {
   snapshot: Awaited<ReturnType<typeof getCollectionSnapshot>>;
-  freshness: Awaited<ReturnType<ReturnType<typeof getMarketSource>['getFreshness']>>;
+  live: boolean;
 }) {
-  const live = snapshot.marketStatus === 'live' && freshness.fresh;
   return (
-    <div className="flex h-full flex-col gap-4 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] p-5">
+    <div className="nv-glass flex h-full flex-col gap-5 rounded-[20px] p-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-display text-xl text-[var(--color-text-primary)]">Market insights</h2>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-display text-xl text-[var(--color-text-primary)]">Market insights</h2>
+          <span className="text-[12px] text-[var(--color-text-tertiary)]">Live market data</span>
+        </div>
         <LiveIndicator tone={live ? 'green' : 'amber'} size={6} label={live ? 'Live' : 'Syncing'} />
       </div>
-      <dl className="grid grid-cols-2 gap-4">
+      <dl className="grid grid-cols-2 gap-3">
         {(
           [
             ['Official supply', snapshot.totalSupply.toLocaleString()],
@@ -326,11 +346,12 @@ function MarketInsights({
             ['Highest sale', payment(snapshot.topSalePrice, snapshot.currency)],
           ] as const
         ).map(([label, value]) => (
-          <div key={label} className="flex flex-col gap-1">
-            <dt className="text-eyebrow-muted">{label}</dt>
-            <dd className="text-numeral text-[15px] font-semibold text-[var(--color-text-primary)]">
-              {value}
-            </dd>
+          <div
+            key={label}
+            className="flex flex-col gap-1 rounded-[14px] border border-[var(--color-border-subtle)] bg-[rgba(5,9,8,0.35)] px-3 py-3"
+          >
+            <dt className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-tertiary)]">{label}</dt>
+            <dd className="text-numeral text-[15px] font-semibold text-[var(--color-text-primary)]">{value}</dd>
           </div>
         ))}
       </dl>
@@ -339,21 +360,19 @@ function MarketInsights({
 }
 
 function SectionHeader({
-  eyebrow,
   title,
+  subtitle,
   trailing,
 }: {
-  eyebrow: string;
   title: string;
+  subtitle?: string;
   trailing?: React.ReactNode;
 }) {
   return (
     <div className="flex items-end justify-between gap-4">
-      <div className="flex flex-col gap-2">
-        <span className="text-eyebrow-muted">{eyebrow}</span>
-        <h2 className="text-display text-2xl text-[var(--color-text-primary)] md:text-3xl">
-          {title}
-        </h2>
+      <div className="flex flex-col gap-1">
+        <h2 className="text-display text-2xl text-[var(--color-text-primary)] md:text-[1.75rem]">{title}</h2>
+        {subtitle ? <p className="text-[13px] text-[var(--color-text-tertiary)]">{subtitle}</p> : null}
       </div>
       {trailing}
     </div>

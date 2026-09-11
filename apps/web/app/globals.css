@@ -53,8 +53,8 @@
   --radius-md:              10px;
   --radius-lg:              14px;
   --radius-xl:              20px;
-  --radius-card:            14px;
-  --radius-hero:            20px;
+  --radius-card:            16px;
+  --radius-hero:            24px;
 
   /* Shell widths */
   --content-standard:       90rem;
@@ -64,8 +64,8 @@
   /* Elevation / glass */
   --shadow-green-soft:      0 0 0 1px rgba(72, 235, 145, 0.12), 0 18px 48px -28px rgba(72, 235, 145, 0.35);
   --shadow-green-active:    0 0 0 1px rgba(72, 235, 145, 0.28), 0 16px 40px -20px rgba(72, 235, 145, 0.45);
-  --glass-panel:            color-mix(in srgb, var(--color-surface-1) 78%, transparent);
-  --glass-panel-strong:     color-mix(in srgb, var(--color-surface-2) 88%, transparent);
+  --glass-panel:            color-mix(in srgb, var(--color-surface-1) 62%, transparent);
+  --glass-panel-strong:     color-mix(in srgb, var(--color-surface-2) 78%, transparent);
   --hero-overlay:           linear-gradient(180deg, rgba(5, 9, 8, 0.12) 0%, rgba(5, 9, 8, 0.72) 100%);
   --hero-vignette:          radial-gradient(120% 80% at 50% 20%, transparent 40%, rgba(5, 9, 8, 0.72) 100%);
 
@@ -184,6 +184,7 @@ button {
     border: 1px solid var(--color-border-subtle);
     backdrop-filter: blur(18px) saturate(140%);
     -webkit-backdrop-filter: blur(18px) saturate(140%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
 
   @media (prefers-reduced-transparency: reduce) {
@@ -192,6 +193,22 @@ button {
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
     }
+  }
+
+  .nv-showroom-scrim {
+    background: linear-gradient(
+      90deg,
+      rgba(5, 9, 8, 0.92) 0%,
+      rgba(5, 9, 8, 0.72) 28%,
+      rgba(5, 9, 8, 0.28) 58%,
+      rgba(5, 9, 8, 0.08) 100%
+    );
+  }
+
+  .nv-showroom-vignette {
+    background:
+      linear-gradient(180deg, rgba(5, 9, 8, 0.18) 0%, transparent 28%, rgba(5, 9, 8, 0.55) 100%),
+      radial-gradient(80% 70% at 78% 42%, transparent 20%, rgba(5, 9, 8, 0.35) 100%);
   }
 
   .nv-divider {
@@ -229,16 +246,17 @@ button {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    padding: 0.625rem 1.125rem;
-    border-radius: var(--radius-md);
+    padding: 0.7rem 1.25rem;
+    border-radius: 14px;
     border: 1px solid transparent;
     background-color: var(--color-net-green);
     color: var(--color-bg);
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     line-height: 1.25rem;
     letter-spacing: -0.01em;
     min-height: 44px;
+    box-shadow: var(--shadow-green-soft);
     transition:
       transform var(--duration-base) var(--ease-out),
       filter var(--duration-base) var(--ease-out),
@@ -247,9 +265,11 @@ button {
   .nv-button:hover { filter: brightness(1.08); transform: translateY(-1px); }
   .nv-button:active { transform: translateY(0) scale(0.98); }
   .nv-button-ghost {
-    background-color: transparent;
+    background-color: rgba(8, 12, 10, 0.45);
     color: var(--color-text-primary);
     border-color: var(--color-border-default);
+    box-shadow: none;
+    backdrop-filter: blur(12px);
   }
   .nv-button-ghost:hover {
     border-color: var(--color-border-active);

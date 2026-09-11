@@ -45,7 +45,7 @@ export function PaymentMethodStrip() {
 
   const assets = checkoutVisibleAssets();
   return (
-    <div className="flex flex-col gap-3 rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-4 py-4 md:flex-row md:items-center md:px-6">
+    <div className="nv-glass flex flex-col gap-4 rounded-[20px] px-4 py-4 md:flex-row md:items-center md:px-6">
       <span className="text-eyebrow-muted shrink-0">Pay with</span>
       <div className="flex flex-wrap items-center gap-2">
         {assets.map((asset) => {
@@ -55,15 +55,18 @@ export function PaymentMethodStrip() {
             <span
               key={asset.assetId}
               className={cn(
-                'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px]',
+                'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[12px]',
                 live
-                  ? 'border-[var(--color-border-active)] text-[var(--color-text-primary)]'
-                  : 'border-[var(--color-border-subtle)] text-[var(--color-text-tertiary)]',
+                  ? 'border-[var(--color-border-active)] bg-[rgba(72,235,145,0.08)] text-[var(--color-text-primary)]'
+                  : 'border-[var(--color-border-subtle)] text-[var(--color-text-secondary)]',
               )}
               title={statusLabel(method, asset.status === 'ENABLED')}
             >
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(72,235,145,0.12)] text-[10px] font-bold text-[var(--color-net-green)]">
+                {asset.symbol.slice(0, 1)}
+              </span>
               <span className="font-semibold tracking-tight">{asset.symbol}</span>
-              <span className="text-[10px] uppercase tracking-[0.12em]">
+              <span className="text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-tertiary)]">
                 {statusLabel(method, asset.status === 'ENABLED')}
               </span>
             </span>

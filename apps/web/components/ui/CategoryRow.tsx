@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { ArrowRight, Star } from '@phosphor-icons/react/dist/ssr';
+import { ArrowRight } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { CategoryMetrics } from '@/lib/market';
 import { compact, payment, pct } from '@/lib/format';
 import { LiveIndicator } from './LiveIndicator';
+import { CategoryGlyph } from '@/components/showroom/CategoryGlyph';
 
 /**
  * ENS Vision inspired category list row. One row per category, with
@@ -14,9 +15,11 @@ import { LiveIndicator } from './LiveIndicator';
  */
 export function CategoryRow({
   metrics,
+  index,
 }: {
   metrics: CategoryMetrics;
   movement?: number | null;
+  index?: number;
 }) {
   return (
     <Link
@@ -27,9 +30,10 @@ export function CategoryRow({
       )}
     >
       <div className="flex items-start gap-3 md:items-center">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] text-[var(--color-net-green)] transition-transform group-hover:rotate-12">
-          <Star size={14} weight="duotone" />
+        <span className="hidden w-9 shrink-0 text-numeral text-[12px] text-[var(--color-text-tertiary)] lg:inline-block">
+          {index ?? ''}
         </span>
+        <CategoryGlyph metrics={metrics} size="sm" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)]">
             {metrics.name}

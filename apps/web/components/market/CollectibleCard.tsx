@@ -37,11 +37,11 @@ export function CollectibleCard({
   return (
     <div
       className={cn(
-        'group/card relative flex h-full flex-col overflow-hidden rounded-[var(--radius-md)]',
+        'group/card relative flex h-full flex-col overflow-hidden rounded-[18px]',
         'bg-[var(--color-surface-1)] border transition-colors',
         selected
           ? 'border-[var(--color-net-green)]'
-          : 'border-transparent hover:border-[var(--color-border-default)]',
+          : 'border-[var(--color-border-subtle)] hover:border-[var(--color-border-active)]',
       )}
     >
       {canSelect ? (

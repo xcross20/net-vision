@@ -1,12 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
-import { Star } from '@phosphor-icons/react/dist/ssr';
+import {
+  ChartLine,
+  Crown,
+  ListBullets,
+  ShoppingCart,
+  Star,
+  Tag,
+  TrendUp,
+  Users,
+} from '@phosphor-icons/react/dist/ssr';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
+import { CinematicHero, ShowroomAside } from '@/components/showroom/CinematicHero';
+import { SHOWROOM_MEDIA } from '@/lib/brand/media';
 import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
-import type { CategoryMetrics, Token } from '@/lib/market';
-import { isProxyImageUrl } from '@/lib/data/media';
+import { compact, payment, pct } from '@/lib/format';
+import type { CategoryMetrics } from '@/lib/market';
 
 const FAMILY_LABEL: Record<string, string> = {
   number: 'Number',
@@ -17,20 +27,21 @@ const FAMILY_LABEL: Record<string, string> = {
 
 export function CategoryHero({
   metrics,
-  heroToken,
   onSweep,
   sweepDisabled,
 }: {
   metrics: CategoryMetrics;
-  heroToken?: Token | null;
+  heroToken?: unknown;
   onSweep?: () => void;
   sweepDisabled?: boolean;
 }) {
   const { isWatchingCategory, toggleCategory } = useWatchlist();
   const watching = isWatchingCategory(metrics.slug);
   const isSyncing = metrics.marketStatus === 'syncing';
+  const currency = metrics.currency;
+
   return (
-    <header className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <nav className="flex flex-wrap items-center gap-2 text-sm text-[var(--color-text-tertiary)]">
         <Link href="/market" className="transition-colors hover:text-[var(--color-text-primary)]">
           Market
@@ -42,27 +53,33 @@ export function CategoryHero({
         <span>/</span>
         <span className="text-[var(--color-text-secondary)]">{metrics.name}</span>
       </nav>
-      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
-        <div className="flex flex-col gap-4 lg:col-span-7">
-          <div className="flex items-center gap-3">
-            <span className="text-eyebrow">{FAMILY_LABEL[metrics.family] ?? metrics.family}</span>
-            <LiveIndicator
-              tone={isSyncing ? 'amber' : 'green'}
-              size={6}
-              label={
-                isSyncing
-                  ? `Verified ${metrics.verifiedCount.toLocaleString()} / ${metrics.memberSupply.toLocaleString()}`
-                  : 'Live'
-              }
-            />
-          </div>
-          <h1 className="text-display text-[clamp(2.5rem,5.5vw,4.5rem)] text-[var(--color-text-primary)]">
-            {metrics.name}
-          </h1>
-          <p className="text-body max-w-[58ch] text-[var(--color-text-secondary)] md:text-[17px]">
-            {metrics.description}
-          </p>
-          <div className="flex flex-wrap items-center gap-3">
+
+      <CinematicHero
+        imageSrc={SHOWROOM_MEDIA.categoryHero}
+        imageAlt={`Cinematic showroom photography for the ${metrics.name} category`}
+        eyebrow={`${FAMILY_LABEL[metrics.family] ?? metrics.family} category`}
+        title={metrics.name}
+        body={metrics.description}
+        minHeightClass="min-h-[26rem] md:min-h-[30rem]"
+        metricsVariant="bar"
+        aside={
+          <ShowroomAside
+            lines={['Same numbers.', 'Bigger', 'possibilities.']}
+            footer={
+              <LiveIndicator
+                tone={isSyncing ? 'amber' : 'green'}
+                size={6}
+                label={
+                  isSyncing
+                    ? `Verified ${metrics.verifiedCount.toLocaleString()} / ${metrics.memberSupply.toLocaleString()}`
+                    : 'Live'
+                }
+              />
+            }
+          />
+        }
+        actions={
+          <>
             {onSweep ? (
               <button
                 type="button"
@@ -70,6 +87,7 @@ export function CategoryHero({
                 onClick={onSweep}
                 disabled={sweepDisabled}
               >
+                <ShoppingCart size={15} weight="bold" />
                 Sweep category
               </button>
             ) : null}
@@ -82,24 +100,52 @@ export function CategoryHero({
               <Star size={14} weight={watching ? 'fill' : 'regular'} />
               {watching ? 'Watching' : 'Watch category'}
             </button>
-          </div>
-        </div>
-        {heroToken ? (
-          <Link
-            href={`/tokens/${heroToken.tokenId}`}
-            className="relative aspect-square overflow-hidden rounded-[var(--radius-hero)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] lg:col-span-5"
-          >
-            <Image
-              src={heroToken.imageUrl}
-              alt={`Button Presser #${heroToken.tokenId}`}
-              fill
-              sizes="(min-width: 1024px) 28rem, 100vw"
-              unoptimized={isProxyImageUrl(heroToken.imageUrl) || heroToken.imageUrl.endsWith('.svg')}
-              className="object-contain p-6"
-            />
-          </Link>
-        ) : null}
-      </div>
-    </header>
+          </>
+        }
+        metrics={[
+          {
+            label: 'Floor (USDG)',
+            value: isSyncing ? 'Syncing' : payment(metrics.floorPrice, currency),
+            icon: <Tag size={16} weight="duotone" />,
+            emphasis: true,
+          },
+          {
+            label: 'Best offer',
+            value: isSyncing ? '—' : payment(metrics.topOfferPrice, currency),
+            icon: <TrendUp size={16} weight="duotone" />,
+          },
+          {
+            label: isSyncing ? 'Known listed' : 'Listed',
+            value: metrics.listedCount.toLocaleString(),
+            icon: <ListBullets size={16} weight="duotone" />,
+          },
+          {
+            label: 'Owners',
+            value: metrics.owners.toLocaleString(),
+            icon: <Users size={16} weight="duotone" />,
+          },
+          {
+            label: '24h volume',
+            value: isSyncing ? '—' : compact(metrics.volume24h),
+            icon: <ChartLine size={16} weight="duotone" />,
+          },
+          {
+            label: '7d volume',
+            value: isSyncing ? '—' : compact(metrics.volume7d),
+            icon: <ChartLine size={16} weight="duotone" />,
+          },
+          {
+            label: 'Highest sale',
+            value: isSyncing ? '—' : payment(metrics.highestSale?.price ?? null, currency),
+            icon: <Crown size={16} weight="duotone" />,
+          },
+          {
+            label: '7d floor',
+            value: isSyncing ? '—' : pct(metrics.floorChange7d),
+            icon: <TrendUp size={16} weight="duotone" />,
+          },
+        ]}
+      />
+    </div>
   );
 }
