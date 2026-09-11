@@ -2,7 +2,11 @@
 
 ## Authority rule
 
-Treat the approved generated images as the target visual composition, density, spacing, hierarchy, premium styling, and page layout. Reproduce them as closely as reasonably possible.
+The attached mockups are not mood boards. They are the approved final UI targets.
+
+Treat them as **pixel-level visual authority** for composition, hierarchy, sizing, spacing, typography, cards, panels, heroes, and premium feel. Target 90%+ visual similarity.
+
+Do not retain the previous minimalist layout merely because it exists.
 
 Treat live repository data, on-chain media, market state, payment policy, and existing transaction/security logic as the source of truth for content and behavior.
 

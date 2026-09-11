@@ -74,7 +74,13 @@ export function PortfolioView() {
 
   return (
     <div className="flex flex-col gap-10">
-      <header className="flex flex-col gap-3">
+      <header className="relative isolate overflow-hidden rounded-[24px] border border-[var(--color-border-subtle)]">
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-50"
+          style={{ backgroundImage: 'url(/brand/showroom/hero-plaques.jpg)' }}
+        />
+        <div className="nv-showroom-scrim absolute inset-0" />
+        <div className="relative z-10 flex flex-col gap-3 p-6 md:p-8">
         <span className="text-eyebrow">Portfolio</span>
         <h1 className="text-display text-[clamp(2.25rem,5vw,3.5rem)]">Your Buttons</h1>
         <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
@@ -82,6 +88,7 @@ export function PortfolioView() {
             ? 'Inventory unavailable — not the same as an empty wallet.'
             : `${tokens.length} total · Estimated context value ${payment(contextValue, 'USDG')}`}
         </p>
+        </div>
       </header>
 
       <div className="flex flex-wrap gap-3">

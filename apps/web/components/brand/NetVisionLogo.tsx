@@ -15,16 +15,16 @@ export function NetVisionLogo({
   const inner = (
     <span
       className={cn(
-        'inline-flex items-center gap-2 text-[var(--color-text-primary)]',
-        size === 'nav' && 'text-[15px] font-semibold tracking-tight',
-        size === 'footer' && 'text-sm font-semibold tracking-tight',
+        'inline-flex items-center gap-2.5 text-[var(--color-text-primary)]',
+        size === 'nav' && 'text-[15px] font-bold tracking-[0.14em]',
+        size === 'footer' && 'text-sm font-bold tracking-[0.14em]',
         className,
       )}
     >
-      <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] bg-[rgba(72,235,145,0.10)] text-[var(--color-net-green)]">
+      <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[rgba(72,235,145,0.12)] text-[var(--color-net-green)] nv-glow">
         <NetVisionMark size={markSize} />
       </span>
-      {size === 'mark' ? null : <span>Net Vision</span>}
+      {size === 'mark' ? null : <span className="uppercase">Net Vision</span>}
     </span>
   );
   if (!href) return inner;
