@@ -89,7 +89,19 @@ export type CheckoutItem =
     };
 
 export type SelectedPayment = {
-  assetId: 'USDG' | 'ETH' | 'NET' | 'NVDA';
+  assetId:
+    | 'USDG'
+    | 'ETH'
+    | 'NET'
+    | 'AAPL'
+    | 'NVDA'
+    | 'TSLA'
+    | 'MSFT'
+    | 'AMZN'
+    | 'GOOGL'
+    | 'COIN'
+    | 'SPCX'
+    | 'SPY';
 };
 
 export type CartPhase =

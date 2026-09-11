@@ -8,7 +8,6 @@ import { cn } from '@/lib/cn';
 import { useCart } from '@/lib/cart/CartProvider';
 import type { CartItem, CheckoutItem } from '@/lib/cart/types';
 import {
-  PAYMENT_ASSETS,
   assertCanMarkConfirmed,
   assertCanPreparePurchase,
   assertCanSelectPaymentAsset,
@@ -16,6 +15,7 @@ import {
   type PaymentAssetId,
 } from '@/lib/cart/checkout-machine';
 import { PAYMENT_TOKENS, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
+import { checkoutVisibleAssets } from '@net-vision/payment-router';
 import { payment } from '@/lib/format';
 import type { UsdgStatus } from '@/lib/trade/usdg-status';
 import { boundedApproveAmount } from '@/lib/trade/bounded-approve';
@@ -75,6 +75,37 @@ type RevalidateItem =
     }
   | { tokenId: string; state: 'error'; cartItem: CartItem; message: string };
 
+function cartPaymentId(assetId: string): PaymentAssetId | null {
+  switch (assetId) {
+    case 'usdg':
+      return 'USDG';
+    case 'eth':
+      return 'ETH';
+    case 'netnet-net':
+      return 'NET';
+    case 'rh-aapl':
+      return 'AAPL';
+    case 'rh-nvda':
+      return 'NVDA';
+    case 'rh-tsla':
+      return 'TSLA';
+    case 'rh-msft':
+      return 'MSFT';
+    case 'rh-amzn':
+      return 'AMZN';
+    case 'rh-googl':
+      return 'GOOGL';
+    case 'rh-coin':
+      return 'COIN';
+    case 'rh-spcx':
+      return 'SPCX';
+    case 'rh-spy':
+      return 'SPY';
+    default:
+      return null;
+  }
+}
+
 function asCheckoutItems(rows: RevalidateItem[]): CheckoutItem[] {
   return rows.map((row) => {
     if (row.state === 'valid') {
@@ -104,6 +135,21 @@ export function CartCheckout() {
   const publicClient = usePublicClient();
   const [acceptedPriceDrift, setAcceptedPriceDrift] = useState(false);
   const [usdgStatus, setUsdgStatus] = useState<UsdgStatus | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<
+    Array<{
+      assetId: string;
+      available: boolean;
+      feeBps: number;
+      routeStatus?: string;
+      reasonCode?: string;
+    }>
+  >([]);
+  const [usdgQuote, setUsdgQuote] = useState<{
+    listingUsdgRaw: string;
+    serviceFeeBps: number;
+    serviceFeeUsdgRaw: string;
+    requiredUsdgRaw: string;
+  } | null>(null);
   const lastChainRef = useRef<number | undefined>(undefined);
   const itemsRef = useRef(items);
   itemsRef.current = items;
@@ -314,6 +360,13 @@ export function CartCheckout() {
 
   const onCheckout = useCallback(async () => {
     if (phase.kind !== 'review' && phase.kind !== 'payment_select') return;
+    if (phase.kind === 'payment_select' && phase.payment.assetId !== 'USDG') {
+      setPhase({
+        kind: 'error',
+        message: 'Stock Token conversion to USDG is not live. Pay with USDG.',
+      });
+      return;
+    }
     if (!address) {
       onConnectWallet();
       return;
@@ -614,6 +667,81 @@ export function CartCheckout() {
     }
   }, [cartRevision, checkoutIntent, items, phase, revalidate]);
 
+  useEffect(() => {
+    if (phase.kind !== 'payment_select') return;
+    let cancelled = false;
+    void fetch('/api/payment/methods')
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (
+          json: {
+            methods?: Array<{
+              assetId: string;
+              available: boolean;
+              feeBps: number;
+              routeStatus?: string;
+              reasonCode?: string;
+            }>;
+          } | null,
+        ) => {
+        if (!cancelled && json?.methods) setPaymentMethods(json.methods);
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentMethods([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase.kind]);
+
+  useEffect(() => {
+    if (phase.kind !== 'payment_select' || !address || requiredRaw <= 0n) {
+      setUsdgQuote(null);
+      return;
+    }
+    const listingOrderHash =
+      validCheckoutItems(phase, itemsRef.current)
+        .map((item) => item.liveOrderHash)
+        .join(',') || 'cart';
+    let cancelled = false;
+    void fetch('/api/payment/quote', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        buyer: address,
+        assetId: 'usdg',
+        listingOrderHash,
+        listingUsdgRaw: requiredRaw.toString(),
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (json: {
+          quote?: {
+            listingUsdgRaw: string;
+            serviceFeeBps: number;
+            serviceFeeUsdgRaw: string;
+            requiredUsdgRaw: string;
+          };
+        } | null) => {
+          if (!cancelled && json?.quote) {
+            setUsdgQuote({
+              listingUsdgRaw: json.quote.listingUsdgRaw,
+              serviceFeeBps: json.quote.serviceFeeBps,
+              serviceFeeUsdgRaw: json.quote.serviceFeeUsdgRaw,
+              requiredUsdgRaw: json.quote.requiredUsdgRaw,
+            });
+          }
+        },
+      )
+      .catch(() => {
+        if (!cancelled) setUsdgQuote(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [address, cartRevision, phase.kind, requiredRaw]);
+
   const cta = useMemo(
     () =>
       primaryCheckoutAction({
@@ -786,6 +914,7 @@ export function CartCheckout() {
   }
 
   if (phase.kind === 'payment_select') {
+    const stockSelected = phase.payment.assetId !== 'USDG';
     const insufficient = usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT';
     const needsApprove = usdgStatus?.allowance.state === 'KNOWN_INSUFFICIENT';
     return (
@@ -799,44 +928,134 @@ export function CartCheckout() {
         <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
           Pay with
         </p>
+        {usdgQuote ? (
+          <div className="flex flex-col gap-1 text-[12px] text-[var(--color-text-secondary)]">
+            <div className="flex justify-between">
+              <span>NFT price</span>
+              <span className="text-numeral text-[var(--color-text-primary)]">
+                {payment(currentTotal, currency)}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Service fee</span>
+              <span>
+                {usdgQuote.serviceFeeBps === 0
+                  ? 'FREE'
+                  : `+${(usdgQuote.serviceFeeBps / 100).toFixed(1)}%`}
+              </span>
+            </div>
+          </div>
+        ) : null}
         <ul className="flex flex-col gap-2">
-          {PAYMENT_ASSETS.map((asset) => {
-            const selected = phase.payment.assetId === asset.id;
-            const executable = isExecutablePaymentAsset(asset.id);
-            return (
-              <li key={asset.id}>
-                <button
-                  type="button"
-                  disabled={!executable}
-                  onClick={() =>
-                    setPhase({
-                      kind: 'payment_select',
-                      items: displayItems,
-                      payment: { assetId: asset.id as PaymentAssetId },
-                    })
-                  }
-                  className={cn(
-                    'flex w-full items-start justify-between rounded-[var(--radius-sm)] border px-3 py-2 text-left text-[12px]',
-                    selected && executable
-                      ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.08)]'
-                      : 'border-[var(--color-border-subtle)]',
-                    !executable && 'cursor-not-allowed opacity-50',
-                  )}
-                >
-                  <span className="flex flex-col gap-0.5">
-                    <span className="font-semibold text-[var(--color-text-primary)]">
-                      {selected ? '● ' : '○ '}
-                      {asset.symbol}
+          {checkoutVisibleAssets()
+            .filter((asset) => asset.kind !== 'stock-token')
+            .map((asset) => {
+              const cartId = cartPaymentId(asset.assetId);
+              const selected = cartId !== null && phase.payment.assetId === cartId;
+              const executable = cartId !== null && isExecutablePaymentAsset(cartId);
+              const method = paymentMethods.find((m) => m.assetId === asset.assetId);
+              const feeLabel =
+                method?.feeBps === 0
+                  ? 'FREE'
+                  : method?.feeBps
+                    ? `+${(method.feeBps / 100).toFixed(1)}%`
+                    : null;
+              return (
+                <li key={asset.assetId}>
+                  <button
+                    type="button"
+                    disabled={!executable}
+                    onClick={() => {
+                      if (!cartId || !executable) return;
+                      assertCanSelectPaymentAsset(cartId);
+                      setPhase({
+                        kind: 'payment_select',
+                        items: displayItems,
+                        payment: { assetId: cartId },
+                      });
+                    }}
+                    className={cn(
+                      'flex w-full items-start justify-between rounded-[var(--radius-sm)] border px-3 py-2 text-left text-[12px]',
+                      selected && executable
+                        ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.08)]'
+                        : 'border-[var(--color-border-subtle)]',
+                      !executable && 'cursor-not-allowed opacity-50',
+                    )}
+                  >
+                    <span className="flex flex-col gap-0.5">
+                      <span className="font-semibold text-[var(--color-text-primary)]">
+                        {selected ? '● ' : '○ '}
+                        {asset.symbol === 'NET' ? 'NET (NetNet)' : asset.symbol}
+                      </span>
+                      <span className="text-[var(--color-text-tertiary)]">
+                        {asset.assetId === 'usdg' ? 'Direct' : `${asset.symbol} → USDG`}
+                      </span>
                     </span>
-                    <span className="text-[var(--color-text-tertiary)]">{asset.routeLabel}</span>
-                  </span>
-                  <span className="text-[var(--color-text-tertiary)]">
-                    {executable ? (asset.recommended ? 'Recommended' : 'Available') : 'Coming soon'}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
+                    <span className="text-[var(--color-text-tertiary)]">
+                      {executable
+                        ? `Recommended${feeLabel ? ` · ${feeLabel}` : ''}`
+                        : 'Coming soon'}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+        </ul>
+        <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
+          Stock Tokens
+        </p>
+        <ul className="flex flex-col gap-2">
+          {checkoutVisibleAssets()
+            .filter((asset) => asset.kind === 'stock-token')
+            .map((asset) => {
+              const cartId = cartPaymentId(asset.assetId);
+              const method = paymentMethods.find((m) => m.assetId === asset.assetId);
+              const regionBlocked =
+                method?.reasonCode === 'REGION_RESTRICTED' || method?.reasonCode === 'REGION_UNKNOWN';
+              const geoAllowed = method?.available === true;
+              const selected = cartId !== null && phase.payment.assetId === cartId;
+              const feeLabel = `+${((method?.feeBps ?? asset.feeBps) / 100).toFixed(1)}%`;
+              return (
+                <li key={asset.assetId}>
+                  <button
+                    type="button"
+                    disabled={!geoAllowed || !cartId}
+                    onClick={() => {
+                      if (!cartId || !geoAllowed) return;
+                      setPhase({
+                        kind: 'payment_select',
+                        items: displayItems,
+                        payment: { assetId: cartId },
+                      });
+                    }}
+                    className={cn(
+                      'flex w-full items-start justify-between rounded-[var(--radius-sm)] border px-3 py-2 text-left text-[12px]',
+                      selected && geoAllowed
+                        ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.08)]'
+                        : 'border-[var(--color-border-subtle)]',
+                      (!geoAllowed || !cartId) && 'cursor-not-allowed opacity-50',
+                    )}
+                  >
+                    <span className="flex flex-col gap-0.5">
+                      <span className="font-semibold text-[var(--color-text-primary)]">
+                        {selected ? '● ' : '○ '}
+                        {asset.symbol}
+                      </span>
+                      <span className="text-[var(--color-text-tertiary)]">
+                        {asset.symbol} → USDG
+                      </span>
+                    </span>
+                    <span className="text-[var(--color-text-tertiary)]">
+                      {regionBlocked
+                        ? 'Unavailable in your region'
+                        : geoAllowed
+                          ? `${feeLabel} · convert to USDG`
+                          : `Coming soon · ${feeLabel}`}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
         </ul>
         <div className="text-[11px] text-[var(--color-text-tertiary)]">
           <p>USDG balance: {formatKnowledge(usdgStatus?.balance)}</p>
@@ -859,7 +1078,17 @@ export function CartCheckout() {
             balance covers {payment(currentTotal, currency)}.
           </div>
         ) : null}
-        {needsApprove && !insufficient ? (
+        {stockSelected ? (
+          <div className="rounded-[var(--radius-sm)] border border-[var(--color-border-subtle)] px-3 py-2 text-[12px] text-[var(--color-text-primary)]">
+            {phase.payment.assetId} is allowed outside the US. Conversion to USDG is not live yet —
+            complete this purchase with USDG.
+          </div>
+        ) : null}
+        {stockSelected ? (
+          <button type="button" disabled className="nv-button w-full cursor-not-allowed opacity-50">
+            Conversion to USDG not live
+          </button>
+        ) : needsApprove && !insufficient ? (
           <button type="button" onClick={() => void onApproveUsdg()} className="nv-button w-full">
             Approve {payment(currentTotal, currency)}
           </button>
