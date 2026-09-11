@@ -13,10 +13,16 @@ import {
 } from '@phosphor-icons/react/dist/ssr';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { CinematicHero, ShowroomAside } from '@/components/showroom/CinematicHero';
-import { SHOWROOM_MEDIA } from '@/lib/brand/media';
+import {
+  PLATE_MATERIAL_SLUGS,
+  isPlateMaterialSlug,
+  showroomHeroForCategory,
+} from '@/lib/brand/media';
 import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
 import { compact, payment, pct } from '@/lib/format';
+import { cn } from '@/lib/cn';
 import type { CategoryMetrics } from '@/lib/market';
+import { VIRTUAL_COLLECTION_CATALOG } from '@net-vision/taxonomy';
 
 const FAMILY_LABEL: Record<string, string> = {
   number: 'Number',
@@ -55,8 +61,9 @@ export function CategoryHero({
       </nav>
 
       <CinematicHero
-        imageSrc={SHOWROOM_MEDIA.categoryHero}
+        imageSrc={showroomHeroForCategory(metrics.slug)}
         imageAlt={`Cinematic showroom photography for the ${metrics.name} category`}
+        imagePositionClass={isPlateMaterialSlug(metrics.slug) ? 'object-center' : 'object-right'}
         eyebrow={`${FAMILY_LABEL[metrics.family] ?? metrics.family} category`}
         title={metrics.name}
         body={metrics.description}
@@ -151,6 +158,29 @@ export function CategoryHero({
           <span className="nv-chip">{metrics.memberSupply.toLocaleString()} items</span>
           {metrics.source === 'metadata' ? <span className="nv-chip">Physical craft</span> : null}
         </div>
+        {metrics.family === 'material' ? (
+          <div className="flex flex-wrap gap-2" aria-label="Official Plate materials">
+            {PLATE_MATERIAL_SLUGS.map((slug) => {
+              const cat = VIRTUAL_COLLECTION_CATALOG.find((c) => c.slug === slug);
+              const active = slug === metrics.slug;
+              return (
+                <Link
+                  key={slug}
+                  href={`/categories/${slug}`}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'rounded-full px-3.5 py-1.5 text-[12px] font-semibold tracking-wide transition-colors',
+                    active
+                      ? 'bg-[var(--color-net-green)] text-[var(--color-bg)] shadow-[0_0_20px_rgba(72,235,145,0.28)]'
+                      : 'nv-glass-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+                  )}
+                >
+                  {cat?.name ?? slug}
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
       </CinematicHero>
     </div>
   );

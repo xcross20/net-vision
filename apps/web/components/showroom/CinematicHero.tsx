@@ -20,6 +20,7 @@ export function CinematicHero({
   aside,
   children,
   minHeightClass = 'min-h-[28rem] md:min-h-[32rem]',
+  imagePositionClass = 'object-right',
   priority = false,
 }: {
   imageSrc: string;
@@ -34,6 +35,7 @@ export function CinematicHero({
   aside?: ReactNode;
   children?: ReactNode;
   minHeightClass?: string;
+  imagePositionClass?: string;
   priority?: boolean;
 }) {
   return (
@@ -49,7 +51,7 @@ export function CinematicHero({
         fill
         priority={priority}
         sizes="(min-width: 1280px) 100rem, 100vw"
-        className="object-cover object-right"
+        className={cn('object-cover', imagePositionClass)}
       />
       <div className="nv-showroom-scrim pointer-events-none absolute inset-0" />
       <div className="nv-showroom-vignette pointer-events-none absolute inset-0" />

@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
 import {
   ArrowsClockwise,
   Cube,
@@ -15,7 +17,11 @@ import { CategoryRow } from '@/components/ui/CategoryRow';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { CinematicHero, ShowroomAside } from '@/components/showroom/CinematicHero';
-import { SHOWROOM_MEDIA } from '@/lib/brand/media';
+import {
+  PLATE_MATERIAL_SLUGS,
+  SHOWROOM_MEDIA,
+  showroomHeroForCategory,
+} from '@/lib/brand/media';
 import type { CategoryMetrics, CollectionSnapshot } from '@/lib/market';
 import { compact, payment } from '@/lib/format';
 import { useLiveCategories } from '@/lib/market/use-live-metrics';
@@ -68,8 +74,27 @@ export function CategoriesDirectory({
       if (sort === 'supply') return a.memberSupply - b.memberSupply;
       return (b.highestSale?.price ?? 0) - (a.highestSale?.price ?? 0);
     });
+    if (!query && (family === 'all' || family === 'material')) {
+      const pin = new Map<string, number>(PLATE_MATERIAL_SLUGS.map((slug, i) => [slug, i]));
+      next = [...next].sort((a, b) => {
+        const ai = pin.get(a.slug);
+        const bi = pin.get(b.slug);
+        if (ai != null && bi != null) return ai - bi;
+        if (ai != null) return -1;
+        if (bi != null) return 1;
+        return 0;
+      });
+    }
     return next;
   }, [live, family, sort, query, window]);
+
+  const plateMaterials = useMemo(
+    () =>
+      PLATE_MATERIAL_SLUGS.map((slug) => live.find((c) => c.slug === slug)).filter(
+        (c): c is CategoryMetrics => Boolean(c),
+      ),
+    [live],
+  );
 
   return (
     <div className="flex flex-col gap-5">
@@ -106,6 +131,42 @@ export function CategoriesDirectory({
           ))}
         </div>
       </CinematicHero>
+
+      {plateMaterials.length > 0 && !query && (family === 'all' || family === 'material') ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {plateMaterials.map((c) => (
+            <Link
+              key={c.slug}
+              href={`/categories/${c.slug}`}
+              className="nv-glass-2 group relative isolate overflow-hidden rounded-[20px]"
+            >
+              <div className="relative h-36">
+                <Image
+                  src={showroomHeroForCategory(c.slug)}
+                  alt=""
+                  fill
+                  sizes="(min-width: 1280px) 22rem, 50vw"
+                  className="object-cover object-center transition-transform duration-500 group-hover:scale-[1.04]"
+                />
+                <div className="nv-showroom-scrim pointer-events-none absolute inset-0 opacity-70" />
+              </div>
+              <div className="relative z-10 flex flex-col gap-1 px-4 py-3">
+                <span className="text-display text-lg text-[var(--color-text-primary)]">{c.name}</span>
+                <span className="text-[12px] text-[var(--color-text-tertiary)]">
+                  {c.listedCount.toLocaleString()} listed · {c.memberSupply.toLocaleString()} items
+                </span>
+                <span className="text-numeral text-sm text-[var(--color-net-green)]">
+                  {c.marketStatus === 'syncing'
+                    ? 'Syncing'
+                    : c.floorPrice !== null
+                      ? payment(c.floorPrice, c.currency)
+                      : '—'}
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      ) : null}
 
       <div className="nv-glass-2 flex flex-col gap-3 rounded-[18px] p-3 lg:flex-row lg:items-center">
         <label className="nv-glass-1 flex min-w-0 flex-1 items-center gap-2 rounded-full px-4">
