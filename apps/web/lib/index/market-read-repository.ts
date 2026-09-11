@@ -60,6 +60,13 @@ export type ListedTokenRow = {
   listingState: ListingState;
 };
 
+export type TokenIdentityRow = {
+  tokenId: number;
+  name: string | null;
+  imageUrl: string | null;
+  ownerAddress: string | null;
+};
+
 export type ReadWorkerHealth = {
   workerOnline: boolean;
   streamConnected: boolean;
@@ -111,6 +118,8 @@ export interface MarketReadRepository {
   listAccountTokens(collectionId: string, ownerAddress: string): Promise<ListedTokenRow[]>;
   snapshotRevision(collectionId: string): Promise<number>;
   getMarketState(collectionId: string, tokenId: number): Promise<SqlTokenMarketState | null>;
+  getTokenIdentity(collectionId: string, tokenId: number): Promise<TokenIdentityRow | null>;
+  listTokenFacets(collectionId: string, tokenId: number): Promise<TokenFacet[]>;
   listRecentSales(collectionId: string, limit: number): Promise<SaleReadRow[]>;
   listTokenSales(collectionId: string, tokenId: number, limit: number): Promise<SaleReadRow[]>;
   listCategorySales(
@@ -339,6 +348,23 @@ export class MemoryMarketReadRepository implements MarketReadRepository {
     return this.mem.getTokenMarketState(collectionId, tokenId);
   }
 
+  async getTokenIdentity(collectionId: string, tokenId: number): Promise<TokenIdentityRow | null> {
+    if (!isOfficialExistingTokenId(tokenId)) return null;
+    const row = this.mem.token(collectionId, tokenId);
+    if (!row) return null;
+    return {
+      tokenId: row.tokenId,
+      name: row.name ?? null,
+      imageUrl: row.imageUrl ?? null,
+      ownerAddress: row.ownerAddress ?? null,
+    };
+  }
+
+  async listTokenFacets(collectionId: string, tokenId: number): Promise<TokenFacet[]> {
+    if (!isOfficialExistingTokenId(tokenId)) return [];
+    return this.mem.facets(collectionId, tokenId);
+  }
+
   async listRecentSales(collectionId: string, limit: number): Promise<SaleReadRow[]> {
     return this.mem
       .saleRows(collectionId)
@@ -497,6 +523,43 @@ export class PgMarketReadRepository implements MarketReadRepository {
       stateEventId: row.state_event_id ?? null,
       stateSource: row.state_source ?? null,
     };
+  }
+
+  async getTokenIdentity(collectionId: string, tokenId: number): Promise<TokenIdentityRow | null> {
+    if (!isOfficialExistingTokenId(tokenId)) return null;
+    const result = await this.pool.query(
+      `SELECT token_id, name, image_url, owner_address
+         FROM tokens
+        WHERE collection_id = $1 AND token_id = $2`,
+      [collectionId, tokenId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      tokenId: Number(row.token_id),
+      name: row.name ?? null,
+      imageUrl: row.image_url ?? null,
+      ownerAddress: row.owner_address ?? null,
+    };
+  }
+
+  async listTokenFacets(collectionId: string, tokenId: number): Promise<TokenFacet[]> {
+    if (!isOfficialExistingTokenId(tokenId)) return [];
+    const result = await this.pool.query(
+      `SELECT token_id, family, slug, label, source, source_version, metadata
+         FROM token_facets
+        WHERE collection_id = $1 AND token_id = $2`,
+      [collectionId, tokenId],
+    );
+    return result.rows.map((row) => ({
+      tokenId: String(row.token_id),
+      family: row.family,
+      slug: row.slug,
+      label: row.label,
+      source: row.source,
+      sourceVersion: row.source_version ?? '',
+      metadata: row.metadata ?? undefined,
+    }));
   }
 
   async listRecentSales(collectionId: string, limit: number): Promise<SaleReadRow[]> {

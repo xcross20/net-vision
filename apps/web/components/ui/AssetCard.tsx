@@ -7,7 +7,7 @@ import { motion } from 'motion/react';
 import { Heart } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
-import { buildTokenImageUrl, isProxyImageUrl } from '@/lib/data/media';
+import { isProxyImageUrl, resolveTokenImageUrl } from '@/lib/data/media';
 import { SHOWROOM_MEDIA, isShowroomPath } from '@/lib/brand/media';
 import { pct } from '@/lib/format';
 import { Price } from './Price';
@@ -37,7 +37,7 @@ export function AssetCard({
     ask !== null && token.lastSalePrice !== null && token.lastSalePrice > 0
       ? (ask - token.lastSalePrice) / token.lastSalePrice
       : null;
-  const mediaSrc = isShowroomPath(src) ? buildTokenImageUrl(token.tokenId) : src;
+  const mediaSrc = isShowroomPath(src) ? resolveTokenImageUrl(token.tokenId, null) : src;
 
   return (
     <motion.div
@@ -74,7 +74,7 @@ export function AssetCard({
             unoptimized={unoptimized}
             className="relative z-[2] object-contain p-8 brightness-110 contrast-110 transition-transform duration-500 ease-out group-hover/card:scale-[1.03]"
             onError={() => {
-              const fallback = buildTokenImageUrl(token.tokenId);
+              const fallback = resolveTokenImageUrl(token.tokenId, null);
               if (src !== fallback) setSrc(fallback);
             }}
           />

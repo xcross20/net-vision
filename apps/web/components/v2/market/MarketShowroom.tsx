@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ChartLine,
   Cube,
@@ -37,6 +37,10 @@ export function MarketShowroom({
   const [slug, setSlug] = useState<string>('all');
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('price-asc');
+  const [remoteTokens, setRemoteTokens] = useState<Token[] | null>(null);
+  const [remoteTotal, setRemoteTotal] = useState<number | null>(null);
+  const [remoteError, setRemoteError] = useState(false);
+  const [remoteLoading, setRemoteLoading] = useState(false);
   const live = snapshot.marketStatus === 'live' && freshness.fresh;
   const PINNED = ['palindrome', 'repdigit', 'digits-3', 'material-brass', 'digits-4', 'digits-5', 'double'];
   const pills = useMemo(() => {
@@ -50,12 +54,47 @@ export function MarketShowroom({
     return [...pinned, ...rest].slice(0, 7);
   }, [categories]);
 
-  const visible = useMemo(() => {
-    let next = tokens;
-    if (slug !== 'all') {
-      next = next.filter((t) => t.traits.some((tr) => tr.slug === slug));
+  useEffect(() => {
+    if (slug === 'all') {
+      setRemoteTokens(null);
+      setRemoteTotal(null);
+      setRemoteError(false);
+      setRemoteLoading(false);
+      return;
     }
-    if (query.trim()) {
+    const controller = new AbortController();
+    setRemoteLoading(true);
+    setRemoteError(false);
+    setRemoteTokens(null);
+    const params = new URLSearchParams({ limit: '48', offset: '0' });
+    if (query.trim()) params.set('q', query.trim());
+    void fetch(`/api/categories/${encodeURIComponent(slug)}/listings?${params.toString()}`, {
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`listings ${res.status}`);
+        return (await res.json()) as { tokens?: Token[]; total?: number };
+      })
+      .then((body) => {
+        setRemoteTokens(body.tokens ?? []);
+        setRemoteTotal(typeof body.total === 'number' ? body.total : (body.tokens ?? []).length);
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        setRemoteTokens([]);
+        setRemoteTotal(null);
+        setRemoteError(true);
+        void err;
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setRemoteLoading(false);
+      });
+    return () => controller.abort();
+  }, [slug, query]);
+
+  const visible = useMemo(() => {
+    let next = slug === 'all' ? tokens : (remoteTokens ?? []);
+    if (slug === 'all' && query.trim()) {
       const q = query.trim().toLowerCase();
       next = next.filter(
         (t) =>
@@ -69,7 +108,13 @@ export function MarketShowroom({
       return (b.listedAt ?? 0) - (a.listedAt ?? 0);
     });
     return next;
-  }, [tokens, slug, query, sort]);
+  }, [tokens, remoteTokens, slug, query, sort]);
+
+  const listedLabelCount =
+    slug === 'all'
+      ? snapshot.listedCount
+      : (remoteTotal ?? pills.find((c) => c.slug === slug)?.listedCount ?? snapshot.listedCount);
+  const selectedCategory = pills.find((c) => c.slug === slug);
 
   return (
     <div className="flex flex-col gap-5">
@@ -123,10 +168,11 @@ export function MarketShowroom({
       <div className="nv-glass-2 flex flex-col gap-3 rounded-[18px] p-3 md:flex-row md:items-center md:px-4">
         <div className="px-2">
           <div className="text-numeral text-lg font-semibold text-[var(--color-text-primary)]">
-            {snapshot.listedCount.toLocaleString()}
+            {listedLabelCount.toLocaleString()}
           </div>
           <div className="text-[11px] text-[var(--color-text-tertiary)]">
-            {live ? 'Items listed' : 'Known listed'} in Button Presser
+            {live ? 'Items listed' : 'Known listed'}{' '}
+            {selectedCategory ? `in ${selectedCategory.name}` : 'in Button Presser'}
           </div>
         </div>
         <label className="nv-glass-1 flex min-w-0 flex-1 items-center gap-2 rounded-full px-4">
@@ -154,6 +200,18 @@ export function MarketShowroom({
           title="Listings unavailable"
           body="The listing read model could not be loaded. This is not proof that nothing is listed."
           tone="warming"
+        />
+      ) : remoteError ? (
+        <EmptyState
+          title="Listings unavailable"
+          body="This category's listings could not be loaded. This is not proof that nothing is listed."
+          tone="warming"
+        />
+      ) : remoteLoading ? (
+        <EmptyState
+          title="Loading listings"
+          body={`Fetching verified asks in ${selectedCategory?.name ?? 'this category'}.`}
+          tone="muted"
         />
       ) : visible.length === 0 ? (
         <EmptyState

@@ -70,7 +70,7 @@ export function SearchCommand({
     if (/^\d+$/.test(needle) && !fromList.some((t) => t.tokenId === needle)) {
       const jump = {
         tokenId: needle,
-        imageUrl: `/api/media/token/${needle}`,
+        imageUrl: `/api/media/canonical/${needle}`,
         listingPrice: null,
         listedAt: null,
         currency: 'USDG',

@@ -35,7 +35,7 @@ function toCartItem(input: z.infer<typeof Body>['items'][number]): CartItem {
     collectionSlug: 'button-presser',
     contractAddress: input.contractAddress.toLowerCase() as `0x${string}`,
     tokenId: input.tokenId,
-    imageUrl: `/api/media/token/${encodeURIComponent(input.tokenId)}`,
+    imageUrl: `/api/media/canonical/${encodeURIComponent(input.tokenId)}`,
     displayName: `#${input.tokenId}`,
     categories: [],
     sourceMarketplace: 'opensea',

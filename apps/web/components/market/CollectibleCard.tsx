@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { Check, Plus } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
-import { buildTokenImageUrl, isProxyImageUrl } from '@/lib/data/media';
+import { isProxyImageUrl, resolveTokenImageUrl } from '@/lib/data/media';
 import { MarketplaceBadge } from '@/components/ui/MarketplaceBadge';
 import { Price } from '@/components/ui/Price';
 
@@ -71,7 +71,7 @@ export function CollectibleCard({
             unoptimized={unoptimized}
             className="object-contain p-3"
             onError={() => {
-              const fallback = buildTokenImageUrl(token.tokenId);
+              const fallback = resolveTokenImageUrl(token.tokenId, null);
               if (src !== fallback) setSrc(fallback);
             }}
           />

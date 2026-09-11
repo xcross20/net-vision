@@ -89,7 +89,7 @@ import {
   categoryReadiness,
   type ListingObservation,
 } from './listing-state';
-import { buildTokenImageUrl, isProxyImageUrl, resolveTokenImageUrl } from '@/lib/data/media';
+import { isDerivedPosterUrl, resolveTokenImageUrl } from '@/lib/data/media';
 import type {
   CategoryMetrics,
   CollectionSnapshot,
@@ -794,7 +794,7 @@ class OpenSeaMarketSource implements MarketSource {
       if (
         isFresh(cached) &&
         cached.value.listingPrice !== null &&
-        !isProxyImageUrl(cached.value.imageUrl)
+        !isDerivedPosterUrl(cached.value.imageUrl)
       ) {
         return cached.value;
       }
@@ -817,7 +817,7 @@ class OpenSeaMarketSource implements MarketSource {
     const ready = tokens.filter((token): token is Token => token !== null);
     // Enrich any still-proxied images for the visible page.
     if (!this.isCoolingDown()) {
-      const missing = ready.filter((token) => isProxyImageUrl(token.imageUrl));
+      const missing = ready.filter((token) => isDerivedPosterUrl(token.imageUrl));
       await mapWithConcurrency(missing, NFT_METADATA_CONCURRENCY, async (token) => {
         try {
           const nft = await this.fetchNFT(token.tokenId);
@@ -1291,7 +1291,7 @@ function nftToToken(tokenId: string, nft: NftInfo): Token {
       nft.image_url ??
       nft.image_preview_url ??
       nft.image_original_url ??
-      buildTokenImageUrl(tokenId),
+      resolveTokenImageUrl(tokenId, null),
     name: nft.name ?? `#${tokenId}`,
     description: nft.description ?? null,
     listingPrice: null,
@@ -1343,7 +1343,7 @@ function buildUnlistedCategoryToken(tokenId: string): Token {
     tokenId,
     contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
     chainId: ROBINHOOD_CHAIN.id,
-    imageUrl: buildTokenImageUrl(tokenId),
+    imageUrl: resolveTokenImageUrl(tokenId, null),
     name: `#${tokenId}`,
     listingPrice: null,
     currency: DEFAULT_PAYMENT_CURRENCY,
@@ -1457,7 +1457,7 @@ function orderToListedToken(order: Order): Token | null {
     contractAddress:
       order.asset?.contract?.toLowerCase() ?? BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
     chainId: ROBINHOOD_CHAIN.id,
-    imageUrl: buildTokenImageUrl(tokenId),
+    imageUrl: resolveTokenImageUrl(tokenId, null),
     name: `#${tokenId}`,
     listingPrice: amount,
     currency: currency ?? DEFAULT_PAYMENT_CURRENCY,

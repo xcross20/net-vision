@@ -168,6 +168,38 @@ describe('SqlMarketSource', () => {
     expect(listed.tokens.map((t) => t.tokenId)).toEqual(['1']);
   });
 
+  it('serves canonical identity art from getToken, not the derived poster', async () => {
+    const mem = new MemoryMarketRepository();
+    await mem.upsertToken({
+      collectionId: CID,
+      tokenId: 25941,
+      displayNumber: '25941',
+      exists: true,
+      ownerAddress: '0xabc',
+      name: 'Button Presser #25941',
+      imageUrl: '/api/media/canonical/25941',
+      metadataJson: null,
+      metadataVerifiedAt: null,
+      lastSeenAt: 1,
+    });
+    await mem.upsertTokenMarketState(state(25941, 'LISTED', 12));
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const token = await source.getToken('25941');
+    expect(token?.imageUrl).toBe('/api/media/canonical/25941');
+    expect(token?.imageUrl).not.toContain('/api/media/token/');
+  });
+
+  it('does not invent a derived poster when canonical cache path is missing', async () => {
+    const mem = new MemoryMarketRepository();
+    await seedToken(mem, 11, 'LISTED', 12, ['digits-2', 'repdigit']);
+    const source = new SqlMarketSource(new MemoryMarketReadRepository(mem));
+    const token = await source.getToken('11');
+    expect(token?.imageUrl).toBe('/api/media/canonical/11');
+    const page = await source.listTokens({ category: 'repdigit', listedOnly: true, limit: 10 });
+    expect(page.tokens.map((t) => t.tokenId)).toEqual(['11']);
+    expect(page.tokens[0]?.imageUrl).toBe('/api/media/canonical/11');
+  });
+
   it('lists cheapest collection-wide LISTED tokens when no category is given', async () => {
     const mem = new MemoryMarketRepository();
     await seedToken(mem, 1, 'LISTED', 50, ['digits-1']);
