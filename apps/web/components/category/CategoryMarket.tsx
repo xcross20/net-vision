@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CategoryMetrics, Token } from '@/lib/market';
 import { useLiveCategory } from '@/lib/market/use-live-metrics';
 import { CategoryHero } from './CategoryHero';
-import { CategoryMetricsStrip } from './CategoryMetrics';
 import { CategoryTabs, type CategoryTab } from './CategoryTabs';
 import { CategoryListings } from './CategoryListings';
 import { CategorySales } from './CategorySales';
@@ -133,36 +132,35 @@ export function CategoryMarket({
 
   return (
     <div className="flex flex-col gap-10 pb-24">
-      <CategoryHero metrics={liveMetrics} />
-      <CategoryMetricsStrip metrics={liveMetrics} />
+      <CategoryHero
+        metrics={liveMetrics}
+        onSweep={() => setSweepOpen(true)}
+        sweepDisabled={liveMetrics.marketStatus === 'syncing'}
+      />
       <div className="flex flex-col gap-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <CategoryTabs value={tab} onChange={setTab} listedCount={liveMetrics.listedCount} />
-          {tab === 'listings' ? (
-            <button
-              type="button"
-              className="nv-button nv-button-ghost"
-              onClick={() => setSweepOpen(true)}
-              disabled={liveMetrics.marketStatus === 'syncing'}
-            >
-              Sweep {liveMetrics.name}
-            </button>
-          ) : null}
-        </div>
+        <CategoryTabs value={tab} onChange={setTab} listedCount={liveMetrics.listedCount} />
 
         {tab === 'listings' ? (
           <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-display text-xl text-[var(--color-text-primary)]">
+                {liveMetrics.name} Button Pressers
+                <span className="ml-3 text-[13px] font-normal text-[var(--color-text-tertiary)]">
+                  {liveMetrics.memberSupply.toLocaleString()} items
+                </span>
+              </h2>
+            </div>
+            <div className="nv-glass-2 flex flex-wrap gap-2 rounded-[18px] p-3">
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search this category..."
-                className="h-10 min-w-[12rem] flex-1 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-3 text-sm"
+                placeholder={`Search in ${liveMetrics.name}...`}
+                className="nv-glass-1 h-11 min-w-[12rem] flex-1 rounded-full px-4 text-sm"
               />
               <select
                 value={material}
                 onChange={(e) => setMaterial(e.target.value)}
-                className="h-10 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-3 text-sm"
+                className="h-10 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-4 text-sm"
               >
                 <option value="">Material</option>
                 {materials.map((c) => (
@@ -174,7 +172,7 @@ export function CategoryMarket({
               <select
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
-                className="h-10 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-3 text-sm"
+                className="h-10 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-4 text-sm"
               >
                 <option value="">Pattern</option>
                 {patterns.map((c) => (

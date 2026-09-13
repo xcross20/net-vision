@@ -5,6 +5,7 @@ import { Drawer } from '@/components/ui/Drawer';
 import { useCart } from '@/lib/cart/CartProvider';
 import type { Token } from '@/lib/market';
 import type { SweepPreview } from '@/lib/market/engine';
+import { assertSweepCartMatchesPreview, sweepPreviewToCartDrafts } from '@/lib/market/sweep-cart';
 import { payment } from '@/lib/format';
 
 export function SweepDrawer({
@@ -33,6 +34,7 @@ export function SweepDrawer({
   useEffect(() => {
     if (!open || !enabled) return;
     const controller = new AbortController();
+    setPreview(null);
     setLoading(true);
     setError(null);
     void fetch(`/api/categories/${encodeURIComponent(slug)}/sweep-preview`, {
@@ -59,24 +61,16 @@ export function SweepDrawer({
   }, [open, enabled, slug, quantity, maxSpend, maxPrice]);
 
   const addBasket = () => {
-    if (!preview) return;
-    const byId = new Map(tokens.map((token) => [token.tokenId, token]));
-    addMany(
-      preview.items
-        .map((item) => {
-          const token = byId.get(item.tokenId);
-          if (!token) return null;
-          return {
-            token,
-            displayedPriceDecimal: item.price.toString(),
-            displayedOrderHash: item.orderHash,
-            currencySymbol: item.currency,
-          };
-        })
-        .filter((row): row is NonNullable<typeof row> => row !== null),
-    );
-    onClose();
-    openCart();
+    if (!preview || loading) return;
+    try {
+      const drafts = sweepPreviewToCartDrafts(preview);
+      const result = addMany(drafts);
+      assertSweepCartMatchesPreview(preview, result.added);
+      onClose();
+      openCart();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sweep could not add the previewed items.');
+    }
   };
 
   return (

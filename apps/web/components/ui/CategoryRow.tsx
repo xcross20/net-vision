@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import { ArrowRight, Star } from '@phosphor-icons/react/dist/ssr';
+import { ArrowRight } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { CategoryMetrics } from '@/lib/market';
 import { compact, payment, pct } from '@/lib/format';
 import { LiveIndicator } from './LiveIndicator';
+import { CategoryGlyph } from '@/components/showroom/CategoryGlyph';
 
 /**
  * ENS Vision inspired category list row. One row per category, with
@@ -14,19 +15,23 @@ import { LiveIndicator } from './LiveIndicator';
  */
 export function CategoryRow({
   metrics,
-  movement,
+  index,
+  volumeWindow = '24h',
 }: {
   metrics: CategoryMetrics;
   movement?: number | null;
+  index?: number;
+  volumeWindow?: '24h' | '7d' | '30d' | 'all';
 }) {
-  const movementTone =
-    movement !== undefined && movement !== null
-      ? movement > 0
-        ? 'up'
-        : movement < 0
-          ? 'down'
-          : 'flat'
-      : null;
+  const volume =
+    volumeWindow === '7d'
+      ? metrics.volume7d
+      : volumeWindow === '30d'
+        ? metrics.volume30d
+        : volumeWindow === 'all'
+          ? metrics.volumeAllTracked
+          : metrics.volume24h;
+  const sales = volumeWindow === '24h' ? metrics.sales24h : metrics.sales7d;
   return (
     <Link
       href={`/categories/${metrics.slug}`}
@@ -36,9 +41,10 @@ export function CategoryRow({
       )}
     >
       <div className="flex items-start gap-3 md:items-center">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-surface-2)] text-[var(--color-net-green)] transition-transform group-hover:rotate-12">
-          <Star size={14} weight="duotone" />
+        <span className="hidden w-9 shrink-0 text-numeral text-[12px] text-[var(--color-text-tertiary)] lg:inline-block">
+          {index ?? ''}
         </span>
+        <CategoryGlyph metrics={metrics} size="sm" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <span className="truncate text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)]">
             {metrics.name}
@@ -48,7 +54,10 @@ export function CategoryRow({
           </span>
         </div>
 
-        <span className="hidden text-numeral text-sm text-[var(--color-text-primary)] md:inline-block md:w-24 md:text-right">
+        <span className="hidden text-[11px] uppercase tracking-[0.14em] text-[var(--color-text-tertiary)] lg:inline-block lg:w-[5.5rem]">
+          {metrics.family}
+        </span>
+        <span className="hidden text-numeral text-sm text-[var(--color-text-primary)] lg:inline-block lg:w-24 lg:text-right">
           {metrics.marketStatus === 'syncing'
             ? 'Syncing'
             : metrics.floorPrice !== null
@@ -57,7 +66,7 @@ export function CategoryRow({
         </span>
         <span
           className={cn(
-            'hidden text-numeral text-sm md:inline-block md:w-20 md:text-right',
+            'hidden text-numeral text-sm lg:inline-block lg:w-20 lg:text-right',
             (metrics.floorChange24h ?? 0) > 0 && 'text-[var(--color-net-green)]',
             (metrics.floorChange24h ?? 0) < 0 && 'text-[var(--color-danger)]',
           )}
@@ -66,34 +75,30 @@ export function CategoryRow({
         </span>
         <span
           className={cn(
-            'hidden text-numeral text-sm md:inline-block md:w-20 md:text-right',
+            'hidden text-numeral text-sm lg:inline-block lg:w-20 lg:text-right',
             (metrics.floorChange7d ?? 0) > 0 && 'text-[var(--color-net-green)]',
             (metrics.floorChange7d ?? 0) < 0 && 'text-[var(--color-danger)]',
           )}
         >
           {metrics.marketStatus === 'syncing' ? '—' : pct(metrics.floorChange7d)}
         </span>
-        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-24 md:text-right">
-          {metrics.marketStatus === 'syncing' ? '—' : compact(metrics.volume24h)}
+        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] lg:inline-block lg:w-24 lg:text-right">
+          {metrics.marketStatus === 'syncing' ? '—' : compact(volume)}
         </span>
-        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-20 md:text-right">
-          {metrics.sales24h.toLocaleString()}
+        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] lg:inline-block lg:w-20 lg:text-right">
+          {sales.toLocaleString()}
         </span>
-        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] md:inline-block md:w-20 md:text-right">
+        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] lg:inline-block lg:w-20 lg:text-right">
           {metrics.listedCount.toLocaleString()}
         </span>
-        <span
-          className={cn(
-            'hidden text-numeral text-sm md:inline-block md:w-20 md:text-right',
-            movementTone === 'up' && 'text-[var(--color-net-green)]',
-            movementTone === 'down' && 'text-[var(--color-danger)]',
-            (!movementTone || movementTone === 'flat') && 'text-[var(--color-text-tertiary)]',
-          )}
-        >
-          {movement !== undefined && movement !== null ? pct(movement) : '—'}
+        <span className="hidden text-numeral text-sm text-[var(--color-text-secondary)] lg:inline-block lg:w-20 lg:text-right">
+          {metrics.memberSupply.toLocaleString()}
+        </span>
+        <span className="hidden w-24 justify-end lg:inline-flex">
+          <TrendSpark change24h={metrics.floorChange24h} change7d={metrics.floorChange7d} />
         </span>
 
-        <span className="ml-2 hidden text-[var(--color-text-tertiary)] transition-all group-hover:translate-x-0.5 group-hover:text-[var(--color-net-green)] md:inline-flex">
+        <span className="ml-2 hidden text-[var(--color-text-tertiary)] transition-all group-hover:translate-x-0.5 group-hover:text-[var(--color-net-green)] lg:inline-flex">
           <ArrowRight size={12} weight="bold" />
         </span>
       </div>
@@ -130,6 +135,32 @@ export function CategoryRow({
         <ArrowRight size={12} weight="bold" />
       </div>
     </Link>
+  );
+}
+
+function TrendSpark({
+  change24h,
+  change7d,
+}: {
+  change24h: number | null;
+  change7d: number | null;
+}) {
+  const a = change24h ?? 0;
+  const b = change7d ?? 0;
+  const up = b >= 0;
+  const y0 = 14;
+  const y1 = 14 - a * 40;
+  const y2 = 14 - b * 40;
+  const clamp = (n: number) => Math.min(22, Math.max(2, n));
+  return (
+    <svg width="72" height="24" viewBox="0 0 72 24" aria-hidden="true" className="overflow-visible">
+      <polyline
+        fill="none"
+        stroke={up ? 'var(--color-net-green)' : 'var(--color-danger)'}
+        strokeWidth="1.6"
+        points={`2,${clamp(y0)} 36,${clamp(y1)} 70,${clamp(y2)}`}
+      />
+    </svg>
   );
 }
 

@@ -12,7 +12,7 @@
  */
 import { defineChain } from 'viem';
 
-export const CONFIG_VERSION = 1;
+export const CONFIG_VERSION = 2;
 
 export const BUTTON_PRESSER_COLLECTION = {
   name: 'Button Presser',
@@ -35,37 +35,98 @@ export const BUTTON_PRESSER_COLLECTION = {
 } as const;
 
 /**
- * Robinhood Chain.
+ * Canonical market/category/supply universe. Discovery may persist
+ * rows through `maxTokenId` (62094 and 62095 today), but listed counts,
+ * coverage, and Items MUST NOT use COUNT(token_market_state).
  *
- * NOTE: The numeric chain ID below is the value documented at the time of
- * the v1.1 specification. The deployment pipeline must cross-check the
- * current official Robinhood Chain chain ID before any live trade is
- * enabled. See docs/integrations/opensea.md for the verification step.
+ * `tokens.exists` is an observation flag (metadata/NFT fetch), not
+ * supply. Filtering `exists=true` would drop official ids that have
+ * not been metadata-verified yet.
+ */
+export function isOfficialExistingTokenId(tokenId: number): boolean {
+  return (
+    Number.isInteger(tokenId) &&
+    tokenId >= BUTTON_PRESSER_COLLECTION.minTokenId &&
+    tokenId <= BUTTON_PRESSER_COLLECTION.officialExistingSupply
+  );
+}
+
+/**
+ * Robinhood Chain mainnet.
+ *
+ * Canonical record: `docs/launch/CHAIN_AUTHORITY.md` (2026-09-10).
+ * Official docs + live RPC `eth_chainId` = 4663. The v1.1 value 1311 is retired.
  */
 export const ROBINHOOD_CHAIN = defineChain({
-  id: 1311,
+  id: 4663,
   name: 'Robinhood Chain',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
     default: {
-      http: ['https://rpc.robinhood.com/mainnet'],
+      http: ['https://rpc.mainnet.chain.robinhood.com'],
     },
   },
   blockExplorers: {
-    default: { name: 'Robinhood Explorer', url: 'https://explorer.robinhood.com' },
+    default: {
+      name: 'Robinhood Chain Explorer',
+      url: 'https://robinhoodchain.blockscout.com',
+    },
   },
 });
+
+/** 4663 as a 0x-prefixed hex string for wallet_switchEthereumChain. */
+export const ROBINHOOD_CHAIN_ID_HEX = '0x1237' as const;
+
+/**
+ * Canonical wallet_addEthereumChain payload. RPC and explorer here are
+ * the official public wallet defaults, not the app's production RPC.
+ * Never construct this from URL params, OpenSea, or user-controlled data.
+ */
+export function robinhoodAddEthereumChainParameter(): {
+  chainId: typeof ROBINHOOD_CHAIN_ID_HEX;
+  chainName: typeof ROBINHOOD_CHAIN.name;
+  nativeCurrency: {
+    name: typeof ROBINHOOD_CHAIN.nativeCurrency.name;
+    symbol: typeof ROBINHOOD_CHAIN.nativeCurrency.symbol;
+    decimals: typeof ROBINHOOD_CHAIN.nativeCurrency.decimals;
+  };
+  rpcUrls: readonly string[];
+  blockExplorerUrls: readonly string[];
+} {
+  return {
+    chainId: ROBINHOOD_CHAIN_ID_HEX,
+    chainName: ROBINHOOD_CHAIN.name,
+    nativeCurrency: {
+      name: ROBINHOOD_CHAIN.nativeCurrency.name,
+      symbol: ROBINHOOD_CHAIN.nativeCurrency.symbol,
+      decimals: ROBINHOOD_CHAIN.nativeCurrency.decimals,
+    },
+    rpcUrls: ROBINHOOD_CHAIN.rpcUrls.default.http,
+    blockExplorerUrls: [ROBINHOOD_CHAIN.blockExplorers.default.url],
+  };
+}
+
+/** OpenSea v2 path slug for this chain. Not a numeric id. */
+export const OPENSEA_CHAIN_SLUG = 'robinhood' as const;
 
 /**
  * Allowlisted protocol addresses. The transaction policy engine must
  * reject any executable action whose target is not in this list.
  *
- * Seaport v1.5 is the OpenSea execution protocol used for ERC-721
- * orderbook fulfillment on supported chains.
+ * Seaport at this address returns `information().version === "1.6"` on
+ * Robinhood RPC. USDG allowance is NOT granted to Seaport when the
+ * order's fulfillerConduitKey is non-zero — resolve the conduit via
+ * ConduitController.getConduit(key) and approve that address.
  */
 export const ALLOWLISTED_PROTOCOLS = {
+  seaport16: '0x0000000000000068F116a894984e2DB1123eB395' as const,
+  /** @deprecated same address as seaport16 */
   seaport15: '0x0000000000000068F116a894984e2DB1123eB395' as const,
+  conduitController: '0x00000000F9490004C11Cef243f5400493c00Ad63' as const,
 } as const;
+
+export const ZERO_CONDUIT_KEY =
+  '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
 
 /**
  * Settlement assets allowed for Button Presser purchases.
@@ -74,7 +135,7 @@ export const ALLOWLISTED_PROTOCOLS = {
 export const PAYMENT_TOKENS = {
   USDG: {
     symbol: 'USDG',
-    chainId: 1311,
+    chainId: ROBINHOOD_CHAIN.id,
     /** Observed on live button-presser Seaport consideration items. */
     contractAddress: '0x5fc5360d0400a0fd4f2af552add042d716f1d168' as const,
     decimals: 6,
@@ -87,7 +148,8 @@ export const ALLOWLISTED_PAYMENT_TOKEN_SET = new Set<string>(
 
 export const ALLOWLISTED_CONTRACT_SET = new Set<string>([
   BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
-  ALLOWLISTED_PROTOCOLS.seaport15.toLowerCase(),
+  ALLOWLISTED_PROTOCOLS.seaport16.toLowerCase(),
+  ALLOWLISTED_PROTOCOLS.conduitController.toLowerCase(),
   ...ALLOWLISTED_PAYMENT_TOKEN_SET,
 ]);
 

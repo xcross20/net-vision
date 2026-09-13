@@ -7,8 +7,9 @@ import type { Token } from '@/lib/market';
 import { CollectibleCard } from '@/components/market/CollectibleCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Tabs } from '@/components/ui/Tabs';
+import { ListDrawer } from '@/components/listing/ListDrawer';
+import { OffersPanel } from '@/components/offers/OffersPanel';
 import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
-import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import { payment } from '@/lib/format';
 import { VIRTUAL_COLLECTION_CATALOG } from '@net-vision/taxonomy';
 
@@ -19,6 +20,7 @@ export function PortfolioView() {
   const [tab, setTab] = useState<Tab>('inventory');
   const [tokens, setTokens] = useState<Token[]>([]);
   const [unavailable, setUnavailable] = useState(false);
+  const [listingToken, setListingToken] = useState<Token | null>(null);
   const { tokens: watchedIds, categories: watchedCategories } = useWatchlist();
 
   useEffect(() => {
@@ -74,14 +76,41 @@ export function PortfolioView() {
 
   return (
     <div className="flex flex-col gap-10">
-      <header className="flex flex-col gap-3">
+      <header className="relative isolate overflow-hidden rounded-[24px] border border-[var(--color-border-subtle)]">
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-50"
+          style={{ backgroundImage: 'url(/brand/showroom/hero-plaques.jpg)' }}
+        />
+        <div className="nv-showroom-scrim absolute inset-0" />
+        <div className="relative z-10 flex flex-col gap-3 p-6 md:p-8">
         <span className="text-eyebrow">Portfolio</span>
         <h1 className="text-display text-[clamp(2.25rem,5vw,3.5rem)]">Your Buttons</h1>
         <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
           {unavailable
             ? 'Inventory unavailable — not the same as an empty wallet.'
-            : `${tokens.length} total · Estimated context value ${payment(contextValue, 'USDG')}`}
+            : 'Collect. Trade. Build what\'s next. Live wallet inventory only — no estimated fantasy value.'}
         </p>
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <span className="nv-metric-card">
+            Owned
+            <strong className="text-numeral text-xl text-[var(--color-text-primary)]">{tokens.length}</strong>
+          </span>
+          <span className="nv-metric-card">
+            Listed
+            <strong className="text-numeral text-xl text-[var(--color-text-primary)]">{listed.length}</strong>
+          </span>
+          <span className="nv-metric-card">
+            Watchlist
+            <strong className="text-numeral text-xl text-[var(--color-text-primary)]">{watchedIds.length}</strong>
+          </span>
+          <span className="nv-metric-card">
+            Listed context
+            <strong className="text-numeral text-xl text-[var(--color-text-primary)]">
+              {unavailable ? '—' : payment(contextValue, 'USDG')}
+            </strong>
+          </span>
+        </div>
+        </div>
       </header>
 
       <div className="flex flex-wrap gap-3">
@@ -113,11 +142,19 @@ export function PortfolioView() {
           {(tab === 'listed' ? listed : tokens).map((token) => (
             <div key={token.tokenId} className="flex flex-col gap-2">
               <CollectibleCard token={token} selectable={false} />
-              <ListAssetButton token={token} />
+              <button
+                type="button"
+                onClick={() => setListingToken(token)}
+                className="nv-button nv-button-ghost text-center"
+              >
+                {token.listingPrice !== null ? 'Edit listing' : 'List on Net Vision'}
+              </button>
             </div>
           ))}
         </div>
       ) : null}
+
+      <ListDrawer open={listingToken !== null} token={listingToken} onClose={() => setListingToken(null)} />
 
       {tab === 'watchlist' ? (
         <div className="flex flex-col gap-3">
@@ -137,26 +174,15 @@ export function PortfolioView() {
         </div>
       ) : null}
 
-      {tab === 'offers' || tab === 'activity' ? (
+      {tab === 'offers' ? <OffersPanel /> : null}
+
+      {tab === 'activity' ? (
         <p className="text-sm text-[var(--color-text-tertiary)]">
-          Offers and activity appear as the indexer records them for this wallet.
+          Activity appears as the indexer records it for this wallet.
         </p>
       ) : null}
     </div>
   );
 }
 
-function ListAssetButton({ token }: { token: Token }) {
-  const href = `https://opensea.io/assets/robinhood/${BUTTON_PRESSER_COLLECTION.contractAddress}/${token.tokenId}`;
-  const listed = token.listingPrice !== null;
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="nv-button nv-button-ghost text-center"
-    >
-      {listed ? 'Edit listing' : 'List'}
-    </a>
-  );
-}
+

@@ -2,6 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import { useAccount, useSendTransaction } from 'wagmi';
+import { ROBINHOOD_CHAIN } from '@net-vision/chain-config';
+import { useRobinhoodNetworkGate } from '@/lib/wallet/NetworkGateProvider';
+import { checkoutFailureMessage } from '@/lib/wallet/network-errors';
+import { assertWalletOnRobinhood } from '@/lib/wallet/network-gate';
 import type { Offer } from '@/lib/market';
 import { address, payment } from '@/lib/format';
 
@@ -30,7 +34,8 @@ export function OfferActions({
   ownerAddress: string | null;
   offers: Offer[];
 }) {
-  const { address: wallet, isConnected } = useAccount();
+  const { address: wallet, isConnected, chainId, connector } = useAccount();
+  const { requestNetworkForAction } = useRobinhoodNetworkGate();
   const { sendTransactionAsync } = useSendTransaction();
   const [state, setState] = useState<Phase>({ phase: 'idle' });
   const [declined, setDeclined] = useState<Set<string>>(new Set());
@@ -47,6 +52,12 @@ export function OfferActions({
 
   const accept = async (offer: Offer) => {
     if (!wallet) return;
+    const onRobinhood = await requestNetworkForAction('accept_offer', 'offer');
+    if (!onRobinhood) return;
+    await assertWalletOnRobinhood({
+      getChainId: connector?.getChainId?.bind(connector),
+      chainId,
+    });
     setState({ phase: 'preparing', orderHash: offer.orderHash });
     try {
       const res = await fetch('/api/trade/offer/accept', {
@@ -70,17 +81,22 @@ export function OfferActions({
         });
         return;
       }
+      await assertWalletOnRobinhood({
+        getChainId: connector?.getChainId?.bind(connector),
+        chainId,
+      });
       setState({ phase: 'signing', orderHash: offer.orderHash });
       const hash = await sendTransactionAsync({
         to: data.transaction.to as `0x${string}`,
         data: (data.transaction.data ?? '0x') as `0x${string}`,
         value: data.transaction.value ? BigInt(data.transaction.value) : BigInt(0),
+        chainId: ROBINHOOD_CHAIN.id,
       });
       setState({ phase: 'sent', hash });
     } catch (err) {
       setState({
         phase: 'error',
-        message: err instanceof Error ? err.message : String(err),
+        message: checkoutFailureMessage(err),
       });
     }
   };

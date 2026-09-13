@@ -67,6 +67,9 @@ import {
   writeWorkerCheckpoint,
 } from '@/lib/index/store';
 import { startMarketMaintenance } from '@/lib/index/maintenance';
+import { isNextProductionBuild, marketReadModel } from '@/lib/index/sql-read-flags';
+import { getSqlMarketSourceOrFail } from './sql-market-source';
+import { enqueueSqlReconciliation } from '@/lib/index/sql-writer';
 import { rehydrateCatalogFromIndex } from './rehydrate-catalog';
 import { PRIORITY_TOKEN_IDS, startBackgroundIndexer } from '@/lib/index/worker';
 import {
@@ -86,7 +89,7 @@ import {
   categoryReadiness,
   type ListingObservation,
 } from './listing-state';
-import { buildTokenImageUrl, isProxyImageUrl, resolveTokenImageUrl } from '@/lib/data/media';
+import { isDerivedPosterUrl, resolveTokenImageUrl } from '@/lib/data/media';
 import type {
   CategoryMetrics,
   CollectionSnapshot,
@@ -308,6 +311,11 @@ class OpenSeaMarketSource implements MarketSource {
       },
       async (tokenId) => {
         try {
+          const n = Number(tokenId);
+          if (Number.isInteger(n)) {
+            const { isCanonicalVerified } = await import('../index/canonical-metadata-store');
+            if (await isCanonicalVerified(n)) return { kind: 'found' as const };
+          }
           const nft = await this.fetchNFT(tokenId);
           return nft ? { kind: 'found' as const } : { kind: 'missing' as const };
         } catch (err) {
@@ -628,6 +636,7 @@ class OpenSeaMarketSource implements MarketSource {
         listedAt: listing.listedAt,
       });
       writeListing(next);
+      enqueueSqlReconciliation(next);
       this.catalog.hydrateListingRecord(next);
     }
     saveIndex();
@@ -709,6 +718,7 @@ class OpenSeaMarketSource implements MarketSource {
             listedAt: catalogListing.listedAt,
           });
           writeListing(next);
+          enqueueSqlReconciliation(next);
           this.catalog.hydrateListingRecord(next);
         } else if (!options.force) {
           // Force re-checks are ask-only. OpenSea's best-listing endpoint
@@ -717,6 +727,7 @@ class OpenSeaMarketSource implements MarketSource {
           this.catalog.confirmScan(tokenId, null);
           const next = applyObservation(listingRecord(tokenId), { kind: 'no-ask' });
           writeListing(next);
+          enqueueSqlReconciliation(next);
           this.catalog.hydrateListingRecord(next);
         }
       } catch (err) {
@@ -783,7 +794,7 @@ class OpenSeaMarketSource implements MarketSource {
       if (
         isFresh(cached) &&
         cached.value.listingPrice !== null &&
-        !isProxyImageUrl(cached.value.imageUrl)
+        !isDerivedPosterUrl(cached.value.imageUrl)
       ) {
         return cached.value;
       }
@@ -806,7 +817,7 @@ class OpenSeaMarketSource implements MarketSource {
     const ready = tokens.filter((token): token is Token => token !== null);
     // Enrich any still-proxied images for the visible page.
     if (!this.isCoolingDown()) {
-      const missing = ready.filter((token) => isProxyImageUrl(token.imageUrl));
+      const missing = ready.filter((token) => isDerivedPosterUrl(token.imageUrl));
       await mapWithConcurrency(missing, NFT_METADATA_CONCURRENCY, async (token) => {
         try {
           const nft = await this.fetchNFT(token.tokenId);
@@ -1020,12 +1031,10 @@ class OpenSeaMarketSource implements MarketSource {
 
   async listCategories(): Promise<CategoryMetrics[]> {
     await this.ensurePipeline();
-    const rows: CategoryMetrics[] = [];
-    for (const entry of VIRTUAL_COLLECTION_CATALOG) {
-      const metrics = await this.composeCategoryMetrics(entry.slug);
-      if (metrics) rows.push(metrics);
-    }
-    return rows;
+    const rows = await Promise.all(
+      VIRTUAL_COLLECTION_CATALOG.map((entry) => this.composeCategoryMetrics(entry.slug)),
+    );
+    return rows.filter((metrics): metrics is CategoryMetrics => metrics != null);
   }
 
   async listRecentSales(limit = 20): Promise<Sale[]> {
@@ -1282,7 +1291,7 @@ function nftToToken(tokenId: string, nft: NftInfo): Token {
       nft.image_url ??
       nft.image_preview_url ??
       nft.image_original_url ??
-      buildTokenImageUrl(tokenId),
+      resolveTokenImageUrl(tokenId, null),
     name: nft.name ?? `#${tokenId}`,
     description: nft.description ?? null,
     listingPrice: null,
@@ -1334,7 +1343,7 @@ function buildUnlistedCategoryToken(tokenId: string): Token {
     tokenId,
     contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
     chainId: ROBINHOOD_CHAIN.id,
-    imageUrl: buildTokenImageUrl(tokenId),
+    imageUrl: resolveTokenImageUrl(tokenId, null),
     name: `#${tokenId}`,
     listingPrice: null,
     currency: DEFAULT_PAYMENT_CURRENCY,
@@ -1448,7 +1457,7 @@ function orderToListedToken(order: Order): Token | null {
     contractAddress:
       order.asset?.contract?.toLowerCase() ?? BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
     chainId: ROBINHOOD_CHAIN.id,
-    imageUrl: buildTokenImageUrl(tokenId),
+    imageUrl: resolveTokenImageUrl(tokenId, null),
     name: `#${tokenId}`,
     listingPrice: amount,
     currency: currency ?? DEFAULT_PAYMENT_CURRENCY,
@@ -1533,25 +1542,39 @@ function matchesCategoryFilter(
 
 let singleton: MarketSource | null = null;
 let singletonError: string | null = null;
+let openseaSingleton: OpenSeaMarketSource | null = null;
+
+function createOpenSeaMarketSource(): OpenSeaMarketSource {
+  if (openseaSingleton) return openseaSingleton;
+  const env = readEnv();
+  if (!env.OPENSEA_API_KEY) {
+    throw new Error(
+      'OPENSEA_API_KEY is not set; live market data is unavailable. Set it in the server environment.',
+    );
+  }
+  const client = createOpenSeaClient({
+    OPENSEA_API_KEY: env.OPENSEA_API_KEY,
+    OPENSEA_BASE_URL: env.OPENSEA_BASE_URL,
+    OPENSEA_CHAIN: env.OPENSEA_CHAIN,
+  });
+  openseaSingleton = new OpenSeaMarketSource(client);
+  return openseaSingleton;
+}
 
 export function getMarketSource(): MarketSource {
   if (singleton) return singleton;
+  if (marketReadModel() === 'sql') {
+    if (isNextProductionBuild()) {
+      return failingSource('sql read model skipped during next build (no private DNS)');
+    }
+    singleton = getSqlMarketSourceOrFail();
+    return singleton;
+  }
   if (singletonError) {
     return failingSource(singletonError);
   }
   try {
-    const env = readEnv();
-    if (!env.OPENSEA_API_KEY) {
-      singletonError =
-        'OPENSEA_API_KEY is not set; live market data is unavailable. Set it in the server environment.';
-      return failingSource(singletonError);
-    }
-    const client = createOpenSeaClient({
-      OPENSEA_API_KEY: env.OPENSEA_API_KEY,
-      OPENSEA_BASE_URL: env.OPENSEA_BASE_URL,
-      OPENSEA_CHAIN: env.OPENSEA_CHAIN,
-    });
-    singleton = new OpenSeaMarketSource(client);
+    singleton = createOpenSeaMarketSource();
     return singleton;
   } catch (err) {
     singletonError = err instanceof Error ? err.message : String(err);
@@ -1561,19 +1584,20 @@ export function getMarketSource(): MarketSource {
 
 /**
  * Boot helper for the standalone market-worker process.
- * Constructs the live source (if needed) and starts indexer loops
- * without requiring INDEXER_EMBEDDED.
+ * Constructs the live OpenSea source (if needed) and starts indexer loops
+ * without requiring INDEXER_EMBEDDED. Independent of MARKET_READ_MODEL.
  */
 export function startStandaloneMarketIndexer(): void {
-  const source = getMarketSource();
-  if (source instanceof OpenSeaMarketSource) {
+  try {
+    const source = createOpenSeaMarketSource();
     source.startIndexerLoops();
-    return;
+  } catch (err) {
+    throw new Error(
+      err instanceof Error
+        ? err.message
+        : 'Cannot start market indexer: OpenSea market source is unavailable',
+    );
   }
-  throw new Error(
-    singletonError ??
-      'Cannot start market indexer: OpenSea market source is unavailable',
-  );
 }
 
 class FailingMarketSource implements MarketSource {

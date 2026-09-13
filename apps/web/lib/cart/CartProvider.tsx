@@ -3,6 +3,9 @@
  * localStorage on mount, and writes back on every change. The
  * provider is client-only and intentionally minimal so it can be
  * composed inside the existing WalletProvider tree.
+ *
+ * CartProvider.items is the only live membership authority.
+ * Checkout phases may hold validated facts, never extra membership.
  */
 'use client';
 
@@ -31,21 +34,29 @@ import type {
   CheckoutItem,
 } from './types';
 import { CART_MAX_ITEMS } from './types';
+import { cartAssetId } from './identity';
+import { canRemoveCartAsset, phasesEqualForReconcile, reconcileCheckoutWithCart } from './reconcile';
+import { recordCheckoutEvent } from './checkout-events';
 
 type CartContextValue = {
   items: CartItem[];
   hydrated: boolean;
   itemCount: number;
+  cartRevision: number;
   isOpen: boolean;
   open: () => void;
   close: () => void;
   add: (draft: CartItemDraft) => { ok: boolean; reason?: string };
+  /** Add or replace one item, open the cart, and start checkout review. */
+  buyNow: (draft: CartItemDraft) => { ok: boolean; reason?: string };
   addMany: (drafts: CartItemDraft[]) => { added: string[]; skipped: Array<{ tokenId: string; reason: string }> };
-  remove: (tokenId: string) => void;
+  remove: (tokenId: string, contractAddress?: string) => { ok: boolean; reason?: string };
   clear: () => void;
   removeConfirmed: (tokenIds: ReadonlyArray<string>) => void;
   phase: CartPhase;
   setPhase: (phase: CartPhase) => void;
+  checkoutIntent: boolean;
+  setCheckoutIntent: (value: boolean) => void;
   requestReview: () => void;
   consumeReviewRequest: () => boolean;
 };
@@ -55,9 +66,21 @@ const CartContext = createContext<CartContextValue | null>(null);
 export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, initialCartState);
   const [isOpen, setIsOpen] = useState(false);
-  const [phase, setPhase] = useState<CartPhase>({ kind: 'browsing' });
+  const [phase, setPhaseState] = useState<CartPhase>({ kind: 'browsing' });
+  const [checkoutIntent, setCheckoutIntentState] = useState(false);
   const reviewRequestedRef = useRef(false);
   const hydratedRef = useRef(false);
+  const lastRevisionRef = useRef(0);
+  const itemsRef = useRef(state.items);
+  itemsRef.current = state.items;
+
+  const setPhase = useCallback((next: CartPhase) => {
+    setPhaseState(() => reconcileCheckoutWithCart({ phase: next, cartItems: itemsRef.current }).phase);
+  }, []);
+
+  const setCheckoutIntent = useCallback((value: boolean) => {
+    setCheckoutIntentState(value);
+  }, []);
 
   useEffect(() => {
     if (hydratedRef.current) return;
@@ -71,17 +94,60 @@ export function CartProvider({ children }: { children: ReactNode }) {
     saveCartToStorage(state.items);
   }, [state.items, state.hydrated]);
 
+  useEffect(() => {
+    setPhaseState((prev) => {
+      const result = reconcileCheckoutWithCart({ phase: prev, cartItems: state.items });
+      if (result.droppedAssetIds.length > 0) {
+        recordCheckoutEvent('checkout_snapshot_reconciled', {
+          cartRevision: state.revision,
+          checkoutState: prev.kind,
+          droppedCount: result.droppedAssetIds.length,
+        });
+      }
+      if (phasesEqualForReconcile(prev, result.phase)) return prev;
+      return result.phase;
+    });
+    if (state.items.length === 0 && checkoutIntent) {
+      setCheckoutIntentState(false);
+    }
+  }, [state.items, state.revision, checkoutIntent]);
+
+  useEffect(() => {
+    if (lastRevisionRef.current === state.revision) return;
+    if (state.revision > 0) {
+      recordCheckoutEvent('cart_revision_changed', { cartRevision: state.revision, checkoutState: phase.kind });
+    }
+    lastRevisionRef.current = state.revision;
+  }, [phase.kind, state.revision]);
+
   const add = useCallback(
     (draft: CartItemDraft): { ok: boolean; reason?: string } => {
       const built = buildCartItem(draft);
       if ('reason' in built) return { ok: false, reason: built.reason };
-      if (state.items.some((existing) => existing.tokenId === built.item.tokenId)) {
+      if (state.items.some((existing) => cartAssetId(existing) === cartAssetId(built.item))) {
         return { ok: false, reason: 'already-in-cart' };
       }
       if (state.items.length >= CART_MAX_ITEMS) {
         return { ok: false, reason: 'cart-full' };
       }
       dispatch({ type: 'ADD', item: built.item });
+      return { ok: true };
+    },
+    [state.items],
+  );
+
+  const buyNow = useCallback(
+    (draft: CartItemDraft): { ok: boolean; reason?: string } => {
+      const built = buildCartItem(draft);
+      if ('reason' in built) return { ok: false, reason: built.reason };
+      const exists = state.items.some((existing) => cartAssetId(existing) === cartAssetId(built.item));
+      if (!exists && state.items.length >= CART_MAX_ITEMS) {
+        return { ok: false, reason: 'cart-full' };
+      }
+      dispatch({ type: 'UPSERT', item: built.item });
+      reviewRequestedRef.current = true;
+      setCheckoutIntentState(true);
+      setIsOpen(true);
       return { ok: true };
     },
     [state.items],
@@ -98,7 +164,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
           skipped.push({ tokenId: draft.token.tokenId, reason: built.reason });
           continue;
         }
-        if (current.some((existing) => existing.tokenId === built.item.tokenId)) {
+        if (current.some((existing) => cartAssetId(existing) === cartAssetId(built.item))) {
           skipped.push({ tokenId: built.item.tokenId, reason: 'already-in-cart' });
           continue;
         }
@@ -115,13 +181,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [state.items],
   );
 
-  const remove = useCallback((tokenId: string) => {
-    dispatch({ type: 'REMOVE', tokenId });
-  }, []);
+  const remove = useCallback((tokenId: string, contractAddress?: string) => {
+    const item = state.items.find((row) =>
+      contractAddress
+        ? cartAssetId(row) === cartAssetId({ contractAddress, tokenId })
+        : row.tokenId === tokenId,
+    );
+    if (item) {
+      const allowed = canRemoveCartAsset(phase, item);
+      if (!allowed.ok) return { ok: false, reason: allowed.reason };
+    }
+    dispatch({ type: 'REMOVE', tokenId, contractAddress });
+    return { ok: true };
+  }, [phase, state.items]);
 
   const clear = useCallback(() => {
     dispatch({ type: 'CLEAR' });
     clearCartInStorage();
+    setCheckoutIntentState(false);
   }, []);
 
   const removeConfirmed = useCallback((tokenIds: ReadonlyArray<string>) => {
@@ -129,9 +206,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const open = useCallback(() => setIsOpen(true), []);
-  const close = useCallback(() => setIsOpen(false), []);
+  const close = useCallback(() => {
+    setIsOpen(false);
+    if (phase.kind === 'browsing' || phase.kind === 'wallet_required' || phase.kind === 'network_required') {
+      setCheckoutIntentState(false);
+    }
+  }, [phase.kind]);
   const requestReview = useCallback(() => {
     reviewRequestedRef.current = true;
+    setCheckoutIntentState(true);
   }, []);
   const consumeReviewRequest = useCallback(() => {
     if (!reviewRequestedRef.current) return false;
@@ -144,31 +227,40 @@ export function CartProvider({ children }: { children: ReactNode }) {
       items: state.items,
       hydrated: state.hydrated,
       itemCount: state.items.length,
+      cartRevision: state.revision,
       isOpen,
       open,
       close,
       add,
+      buyNow,
       addMany,
       remove,
       clear,
       removeConfirmed,
       phase,
       setPhase,
+      checkoutIntent,
+      setCheckoutIntent,
       requestReview,
       consumeReviewRequest,
     }),
     [
       state.items,
       state.hydrated,
+      state.revision,
       isOpen,
       open,
       close,
       add,
+      buyNow,
       addMany,
       remove,
       clear,
       removeConfirmed,
       phase,
+      setPhase,
+      checkoutIntent,
+      setCheckoutIntent,
       requestReview,
       consumeReviewRequest,
     ],

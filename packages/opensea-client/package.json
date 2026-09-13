@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@net-vision/chain-config": "*",
     "zod": "^3.23.0"
   },
   "devDependencies": {

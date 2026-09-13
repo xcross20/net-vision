@@ -3,12 +3,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Check, Plus } from '@phosphor-icons/react/dist/ssr';
+import { Check, Heart, Plus } from '@phosphor-icons/react/dist/ssr';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
-import { buildTokenImageUrl, isProxyImageUrl } from '@/lib/data/media';
+import { isProxyImageUrl, resolveTokenImageUrl } from '@/lib/data/media';
 import { MarketplaceBadge } from '@/components/ui/MarketplaceBadge';
 import { Price } from '@/components/ui/Price';
+import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
 
 export function CollectibleCard({
   token,
@@ -33,15 +34,17 @@ export function CollectibleCard({
     .filter((t) => t.family !== 'digits' && t.family !== 'number')
     .slice(0, 2);
   const canSelect = selectable && ask !== null && onToggle;
+  const watchlist = useWatchlist();
+  const isWatching = watchlist.isWatchingToken(token.tokenId);
   const unoptimized = isProxyImageUrl(src) || src.endsWith('.svg');
   return (
     <div
       className={cn(
-        'group/card relative flex h-full flex-col overflow-hidden rounded-[var(--radius-md)]',
+        'group/card relative flex h-full flex-col overflow-hidden rounded-[18px]',
         'bg-[var(--color-surface-1)] border transition-colors',
         selected
           ? 'border-[var(--color-net-green)]'
-          : 'border-transparent hover:border-[var(--color-border-default)]',
+          : 'border-[var(--color-border-subtle)] hover:border-[var(--color-border-active)]',
       )}
     >
       {canSelect ? (
@@ -60,6 +63,24 @@ export function CollectibleCard({
           {selected ? <Check size={13} weight="bold" /> : <Plus size={13} weight="bold" />}
         </button>
       ) : null}
+      <button
+        type="button"
+        aria-label={isWatching ? 'Unwatch' : 'Watch'}
+        aria-pressed={isWatching}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          watchlist.toggleToken(token.tokenId);
+        }}
+        className={cn(
+          'absolute right-2 top-2 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-md transition-colors',
+          isWatching
+            ? 'border-[var(--color-net-green)] bg-[rgba(72,235,145,0.12)] text-[var(--color-net-green)]'
+            : 'border-[var(--color-border-default)] bg-[rgba(8,12,10,0.72)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+        )}
+      >
+        <Heart size={13} weight={isWatching ? 'fill' : 'regular'} />
+      </button>
       <Link href={`/tokens/${token.tokenId}`} className="flex h-full flex-col">
         <div className="relative aspect-square overflow-hidden bg-[var(--color-surface-2)]">
           <Image
@@ -71,7 +92,7 @@ export function CollectibleCard({
             unoptimized={unoptimized}
             className="object-contain p-3"
             onError={() => {
-              const fallback = buildTokenImageUrl(token.tokenId);
+              const fallback = resolveTokenImageUrl(token.tokenId, null);
               if (src !== fallback) setSrc(fallback);
             }}
           />

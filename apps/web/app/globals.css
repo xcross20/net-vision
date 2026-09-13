@@ -53,6 +53,21 @@
   --radius-md:              10px;
   --radius-lg:              14px;
   --radius-xl:              20px;
+  --radius-card:            16px;
+  --radius-hero:            24px;
+
+  /* Shell widths — 1440 / 1600 / 1720 */
+  --content-standard:       90rem;
+  --content-max:            100rem;
+  --content-wide:           107.5rem;
+
+  /* Elevation / glass */
+  --shadow-green-soft:      0 0 0 1px rgba(72, 235, 145, 0.12), 0 18px 48px -28px rgba(72, 235, 145, 0.35);
+  --shadow-green-active:    0 0 0 1px rgba(72, 235, 145, 0.28), 0 16px 40px -20px rgba(72, 235, 145, 0.45);
+  --glass-panel:            color-mix(in srgb, var(--color-surface-1) 62%, transparent);
+  --glass-panel-strong:     color-mix(in srgb, var(--color-surface-2) 78%, transparent);
+  --hero-overlay:           linear-gradient(180deg, rgba(5, 9, 8, 0.12) 0%, rgba(5, 9, 8, 0.72) 100%);
+  --hero-vignette:          radial-gradient(120% 80% at 50% 20%, transparent 40%, rgba(5, 9, 8, 0.72) 100%);
 
   /* Motion */
   --ease-out:               cubic-bezier(0.16, 1, 0.3, 1);
@@ -67,6 +82,10 @@
 
 html, body {
   background-color: var(--color-bg);
+  background-image:
+    radial-gradient(58% 42% at 72% 8%, rgba(79, 255, 137, 0.11), transparent 58%),
+    radial-gradient(48% 36% at 8% 92%, rgba(72, 235, 145, 0.05), transparent 52%);
+  background-attachment: fixed;
   color: var(--color-text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -164,6 +183,111 @@ button {
     border-radius: var(--radius-lg);
   }
 
+  .nv-glass,
+  .nv-glass-1 {
+    background: linear-gradient(135deg, rgba(15, 31, 24, 0.62), rgba(5, 12, 9, 0.46));
+    border: 1px solid rgba(92, 255, 153, 0.14);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 12px 42px rgba(0, 0, 0, 0.28);
+  }
+
+  .nv-glass-2 {
+    background: linear-gradient(135deg, rgba(15, 31, 24, 0.78), rgba(5, 12, 9, 0.62));
+    border: 1px solid rgba(92, 255, 153, 0.16);
+    backdrop-filter: blur(22px) saturate(150%);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.05),
+      0 16px 48px rgba(0, 0, 0, 0.32);
+  }
+
+  .nv-glass-3 {
+    background: linear-gradient(135deg, rgba(18, 38, 28, 0.88), rgba(6, 14, 11, 0.78));
+    border: 1px solid rgba(92, 255, 153, 0.22);
+    backdrop-filter: blur(26px) saturate(160%);
+    -webkit-backdrop-filter: blur(26px) saturate(160%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 20px 56px rgba(0, 0, 0, 0.38),
+      0 0 28px rgba(66, 255, 137, 0.06);
+  }
+
+  .nv-glass-strong {
+    background: linear-gradient(135deg, rgba(15, 31, 24, 0.9), rgba(5, 12, 9, 0.82));
+    border: 1px solid rgba(92, 255, 153, 0.2);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+  }
+
+  .nv-glow {
+    box-shadow: var(--shadow-green-soft);
+  }
+
+  .nv-glow-active {
+    box-shadow: var(--shadow-green-active);
+    border-color: var(--color-border-active);
+  }
+
+  .nv-metric-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    border-radius: 16px;
+    border: 1px solid var(--color-border-subtle);
+    background: color-mix(in srgb, var(--color-surface-1) 70%, transparent);
+    padding: 0.85rem 1rem;
+    backdrop-filter: blur(16px);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .nv-glass,
+    .nv-glass-1,
+    .nv-glass-2,
+    .nv-glass-3,
+    .nv-glass-strong {
+      background: var(--color-surface-1);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+
+  .nv-showroom-scrim {
+    background:
+      radial-gradient(circle at 64% 42%, rgba(79, 255, 137, 0.14), transparent 38%),
+      linear-gradient(
+        90deg,
+        rgba(3, 8, 6, 0.88) 0%,
+        rgba(3, 8, 6, 0.38) 38%,
+        rgba(3, 8, 6, 0.08) 70%,
+        rgba(3, 8, 6, 0.28) 100%
+      );
+  }
+
+  .nv-showroom-vignette {
+    background: linear-gradient(180deg, transparent 42%, rgba(3, 8, 6, 0.42) 100%);
+  }
+
+  .nv-asset-card {
+    position: relative;
+    isolation: isolate;
+  }
+  .nv-asset-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% 28%, rgba(67, 255, 139, 0.14), transparent 48%);
+    opacity: 0.7;
+    transition: opacity 180ms var(--ease-out);
+  }
+  .nv-asset-card:hover::before {
+    opacity: 1;
+  }
+
   .nv-divider {
     height: 1px;
     background-color: var(--color-border-subtle);
@@ -199,16 +323,17 @@ button {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    padding: 0.625rem 1.125rem;
-    border-radius: var(--radius-md);
+    padding: 0.7rem 1.25rem;
+    border-radius: 14px;
     border: 1px solid transparent;
     background-color: var(--color-net-green);
     color: var(--color-bg);
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     line-height: 1.25rem;
     letter-spacing: -0.01em;
     min-height: 44px;
+    box-shadow: var(--shadow-green-soft);
     transition:
       transform var(--duration-base) var(--ease-out),
       filter var(--duration-base) var(--ease-out),
@@ -217,9 +342,11 @@ button {
   .nv-button:hover { filter: brightness(1.08); transform: translateY(-1px); }
   .nv-button:active { transform: translateY(0) scale(0.98); }
   .nv-button-ghost {
-    background-color: transparent;
+    background-color: rgba(8, 12, 10, 0.45);
     color: var(--color-text-primary);
     border-color: var(--color-border-default);
+    box-shadow: none;
+    backdrop-filter: blur(12px);
   }
   .nv-button-ghost:hover {
     border-color: var(--color-border-active);

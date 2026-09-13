@@ -24,11 +24,16 @@ export function isSurfaceEnabled(surface: TradeSurface): boolean {
   if (!isTradingEnabled()) return false;
   switch (surface) {
     case 'buy':
+      // Buy is the only surface with full end-to-end PASS for v1.
       return flag('BUY_ENABLED', true);
     case 'list':
-      return flag('LIST_ENABLED', true);
+      // Fail-closed: native listings ship disabled until the prepare/submit/cancel
+      // surface is fully verified in production. Flip LIST_ENABLED=true to enable.
+      return flag('LIST_ENABLED', false);
     case 'offer':
-      return flag('OFFER_ENABLED', true);
+      // Fail-closed: offer prepare/submit/cancel ships disabled until verified.
+      // Flip OFFER_ENABLED=true to enable.
+      return flag('OFFER_ENABLED', false);
     case 'sweep':
       return flag('SWEEP_ENABLED', false);
     case 'accept_offer':
