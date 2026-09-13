@@ -171,7 +171,7 @@ export function CartCheckout() {
       assetId: string;
       available: boolean;
       feeBps: number;
-      routeStatus?: string;
+      routeStatus: import('@/lib/payment/selected-payment-status').RouteStatus;
       reasonCode?: string;
     }>
   >([]);
@@ -735,7 +735,9 @@ export function CartCheckout() {
               assetId: string;
               available: boolean;
               feeBps: number;
-              routeStatus?: string;
+              routeStatus: import('@/lib/payment/selected-payment-status').RouteStatus;
+              routeReasonCode?: string | null;
+              routeNote?: string | null;
               reasonCode?: string;
             }>;
           } | null,
@@ -942,11 +944,22 @@ export function CartCheckout() {
     };
     const visibleAssets = checkoutVisibleAssets();
     const pickerAvailability: PaymentAvailability[] = paymentMethods.length
-      ? paymentMethods
+      ? paymentMethods.map((m) => ({
+          assetId: m.assetId,
+          available: m.available,
+          feeBps: m.feeBps,
+          routeStatus: m.routeStatus,
+        }))
       : visibleAssets.map((a) => ({
           assetId: a.assetId,
           available: a.status === 'ENABLED',
           feeBps: a.feeBps,
+          routeStatus:
+            a.status === 'DISABLED'
+              ? ('UNSUPPORTED' as const)
+              : a.assetId === 'usdg'
+                ? ('AVAILABLE' as const)
+                : ('COMING_SOON' as const),
         }));
 
     const serviceFeeBps = selectedPaymentStatus?.serviceFeeBps ?? 0;

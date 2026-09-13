@@ -4,14 +4,23 @@ import { useMemo } from 'react';
 import { Hex, CheckIcon } from '@/components/icons';
 import { cn } from '@/lib/cn';
 import type { PaymentAsset } from '@net-vision/payment-router';
+import type { RouteStatus } from '@/lib/payment/selected-payment-status';
 import { StockTickerGlyph } from './StockTickerGlyph';
 
 export type PaymentAvailability = {
   assetId: string;
   available: boolean;
   feeBps: number;
-  routeStatus?: string;
-  reasonCode?: string;
+  /**
+   * The UI-level routeStatus for this asset. Drives selection gating
+   * and tile labels per the Selected-Payment Invariant.
+   * See docs/launch/CHECKOUT_PAYMENT_STATE.md §5.2.
+   */
+  routeStatus: RouteStatus;
+  /** Machine-readable code from the backend; null when not provided. */
+  routeReasonCode?: string | null;
+  /** Human-readable explanation; null when not provided. */
+  routeNote?: string | null;
 };
 
 type Group = {
@@ -111,9 +120,15 @@ function PaymentGroup({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {group.assets.map((asset) => {
           const method = availability.find((m) => m.assetId === asset.assetId);
-          const offered = method ? method.available : asset.status === 'ENABLED';
-          const regionBlocked =
-            method?.reasonCode === 'REGION_RESTRICTED' || method?.reasonCode === 'REGION_UNKNOWN';
+          // routeStatus is the single authority on whether this tile is
+          // selectable. Conflating `available` with `routeStatus` was the
+          // original bug — ETH/NET are policy-allowed but routeStatus
+          // is COMING_SOON, so they must render disabled.
+          const routeStatus: RouteStatus =
+            method?.routeStatus ?? deriveFallbackRouteStatus(asset);
+          const offered = routeStatus === 'AVAILABLE';
+          const regionBlocked = routeStatus === 'REGION_RESTRICTED';
+          const comingSoon = routeStatus === 'COMING_SOON';
           const selected = selectedAssetId === asset.assetId;
           const isCore = group.kind === 'core';
           return (
@@ -121,8 +136,11 @@ function PaymentGroup({
               key={asset.assetId}
               asset={asset}
               isCore={isCore}
+              routeStatus={routeStatus}
               offered={offered}
               regionBlocked={regionBlocked}
+              comingSoon={comingSoon}
+              feeBps={method?.feeBps ?? asset.feeBps}
               selected={selected}
               onSelect={() => {
                 if (!offered) return;
@@ -137,33 +155,63 @@ function PaymentGroup({
   );
 }
 
+/**
+ * Last-resort fallback when /api/payment/methods has not responded yet.
+ * Approximates the server's mapping without country context:
+ *   - USDG has a direct settlement route, so AVAILABLE
+ *   - ETH / NetNet NET have no router pinned yet, so COMING_SOON
+ *   - Stock tokens have no router pinned yet, so COMING_SOON
+ *   - DISABLED assets become UNSUPPORTED
+ * Region-restricted is impossible without country; the server supplies
+ * the real signal.
+ */
+function deriveFallbackRouteStatus(asset: PaymentAsset): RouteStatus {
+  if (asset.status === 'DISABLED') return 'UNSUPPORTED';
+  if (asset.assetId === 'usdg') return 'AVAILABLE';
+  return 'COMING_SOON';
+}
+
 function PaymentTile({
   asset,
   isCore,
+  routeStatus,
   offered,
   regionBlocked,
+  comingSoon,
+  feeBps,
   selected,
   onSelect,
 }: {
   asset: PaymentAsset;
   isCore: boolean;
+  routeStatus: RouteStatus;
   offered: boolean;
   regionBlocked: boolean;
+  comingSoon: boolean;
+  feeBps: number;
   selected: boolean;
   onSelect: () => void;
 }) {
   const symbolLabel = isCore && asset.symbol === 'NET' ? 'NET' : asset.symbol;
   const subLabel = issuerLabel(asset);
-  const feeLabel = isCore ? '0 FEE' : '+2% FEE';
-  const disabledLabel = isCore
-    ? !offered
+  // Tile matrix per §5.2:
+  //   AVAILABLE + 0 fee → 'Active' (green)
+  //   AVAILABLE + fee   → '+N% FEE' (amber)
+  //   COMING_SOON       → 'Coming soon' (amber)
+  //   REGION_RESTRICTED → 'Region restricted' (amber)
+  //   UNSUPPORTED       → 'Coming soon' (amber)
+  const feeLabel = feeChipLabel(routeStatus, feeBps);
+  const feeTone = feeChipTone(routeStatus, feeBps);
+  const disabledLabel = regionBlocked
+    ? 'Unavailable in your region'
+    : !offered
       ? 'Coming soon'
-      : null
-    : regionBlocked
-      ? 'Unavailable in your region'
-      : !offered
-        ? 'Coming soon'
-        : null;
+      : null;
+  // When the route is unavailable, the status chip already says
+      // 'Coming soon' or 'Region restricted' — duplicate the disabledLabel
+      // only when the fee chip is purely financial (AVAILABLE + fee > 0).
+  const showDisabledLabel =
+    disabledLabel !== null && !(routeStatus === 'AVAILABLE' && feeBps > 0);
 
   return (
     <button
@@ -190,18 +238,33 @@ function PaymentTile({
         <span className="truncate text-[11px] text-[var(--color-text-tertiary)]">{subLabel}</span>
       </span>
       <span className="absolute right-2 top-2">
-        <FeeChip label={feeLabel} tone={isCore ? 'green' : 'amber'} />
+        <FeeChip label={feeLabel} tone={feeTone} />
       </span>
       <span className="absolute bottom-3 right-3">
         <Radio selected={selected} disabled={!offered} />
       </span>
-      {disabledLabel ? (
+      {showDisabledLabel ? (
         <span className="absolute bottom-2 right-2 text-[10px] text-[var(--color-text-tertiary)]">
           {disabledLabel}
         </span>
       ) : null}
     </button>
   );
+}
+
+function feeChipLabel(routeStatus: RouteStatus, feeBps: number): string {
+  if (routeStatus === 'COMING_SOON' || routeStatus === 'UNSUPPORTED') return 'Coming soon';
+  if (routeStatus === 'REGION_RESTRICTED') return 'Region restricted';
+  if (feeBps > 0) return `+${(feeBps / 100).toFixed(0)}% FEE`;
+  return 'Active';
+}
+
+function feeChipTone(
+  routeStatus: RouteStatus,
+  feeBps: number,
+): 'green' | 'amber' {
+  if (routeStatus === 'AVAILABLE' && feeBps === 0) return 'green';
+  return 'amber';
 }
 
 function PaymentSymbol({ asset, isCore }: { asset: PaymentAsset; isCore: boolean }) {
@@ -341,7 +404,7 @@ function buildGroups(assets: PaymentAsset[]): Group[] {
       kind: 'stock',
       title: 'Stock Token Payments (+2% Fee)',
       description: 'Pay with tokenized stocks. A 2% marketplace fee applies.',
-      badge: 'Real stocks. On-chain.',
+      badge: 'Region restricted · Coming soon',
       badgeTone: 'amber',
       assets: stockSorted,
     },
