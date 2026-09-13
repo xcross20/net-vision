@@ -4,6 +4,7 @@ import {
   ASSET_ID_TO_SYMBOL,
   comingSoonStatus,
   regionRestrictedStatus,
+  unsupportedStatus,
   symbolForAssetId,
 } from './selected-payment-status';
 
@@ -125,5 +126,40 @@ describe('regionRestrictedStatus', () => {
     expect(status.routeNote).toBe(
       'Stock-token payments are not yet enabled in your region.',
     );
+  });
+});
+
+describe('unsupportedStatus', () => {
+  it('returns an UNSUPPORTED status with NOT_REQUIRED allowance', () => {
+    const status = unsupportedStatus({
+      assetId: 'rh-net-cloudflare',
+      symbol: 'NET',
+      decimals: 18,
+      reasonCode: 'ASSET_DISABLED',
+      note: 'This payment method is currently disabled.',
+      purchaseValueUsdgRaw: null,
+      serviceFeeBps: 200,
+    });
+    expect(status.routeStatus).toBe('UNSUPPORTED');
+    expect(status.routeReasonCode).toBe('ASSET_DISABLED');
+    expect(status.routeNote).toBe('This payment method is currently disabled.');
+    expect(status.quoteId).toBeNull();
+    expect(status.requiredInputRaw).toBeNull();
+    expect(status.balance).toEqual({ state: 'UNKNOWN', raw: null });
+    expect(status.allowance).toEqual({ kind: 'NOT_REQUIRED' });
+  });
+
+  it('distinguishes itself from comingSoonStatus by routeStatus alone', () => {
+    const a = unsupportedStatus({
+      assetId: 'a', symbol: 'A', decimals: 18,
+      purchaseValueUsdgRaw: null, serviceFeeBps: 0,
+    });
+    const b = comingSoonStatus({
+      assetId: 'a', symbol: 'A', decimals: 18,
+      purchaseValueUsdgRaw: null, serviceFeeBps: 0,
+    });
+    expect(a.routeStatus).toBe('UNSUPPORTED');
+    expect(b.routeStatus).toBe('COMING_SOON');
+    expect(a.routeStatus).not.toBe(b.routeStatus);
   });
 });

@@ -88,6 +88,37 @@ export function comingSoonStatus(input: {
 }
 
 /**
+ * The "Unsupported" status for an asset that is policy-disabled and must
+ * never appear selectable. Distinct from COMING_SOON (route not yet
+ * shipped) and REGION_RESTRICTED (jurisdiction blocks it).
+ */
+export function unsupportedStatus(input: {
+  assetId: string;
+  symbol: string;
+  decimals: number;
+  reasonCode?: string | null;
+  note?: string | null;
+  purchaseValueUsdgRaw: string | null;
+  serviceFeeBps: number;
+}): SelectedPaymentStatus {
+  return {
+    assetId: input.assetId,
+    symbol: input.symbol,
+    decimals: input.decimals,
+    routeStatus: 'UNSUPPORTED',
+    routeReasonCode: input.reasonCode ?? null,
+    routeNote: input.note ?? null,
+    quoteId: null,
+    requiredInputRaw: null,
+    balance: { state: 'UNKNOWN', raw: null },
+    allowance: { kind: 'NOT_REQUIRED' },
+    purchaseValueUsdgRaw: input.purchaseValueUsdgRaw,
+    serviceFeeBps: input.serviceFeeBps,
+    serviceFeeRaw: null,
+  };
+}
+
+/**
  * Region-blocked status for stock-token payments that are policy-allowed but
  * blocked by buyer region / KYC for the current session.
  */
