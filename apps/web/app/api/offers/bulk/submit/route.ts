@@ -2,10 +2,14 @@ import { NextResponse } from 'next/server';
 import { configuredFeeRecipient, submitNativeOffer } from '@/lib/offers/service';
 import { getOfferStore } from '@/lib/offers/service';
 import type { Hex } from 'viem';
+import { isSurfaceEnabled, tradingDisabledResponse } from '@/lib/trade/kill-switch';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  if (!isSurfaceEnabled('offer')) {
+    return NextResponse.json(tradingDisabledResponse('offer'), { status: 503 });
+  }
   if (!configuredFeeRecipient()) {
     return NextResponse.json({ error: 'fee_recipient_unconfigured' }, { status: 503 });
   }

@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { configuredFeeRecipient, prepareNativeOffer } from '@/lib/offers/service';
+import { isSurfaceEnabled, tradingDisabledResponse } from '@/lib/trade/kill-switch';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  if (!isSurfaceEnabled('offer')) {
+    return NextResponse.json(tradingDisabledResponse('offer'), { status: 503 });
+  }
   if (!configuredFeeRecipient()) {
     return NextResponse.json(
       { error: 'fee_recipient_unconfigured', message: 'NET_VISION_MARKETPLACE_FEE_RECIPIENT is required.' },
