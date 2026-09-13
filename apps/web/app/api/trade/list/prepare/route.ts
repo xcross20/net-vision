@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { formatUsdgRaw } from '@/lib/native-market/fees';
 import { buildNativeListingParameters } from '@/lib/native-market/listing-order';
+import { isSurfaceEnabled, tradingDisabledResponse } from '@/lib/trade/kill-switch';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,9 @@ function feeRecipient(): string | null {
 }
 
 export async function POST(request: Request) {
+  if (!isSurfaceEnabled('list')) {
+    return NextResponse.json(tradingDisabledResponse('list'), { status: 503 });
+  }
   const body = (await request.json().catch(() => null)) as {
     offerer?: string;
     tokenId?: string;

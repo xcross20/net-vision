@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { formatUsdgRaw, parseUsdgDecimalToRaw } from '@/lib/native-market/fees';
 import { planBulkOffers, type BulkOfferStrategy } from '@/lib/native-market/offers';
+import { isSurfaceEnabled, tradingDisabledResponse } from '@/lib/trade/kill-switch';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  if (!isSurfaceEnabled('offer')) {
+    return NextResponse.json(tradingDisabledResponse('offer'), { status: 503 });
+  }
   const body = (await request.json().catch(() => null)) as {
     strategy?: BulkOfferStrategy;
     samePriceUsdg?: string;

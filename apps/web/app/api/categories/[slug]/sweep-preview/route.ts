@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCategoryMetrics } from '@/lib/data/categories';
 import { getMarketSource } from '@/lib/market';
 import { parseSweepPreviewInput } from '@/lib/market/engine';
+import { isSurfaceEnabled, tradingDisabledResponse } from '@/lib/trade/kill-switch';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,9 @@ export async function POST(
   request: Request,
   ctx: { params: Promise<{ slug: string }> },
 ) {
+  if (!isSurfaceEnabled('sweep')) {
+    return NextResponse.json(tradingDisabledResponse('sweep'), { status: 503 });
+  }
   const { slug } = await ctx.params;
   const metrics = await getCategoryMetrics(slug);
   if (!metrics) return NextResponse.json({ error: 'category not found' }, { status: 404 });
