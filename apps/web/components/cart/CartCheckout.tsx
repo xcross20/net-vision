@@ -9,16 +9,15 @@ import { useCart } from '@/lib/cart/CartProvider';
 import type { CartItem, CheckoutItem } from '@/lib/cart/types';
 import { CheckoutPaymentPicker, type PaymentAvailability } from './CheckoutPaymentPicker';
 import { OrderSummary } from './OrderSummary';
+import { PaymentStatusFooter } from './PaymentStatusFooter';
 import {
   assertCanMarkConfirmed,
   assertCanPreparePurchase,
-  assertCanSelectPaymentAsset,
   type PaymentAssetId,
 } from '@/lib/cart/checkout-machine';
 import { PAYMENT_TOKENS, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 import { checkoutVisibleAssets } from '@net-vision/payment-router';
 import { payment } from '@/lib/format';
-import type { UsdgStatus } from '@/lib/trade/usdg-status';
 import { boundedApproveAmount } from '@/lib/trade/bounded-approve';
 import { useRobinhoodNetworkGate } from '@/lib/wallet/NetworkGateProvider';
 import { useWalletConnectModal } from '@/lib/wallet/WalletConnectProvider';
@@ -31,7 +30,8 @@ import {
 import { cartAssetId, cartMembershipSet } from '@/lib/cart/identity';
 import { checkoutRequestBind, isCheckoutResponseCurrent } from '@/lib/cart/checkout-request';
 import { recordCheckoutEvent } from '@/lib/cart/checkout-events';
-import { primaryCheckoutAction } from '@/lib/cart/primary-action';
+import { deriveCheckoutCta, formatSelectedAmount } from '@/lib/payment/checkout-cta';
+import { useSelectedPaymentStatus } from '@/lib/payment/use-selected-payment-status';
 import {
   checkoutCurrency,
   currentCheckoutItems,
@@ -166,29 +166,20 @@ export function CartCheckout() {
   const { writeContractAsync } = useWriteContract();
   const publicClient = usePublicClient();
   const [acceptedPriceDrift, setAcceptedPriceDrift] = useState(false);
-  const [usdgStatus, setUsdgStatus] = useState<UsdgStatus | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<
     Array<{
       assetId: string;
       available: boolean;
       feeBps: number;
-      routeStatus?: string;
+      routeStatus: import('@/lib/payment/selected-payment-status').RouteStatus;
       reasonCode?: string;
     }>
   >([]);
-  const [usdgQuote, setUsdgQuote] = useState<{
-    listingUsdgRaw: string;
-    serviceFeeBps: number;
-    serviceFeeUsdgRaw: string;
-    requiredUsdgRaw: string;
-  } | null>(null);
   const lastChainRef = useRef<number | undefined>(undefined);
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const revisionRef = useRef(cartRevision);
   revisionRef.current = cartRevision;
-  const lastBalanceState = useRef<string | null>(null);
-  const lastAllowanceState = useRef<string | null>(null);
   const resumeInFlight = useRef(false);
   const lastRevalidateRevision = useRef(-1);
 
@@ -201,6 +192,70 @@ export function CartCheckout() {
   const currency = checkoutCurrency(phase, items);
   const drifted = validItems.filter((it) => it.priceChanged);
   const unavailable = displayItems.filter((it) => it.state !== 'valid');
+
+  // Selected-asset authority: a single hook reads the selected payment's
+  // status (balance / allowance / routeStatus / required) from the server.
+  // USDG state may not appear in checkout unless USDG is the selected input.
+  const selectedAssetId =
+    phase.kind === 'payment_select' ? paymentAssetIdForPhase(phase.payment.assetId) : null;
+  const selectedConduitKey =
+    phase.kind === 'payment_select'
+      ? validCheckoutItems(phase, itemsRef.current)[0]?.liveConduitKey ?? null
+      : null;
+  const { status: selectedPaymentStatus } = useSelectedPaymentStatus({
+    buyer: address ?? null,
+    assetId: selectedAssetId,
+    requiredUsdgRaw: requiredRaw > 0n ? requiredRaw : null,
+    conduitKey: selectedConduitKey,
+    enabled: phase.kind === 'payment_select' && Boolean(address) && onRobinhood,
+  });
+
+  // Telemetry: balance / allowance transitions. The OLD USDG-state code
+  // fired these from a useEffect on usdgStatus. We preserve the same
+  // signals but they now key off selectedPaymentStatus (any asset).
+  const lastBalanceRef = useRef<string | null>(null);
+  const lastAllowanceRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedPaymentStatus) return;
+    const balanceState = selectedPaymentStatus.balance.state;
+    const allowanceState =
+      selectedPaymentStatus.allowance.kind === 'REQUIRED'
+        ? selectedPaymentStatus.allowance.allowance.state
+        : 'NOT_REQUIRED';
+    if (
+      lastBalanceRef.current === 'KNOWN_INSUFFICIENT' &&
+      balanceState === 'KNOWN_SUFFICIENT'
+    ) {
+      recordCheckoutEvent('balance_sufficient_checkout_resumed', {
+        cartRevision,
+        checkoutState: 'payment_select',
+      });
+    }
+    if (
+      lastAllowanceRef.current === 'KNOWN_INSUFFICIENT' &&
+      allowanceState === 'KNOWN_SUFFICIENT'
+    ) {
+      recordCheckoutEvent('allowance_sufficient_checkout_resumed', {
+        cartRevision,
+        checkoutState: 'payment_select',
+      });
+    }
+    lastBalanceRef.current = balanceState;
+    lastAllowanceRef.current = allowanceState;
+  }, [selectedPaymentStatus, cartRevision]);
+
+  const canBuy = validItems.length > 0 && (drifted.length === 0 || acceptedPriceDrift);
+  const cta = useMemo(
+    () =>
+      deriveCheckoutCta({
+        selected: selectedPaymentStatus ?? null,
+        isConnected: Boolean(isConnected && address),
+        onRobinhood,
+        cartItemCount: validItems.length,
+        canBuy,
+      }),
+    [address, isConnected, onRobinhood, validItems.length, canBuy, selectedPaymentStatus],
+  );
 
   useEffect(() => {
     if (drifted.length === 0 && acceptedPriceDrift) setAcceptedPriceDrift(false);
@@ -311,7 +366,7 @@ export function CartCheckout() {
     setPhase,
   ]);
 
-  const onApproveUsdg = useCallback(async () => {
+  const onApproveSelected = useCallback(async () => {
     if (phase.kind !== 'payment_select' || !address) return;
     const onChain = await requestNetworkForAction('approve', phase.kind);
     if (!onChain) return;
@@ -319,15 +374,30 @@ export function CartCheckout() {
       getChainId: connector?.getChainId?.bind(connector),
       chainId,
     });
-    const spender = usdgStatus?.spender.address;
-    if (!spender) {
-      setPhase({ kind: 'error', message: 'USDG spender is unresolved; cannot approve.' });
+    // The approve target is the SELECTED asset, not USDG. Today this is
+    // always USDG because no other route is AVAILABLE, but the contract
+    // is now selected-asset-aware.
+    const spender =
+      selectedPaymentStatus?.allowance.kind === 'REQUIRED'
+        ? selectedPaymentStatus.allowance.spender
+        : null;
+    if (!spender || !selectedPaymentStatus) {
+      setPhase({
+        kind: 'error',
+        message: `${selectedPaymentStatus?.symbol ?? 'selected asset'} spender is unresolved; cannot approve.`,
+      });
       return;
     }
-    const required = boundedApproveAmount(requiredRaw);
+    const required = boundedApproveAmount(
+      selectedPaymentStatus.requiredInputRaw !== null
+        ? BigInt(selectedPaymentStatus.requiredInputRaw)
+        : requiredRaw,
+    );
     const bound = liveBind();
     try {
       const hash = await writeContractAsync({
+        // Approve the SELECTED asset's contract (USDG today). The
+        // allowance target is the resolved Seaport conduit.
         address: PAYMENT_TOKENS.USDG.contractAddress,
         abi: erc20Abi,
         functionName: 'approve',
@@ -337,7 +407,7 @@ export function CartCheckout() {
       if (!publicClient) throw new Error('No RPC client — cannot wait for approval.');
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== 'success') {
-        throw new Error(`USDG approval reverted (${hash})`);
+        throw new Error(`${selectedPaymentStatus.symbol} approval reverted (${hash})`);
       }
       if (!isCheckoutResponseCurrent(bound, liveBind())) return;
       const snapshot = validCheckoutItems(phase, itemsRef.current);
@@ -359,7 +429,6 @@ export function CartCheckout() {
       if (!res.ok || !json.items) {
         throw new Error(json.error ?? 'Listing revalidation after approval failed.');
       }
-      setUsdgStatus(null);
       setPhase({
         kind: 'payment_select',
         items: asCheckoutItems(json.items),
@@ -385,19 +454,30 @@ export function CartCheckout() {
     publicClient,
     requestNetworkForAction,
     requiredRaw,
+    selectedPaymentStatus,
     setPhase,
-    usdgStatus,
     writeContractAsync,
   ]);
 
   const onCheckout = useCallback(async () => {
     if (phase.kind !== 'review' && phase.kind !== 'payment_select') return;
-    if (phase.kind === 'payment_select' && phase.payment.assetId !== 'USDG') {
-      setPhase({
-        kind: 'error',
-        message: `${phase.payment.assetId} conversion to USDG is not live. Pay with USDG.`,
-      });
-      return;
+    // Selected-Payment Invariant: refuse to advance when the selected
+    // route is not executable. The picker should already prevent this
+    // (commit 4 closes the leak there) but the runtime guard here is
+    // belt-and-suspenders — USDG state may not flow through checkout
+    // for an asset that has no executable settlement route.
+    if (phase.kind === 'payment_select') {
+      if (selectedPaymentStatus === null) {
+        setPhase({ kind: 'error', message: 'No payment method selected. Pay with USDG.' });
+        return;
+      }
+      if (selectedPaymentStatus.routeStatus !== 'AVAILABLE') {
+        setPhase({
+          kind: 'error',
+          message: `${selectedPaymentStatus.symbol} payments not available yet. Pay with USDG.`,
+        });
+        return;
+      }
     }
     if (!address) {
       onConnectWallet();
@@ -412,12 +492,6 @@ export function CartCheckout() {
     const starting = validCheckoutItems(phase, itemsRef.current);
     if (starting.length === 0) {
       setPhase({ kind: 'error', message: 'No items are available for purchase.' });
-      return;
-    }
-    try {
-      assertCanSelectPaymentAsset('USDG');
-    } catch (err) {
-      setPhase({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
       return;
     }
     const confirmed: string[] = [];
@@ -554,6 +628,7 @@ export function CartCheckout() {
     publicClient,
     removeConfirmed,
     requestNetworkForAction,
+    selectedPaymentStatus,
     sendTransactionAsync,
     setCheckoutIntent,
     setPhase,
@@ -620,6 +695,9 @@ export function CartCheckout() {
     setPhase,
   ]);
 
+  // Chain-change invalidation. The selected-payment hook re-fetches when
+  // its inputs change, but the chain is implicit in wagmi's address; we
+  // bump the local revision so any stale status is cleared.
   useEffect(() => {
     const previous = lastChainRef.current;
     if (previous === undefined) {
@@ -628,66 +706,12 @@ export function CartCheckout() {
     }
     if (!shouldInvalidateChainSensitiveState(previous, chainId)) return;
     lastChainRef.current = chainId;
-    setUsdgStatus(null);
+    lastBalanceRef.current = null;
+    lastAllowanceRef.current = null;
     if (phase.kind === 'executing') {
       setPhase({ kind: 'network_required' });
     }
   }, [chainId, phase.kind, setPhase]);
-
-  useEffect(() => {
-    if (phase.kind !== 'payment_select' || !address || !onRobinhood) {
-      setUsdgStatus(null);
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      const bound = liveBind();
-      const required = requiredUsdgRaw(phase, itemsRef.current);
-      const valid = validCheckoutItems(phase, itemsRef.current);
-      const conduitKey = valid[0]?.liveConduitKey ?? '';
-      const qs = new URLSearchParams({
-        buyer: address,
-        requiredRaw: required.toString(),
-      });
-      if (conduitKey) qs.set('conduitKey', conduitKey);
-      try {
-        const res = await fetch(`/api/trade/usdg-status?${qs.toString()}`);
-        const json = (await res.json()) as UsdgStatus | null;
-        if (cancelled || !isCheckoutResponseCurrent(bound, liveBind())) return;
-        if (res.ok && json) {
-          if (
-            lastBalanceState.current === 'KNOWN_INSUFFICIENT' &&
-            json.balance.state === 'KNOWN_SUFFICIENT'
-          ) {
-            recordCheckoutEvent('balance_sufficient_checkout_resumed', {
-              cartRevision: revisionRef.current,
-              checkoutState: 'payment_select',
-            });
-          }
-          if (
-            lastAllowanceState.current === 'KNOWN_INSUFFICIENT' &&
-            json.allowance.state === 'KNOWN_SUFFICIENT'
-          ) {
-            recordCheckoutEvent('allowance_sufficient_checkout_resumed', {
-              cartRevision: revisionRef.current,
-              checkoutState: 'payment_select',
-            });
-          }
-          lastBalanceState.current = json.balance.state;
-          lastAllowanceState.current = json.allowance.state;
-          setUsdgStatus(json);
-        }
-      } catch {
-        if (!cancelled) setUsdgStatus(null);
-      }
-    };
-    void load();
-    const interval = window.setInterval(() => void load(), 8000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
-  }, [address, liveBind, onRobinhood, phase, cartRevision]);
 
   useEffect(() => {
     if (!checkoutIntent) return;
@@ -711,7 +735,9 @@ export function CartCheckout() {
               assetId: string;
               available: boolean;
               feeBps: number;
-              routeStatus?: string;
+              routeStatus: import('@/lib/payment/selected-payment-status').RouteStatus;
+              routeReasonCode?: string | null;
+              routeNote?: string | null;
               reasonCode?: string;
             }>;
           } | null,
@@ -726,69 +752,14 @@ export function CartCheckout() {
     };
   }, [phase.kind]);
 
-  useEffect(() => {
-    if (phase.kind !== 'payment_select' || !address || requiredRaw <= 0n) {
-      setUsdgQuote(null);
-      return;
-    }
-    const listingOrderHash =
-      validCheckoutItems(phase, itemsRef.current)
-        .map((item) => item.liveOrderHash)
-        .join(',') || 'cart';
-    let cancelled = false;
-    void fetch('/api/payment/quote', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        buyer: address,
-        assetId: 'usdg',
-        listingOrderHash,
-        listingUsdgRaw: requiredRaw.toString(),
-      }),
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .then(
-        (json: {
-          quote?: {
-            listingUsdgRaw: string;
-            serviceFeeBps: number;
-            serviceFeeUsdgRaw: string;
-            requiredUsdgRaw: string;
-          };
-        } | null) => {
-          if (!cancelled && json?.quote) {
-            setUsdgQuote({
-              listingUsdgRaw: json.quote.listingUsdgRaw,
-              serviceFeeBps: json.quote.serviceFeeBps,
-              serviceFeeUsdgRaw: json.quote.serviceFeeUsdgRaw,
-              requiredUsdgRaw: json.quote.requiredUsdgRaw,
-            });
-          }
-        },
-      )
-      .catch(() => {
-        if (!cancelled) setUsdgQuote(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [address, cartRevision, phase.kind, requiredRaw]);
-
-  const cta = useMemo(
-    () =>
-      primaryCheckoutAction({
-        itemCount: items.length,
-        connected: Boolean(isConnected && address),
-        onRobinhood,
-        phase,
-        allowanceInsufficient: usdgStatus?.allowance.state === 'KNOWN_INSUFFICIENT',
-        balanceInsufficient: usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT',
-        approveAmountLabel: payment(currentTotal, currency),
-      }),
-    [address, currency, currentTotal, isConnected, items.length, onRobinhood, phase, usdgStatus],
-  );
-
   if (phase.kind === 'browsing' || phase.kind === 'wallet_required' || phase.kind === 'network_required') {
+    const earlyCta = deriveCheckoutCta({
+      selected: null,
+      isConnected: Boolean(isConnected && address),
+      onRobinhood,
+      cartItemCount: validItems.length,
+      canBuy,
+    });
     return (
       <div className="flex flex-col gap-2">
         {!isConnected ? (
@@ -800,12 +771,12 @@ export function CartCheckout() {
             Switch to Robinhood Chain to continue this purchase.
           </p>
         ) : null}
-        {cta?.kind === 'connect_wallet' ? (
+        {earlyCta.kind === 'wallet_required' ? (
           <button type="button" onClick={onConnectWallet} className="nv-button w-full">
             <WalletIcon size={14} weight="duotone" />
             Connect wallet
           </button>
-        ) : cta?.kind === 'switch_network' ? (
+        ) : earlyCta.kind === 'switch_network' ? (
           <button
             type="button"
             onClick={() => {
@@ -819,11 +790,17 @@ export function CartCheckout() {
         ) : (
           <button
             type="button"
-            disabled={items.length === 0}
+            disabled={items.length === 0 || earlyCta.kind === 'review_required'}
             onClick={() => void onReview()}
-            className={cn('nv-button w-full', items.length === 0 && 'cursor-not-allowed opacity-50')}
+            className={cn(
+              'nv-button w-full',
+              (items.length === 0 || earlyCta.kind === 'review_required') &&
+                'cursor-not-allowed opacity-50',
+            )}
           >
-            {cta?.label ?? `Review ${items.length} item${items.length === 1 ? '' : 's'}`}
+            {earlyCta.kind === 'review_required'
+              ? earlyCta.label
+              : `Review ${items.length} item${items.length === 1 ? '' : 's'}`}
           </button>
         )}
       </div>
@@ -861,7 +838,6 @@ export function CartCheckout() {
   }
 
   if (phase.kind === 'review') {
-    const canBuy = validItems.length > 0 && (drifted.length === 0 || acceptedPriceDrift);
     return (
       <div className="flex flex-col gap-3">
         <ul className="flex max-h-56 flex-col gap-2 overflow-y-auto text-[12px]">
@@ -946,47 +922,64 @@ export function CartCheckout() {
   }
 
   if (phase.kind === 'payment_select') {
-    const routedSelected = phase.payment.assetId !== 'USDG';
-    const insufficient = usdgStatus?.balance.state === 'KNOWN_INSUFFICIENT';
-    const needsApprove = usdgStatus?.allowance.state === 'KNOWN_INSUFFICIENT';
-    const selectedAssetId = paymentAssetIdForPhase(phase.payment.assetId);
-    const selectedMethod =
-      paymentMethods.find((m) => m.assetId === selectedAssetId) ??
-      checkoutVisibleAssets().find((a) => a.assetId === selectedAssetId);
-    const serviceFeeBps =
-      phase.payment.assetId === 'USDG'
-        ? (usdgQuote?.serviceFeeBps ?? selectedMethod?.feeBps ?? 0)
-        : (selectedMethod?.feeBps ?? 0);
-    const feeLabel =
-      serviceFeeBps === 0 ? '0.00 USDG' : `+${(serviceFeeBps / 100).toFixed(1)}% service fee`;
+    // CTA comes from deriveCheckoutCta — one source of truth. USDG state
+    // may not leak into non-USDG selections because deriveCheckoutCta
+    // gates on selectedPaymentStatus, not on parallel USDG reads.
     const ctaDisabled =
-      insufficient ||
-      routedSelected ||
-      usdgStatus?.spender.address == null ||
-      needsApprove;
-    const ctaLabel = insufficient
-      ? 'Insufficient USDG'
-      : routedSelected
-        ? 'Conversion to USDG not live'
-        : needsApprove
-          ? `Approve ${payment(currentTotal, currency)}`
-          : 'Continue to Review';
+      cta.kind === 'wallet_required' ||
+      cta.kind === 'switch_network' ||
+      cta.kind === 'route_unavailable' ||
+      cta.kind === 'review_required' ||
+      cta.kind === 'insufficient';
     const ctaOnClick = () => {
-      if (insufficient || routedSelected) return;
-      if (needsApprove) {
-        void onApproveUsdg();
+      if (ctaDisabled) return;
+      if (cta.kind === 'approve') {
+        void onApproveSelected();
         return;
       }
-      void onCheckout();
+      if (cta.kind === 'continue') {
+        void onCheckout();
+        return;
+      }
     };
     const visibleAssets = checkoutVisibleAssets();
     const pickerAvailability: PaymentAvailability[] = paymentMethods.length
-      ? paymentMethods
+      ? paymentMethods.map((m) => ({
+          assetId: m.assetId,
+          available: m.available,
+          feeBps: m.feeBps,
+          routeStatus: m.routeStatus,
+        }))
       : visibleAssets.map((a) => ({
           assetId: a.assetId,
           available: a.status === 'ENABLED',
           feeBps: a.feeBps,
+          routeStatus:
+            a.status === 'DISABLED'
+              ? ('UNSUPPORTED' as const)
+              : a.assetId === 'usdg'
+                ? ('AVAILABLE' as const)
+                : ('COMING_SOON' as const),
         }));
+
+    // Order summary rows. The Selected-Payment Invariant requires the
+    // Pay line to reflect the SELECTED asset, with a USDG-equivalent
+    // secondary line when the selected asset is non-USDG.
+    const selectedAssetForSummary = selectedPaymentStatus
+      ? {
+          assetId: selectedPaymentStatus.assetId,
+          symbol: selectedPaymentStatus.symbol,
+          routeStatus: selectedPaymentStatus.routeStatus,
+        }
+      : {
+          assetId: selectedAssetId ?? 'usdg',
+          symbol: 'USDG',
+          routeStatus: 'COMING_SOON' as const,
+        };
+    const orderSummaryRows = buildOrderSummaryRows({
+      status: selectedPaymentStatus,
+      fallbackRequiredUsdgRaw: requiredRaw,
+    });
 
     return (
       <div className="flex flex-col gap-4">
@@ -994,7 +987,7 @@ export function CartCheckout() {
           <CheckoutPaymentPicker
             assets={visibleAssets}
             availability={pickerAvailability}
-            selectedAssetId={selectedAssetId}
+            selectedAssetId={selectedAssetId ?? ''}
             onSelect={(assetId) => {
               const cartId = cartPaymentId(assetId);
               if (!cartId) return;
@@ -1007,7 +1000,6 @@ export function CartCheckout() {
             onSelectCrypto={(assetId) => {
               const cartId = cartPaymentId(assetId);
               if (!cartId) return;
-              if (cartId === 'USDG') assertCanSelectPaymentAsset(cartId);
               setPhase({
                 kind: 'payment_select',
                 items: displayItems,
@@ -1020,54 +1012,27 @@ export function CartCheckout() {
             <OrderSummary
               step={2}
               items={displayItems}
-              currency={currency}
-              subtotal={currentTotal}
-              serviceFee={{ bps: serviceFeeBps, label: feeLabel }}
-              selectedAsset={phase.payment.assetId}
-              ctaLabel={ctaLabel}
+              selectedAsset={selectedAssetForSummary}
+              orderSummaryRows={orderSummaryRows}
+              ctaLabel={cta.label}
               ctaOnClick={ctaOnClick}
               ctaDisabled={ctaDisabled}
               ctaNote={
-                routedSelected
-                  ? `${phase.payment.assetId === 'NET' ? 'NetNet NET' : phase.payment.assetId} conversion to USDG is not live yet — complete this purchase with USDG.`
+                cta.kind === 'route_unavailable' && selectedPaymentStatus
+                  ? `${selectedPaymentStatus.symbol} payments not available yet — pay with USDG.`
                   : 'By continuing, you agree to our Terms of Service and acknowledge our compliance requirements.'
               }
             />
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 rounded-[16px] border border-[var(--color-border-subtle)] bg-[rgba(5,9,8,0.5)] p-3 text-[11px] text-[var(--color-text-tertiary)]">
-          <p>
-            Listings are rechecked against OpenSea before checkout. Prices and availability may have
-            changed since you added items.
-          </p>
-          <div className="flex flex-wrap items-center gap-3 pt-1">
-            <span>
-              USDG balance:{' '}
-              <span className="text-numeral text-[var(--color-text-secondary)]">
-                {formatKnowledge(usdgStatus?.balance)}
-              </span>
-            </span>
-            <span>
-              Allowance:{' '}
-              <span className="text-numeral text-[var(--color-text-secondary)]">
-                {formatKnowledge(usdgStatus?.allowance)}
-              </span>
-            </span>
-            <span>
-              Required:{' '}
-              <span className="text-numeral text-[var(--color-text-primary)]">
-                {payment(currentTotal, currency)}
-              </span>
-            </span>
+        {selectedPaymentStatus && selectedPaymentStatus.routeStatus === 'AVAILABLE' ? (
+          <PaymentStatusFooter status={selectedPaymentStatus} />
+        ) : selectedPaymentStatus && selectedPaymentStatus.routeNote ? (
+          <div className="flex flex-col gap-2 rounded-[16px] border border-[var(--color-border-subtle)] bg-[rgba(5,9,8,0.5)] p-3 text-[11px] text-[var(--color-text-tertiary)]">
+            <p>{selectedPaymentStatus.routeNote}</p>
           </div>
-          {insufficient ? (
-            <p className="text-[var(--color-warning)]">
-              Insufficient USDG. Add funds — this checkout will continue automatically when the
-              balance covers {payment(currentTotal, currency)}.
-            </p>
-          ) : null}
-        </div>
+        ) : null}
 
         <button
           type="button"
@@ -1147,16 +1112,87 @@ export function CartCheckout() {
     );
   }
 
+  // Surface the symbol/amount helper so the formatter isn't tree-shaken
+  // away when only used by the footer — it documents the contract.
+  void formatSelectedAmount;
+
   return null;
 }
 
-function formatKnowledge(
-  row: { state: string; raw: string | null } | null | undefined,
-): string {
-  if (!row || row.state === 'UNKNOWN') {
-    return row?.raw ? `${row.raw} (status unknown vs required)` : 'unknown';
+/**
+ * Build the pre-formatted order summary rows from the SelectedPaymentStatus.
+ *
+ * Rules per §5.3:
+ *   - USDG selected, AVAILABLE:
+ *       pay = "1.430 USDG"
+ *       payEquivalentUsdg = null  (USDG itself — no secondary needed)
+ *       purchaseValueUsdg = "1.430 USDG"
+ *   - Non-USDG selected, AVAILABLE:
+ *       pay = "0.000431 ETH"
+ *       payEquivalentUsdg = "≈ 1.430 USDG"
+ *       purchaseValueUsdg = "1.430 USDG"
+ *   - Non-USDG selected, NOT AVAILABLE:
+ *       pay = "—"
+ *       payEquivalentUsdg = "<symbol> — coming soon"
+ *       purchaseValueUsdg = "1.430 USDG"  (the cart's USDG value is still authoritative)
+ *
+ * When selectedPaymentStatus is null (still loading), we render a USDG
+ * placeholder so the layout doesn't jump.
+ */
+function buildOrderSummaryRows(input: {
+  status: import('@/lib/payment/selected-payment-status').SelectedPaymentStatus | null;
+  fallbackRequiredUsdgRaw: bigint;
+}): import('./OrderSummary').OrderSummaryRows {
+  const { status, fallbackRequiredUsdgRaw } = input;
+  if (status === null) {
+    const placeholderUsdg =
+      fallbackRequiredUsdgRaw > 0n
+        ? formatSelectedAmount(fallbackRequiredUsdgRaw.toString(), 6, 'USDG')
+        : '— USDG';
+    return {
+      pay: '—',
+      payEquivalentUsdg: null,
+      purchaseValueUsdg: placeholderUsdg,
+      fee: '0.00 USDG',
+    };
   }
-  if (row.state === 'KNOWN_SUFFICIENT') return 'sufficient';
-  if (row.state === 'KNOWN_INSUFFICIENT') return 'insufficient';
-  return 'unknown';
+  const purchaseRaw = status.purchaseValueUsdgRaw;
+  const purchaseValueUsdg =
+    purchaseRaw !== null
+      ? formatSelectedAmount(purchaseRaw, 6, 'USDG')
+      : fallbackRequiredUsdgRaw > 0n
+        ? formatSelectedAmount(fallbackRequiredUsdgRaw.toString(), 6, 'USDG')
+        : '— USDG';
+  const fee =
+    status.serviceFeeBps === 0 ? '0.00 USDG' : `+${(status.serviceFeeBps / 100).toFixed(1)}% service fee`;
+  if (status.assetId === 'usdg') {
+    return {
+      pay:
+        status.requiredInputRaw !== null
+          ? formatSelectedAmount(status.requiredInputRaw, status.decimals, status.symbol)
+          : purchaseValueUsdg,
+      payEquivalentUsdg: null,
+      purchaseValueUsdg,
+      fee,
+    };
+  }
+  if (status.routeStatus === 'AVAILABLE') {
+    return {
+      pay:
+        status.requiredInputRaw !== null
+          ? formatSelectedAmount(status.requiredInputRaw, status.decimals, status.symbol)
+          : `0 ${status.symbol}`,
+      payEquivalentUsdg: `≈ ${purchaseValueUsdg}`,
+      purchaseValueUsdg,
+      fee,
+    };
+  }
+  // Non-AVAILABLE route: pay is a placeholder, the secondary line says
+  // "<symbol> — coming soon" per §5.3.
+  return {
+    pay: '—',
+    payEquivalentUsdg: `${status.symbol} — coming soon`,
+    purchaseValueUsdg,
+    fee,
+  };
 }

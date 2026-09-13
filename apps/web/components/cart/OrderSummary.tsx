@@ -3,18 +3,33 @@
 import Link from 'next/link';
 import { ArrowUR, CheckIcon } from '@/components/icons';
 import { cn } from '@/lib/cn';
-import { payment } from '@/lib/format';
 import type { CheckoutItem } from '@/lib/cart/types';
+import type { RouteStatus } from '@/lib/payment/selected-payment-status';
 
 type Step = 1 | 2 | 3;
+
+export type OrderSummarySelectedAsset = {
+  assetId: string;
+  symbol: string;
+  routeStatus: RouteStatus;
+};
+
+export type OrderSummaryRows = {
+  /** Primary 'Pay' line: the SELECTED asset's formatted amount. */
+  pay: string;
+  /** Secondary '≈ X USDG' line under Pay when the selected asset is non-USDG. Null when USDG. */
+  payEquivalentUsdg: string | null;
+  /** Always renders the cart's USDG value. */
+  purchaseValueUsdg: string;
+  /** Always renders the USDG-denominated fee. */
+  fee: string;
+};
 
 export function OrderSummary({
   step = 2,
   items,
-  currency,
-  subtotal,
-  serviceFee,
   selectedAsset,
+  orderSummaryRows,
   ctaLabel,
   ctaOnClick,
   ctaDisabled = false,
@@ -23,18 +38,18 @@ export function OrderSummary({
 }: {
   step?: Step;
   items: CheckoutItem[];
-  currency: string;
-  subtotal: number;
-  serviceFee: { bps: number; label: string };
-  selectedAsset: 'USDG' | 'ETH' | 'NET' | string;
+  selectedAsset: OrderSummarySelectedAsset;
+  orderSummaryRows: OrderSummaryRows;
   ctaLabel: string;
   ctaOnClick: () => void;
   ctaDisabled?: boolean;
   ctaNote?: string;
   featureLine?: string;
 }) {
-  const feature = featureLine ?? defaultFeatureLine(selectedAsset, serviceFee.bps);
+  const feature = featureLine ?? defaultFeatureLine(selectedAsset);
   const featured = items[0];
+  const isPayUnavailable =
+    selectedAsset.routeStatus !== 'AVAILABLE' && selectedAsset.assetId !== 'usdg';
   return (
     <aside
       aria-label="Order summary"
@@ -53,10 +68,21 @@ export function OrderSummary({
       {featured ? <FeaturedItem item={featured} /> : null}
 
       <dl className="flex flex-col gap-2 border-t border-[var(--color-border-subtle)] pt-3 text-[13px]">
-        <Row label="Item price" value={payment(subtotal, currency)} />
+        <Row
+          label="Pay"
+          value={orderSummaryRows.pay}
+          emphasis
+          secondary={
+            isPayUnavailable
+              ? `${selectedAsset.symbol} — coming soon`
+              : orderSummaryRows.payEquivalentUsdg
+          }
+          tone={isPayUnavailable ? 'muted' : 'primary'}
+        />
+        <Row label="Purchase value" value={orderSummaryRows.purchaseValueUsdg} />
         <Row
           label="Marketplace fee"
-          value={serviceFee.bps === 0 ? '0.00 USDG' : serviceFee.label}
+          value={orderSummaryRows.fee}
           suffix={
             <span
               aria-label="Service fee basis"
@@ -65,12 +91,6 @@ export function OrderSummary({
               i
             </span>
           }
-        />
-        <Row
-          label="Total"
-          value={payment(subtotal, currency)}
-          emphasis
-          secondary={approxUsd(subtotal)}
         />
       </dl>
 
@@ -190,12 +210,14 @@ function Row({
   emphasis = false,
   suffix,
   secondary,
+  tone = 'primary',
 }: {
   label: string;
   value: string;
   emphasis?: boolean;
   suffix?: React.ReactNode;
-  secondary?: string;
+  secondary?: string | null;
+  tone?: 'primary' | 'muted';
 }) {
   return (
     <div className="flex flex-col gap-0.5">
@@ -205,7 +227,9 @@ function Row({
           className={cn(
             'flex items-center',
             emphasis
-              ? 'text-numeral text-base font-semibold text-[var(--color-text-primary)]'
+              ? tone === 'muted'
+                ? 'text-numeral text-base font-semibold text-[var(--color-text-tertiary)]'
+                : 'text-numeral text-base font-semibold text-[var(--color-text-primary)]'
               : 'text-numeral text-[var(--color-text-primary)]',
           )}
         >
@@ -214,20 +238,26 @@ function Row({
         </dd>
       </div>
       {secondary ? (
-        <span className="self-end text-[10px] text-[var(--color-text-tertiary)]">{secondary}</span>
+        <span
+          className={cn(
+            'self-end text-[10px]',
+            tone === 'muted'
+              ? 'text-[var(--color-text-tertiary)]'
+              : 'text-[var(--color-text-tertiary)]',
+          )}
+        >
+          {secondary}
+        </span>
       ) : null}
     </div>
   );
 }
 
-function defaultFeatureLine(asset: string, feeBps: number): string {
-  if (asset === 'USDG' || asset === 'ETH' || asset === 'NET' || feeBps === 0) {
+function defaultFeatureLine(selectedAsset: OrderSummarySelectedAsset): string {
+  // Crypto payment assets carry no marketplace fee. Stock tokens do.
+  const isCrypto = ['usdg', 'eth', 'netnet-net'].includes(selectedAsset.assetId);
+  if (isCrypto) {
     return 'No fees with crypto payments. Pay with USDG, ETH, or NET and avoid all marketplace fees.';
   }
   return 'Stock Token payments carry a 2% service fee with a $2 minimum. The fee covers conversion to USDG.';
-}
-
-function approxUsd(usdgValue: number): string {
-  if (!Number.isFinite(usdgValue) || usdgValue <= 0) return '';
-  return `≈ ${usdgValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD`;
 }
