@@ -962,9 +962,24 @@ export function CartCheckout() {
                 : ('COMING_SOON' as const),
         }));
 
-    const serviceFeeBps = selectedPaymentStatus?.serviceFeeBps ?? 0;
-    const feeLabel =
-      serviceFeeBps === 0 ? '0.00 USDG' : `+${(serviceFeeBps / 100).toFixed(1)}% service fee`;
+    // Order summary rows. The Selected-Payment Invariant requires the
+    // Pay line to reflect the SELECTED asset, with a USDG-equivalent
+    // secondary line when the selected asset is non-USDG.
+    const selectedAssetForSummary = selectedPaymentStatus
+      ? {
+          assetId: selectedPaymentStatus.assetId,
+          symbol: selectedPaymentStatus.symbol,
+          routeStatus: selectedPaymentStatus.routeStatus,
+        }
+      : {
+          assetId: selectedAssetId ?? 'usdg',
+          symbol: 'USDG',
+          routeStatus: 'COMING_SOON' as const,
+        };
+    const orderSummaryRows = buildOrderSummaryRows({
+      status: selectedPaymentStatus,
+      fallbackRequiredUsdgRaw: requiredRaw,
+    });
 
     return (
       <div className="flex flex-col gap-4">
@@ -997,10 +1012,8 @@ export function CartCheckout() {
             <OrderSummary
               step={2}
               items={displayItems}
-              currency={currency}
-              subtotal={currentTotal}
-              serviceFee={{ bps: serviceFeeBps, label: feeLabel }}
-              selectedAsset={phase.payment.assetId}
+              selectedAsset={selectedAssetForSummary}
+              orderSummaryRows={orderSummaryRows}
               ctaLabel={cta.label}
               ctaOnClick={ctaOnClick}
               ctaDisabled={ctaDisabled}
@@ -1104,4 +1117,82 @@ export function CartCheckout() {
   void formatSelectedAmount;
 
   return null;
+}
+
+/**
+ * Build the pre-formatted order summary rows from the SelectedPaymentStatus.
+ *
+ * Rules per §5.3:
+ *   - USDG selected, AVAILABLE:
+ *       pay = "1.430 USDG"
+ *       payEquivalentUsdg = null  (USDG itself — no secondary needed)
+ *       purchaseValueUsdg = "1.430 USDG"
+ *   - Non-USDG selected, AVAILABLE:
+ *       pay = "0.000431 ETH"
+ *       payEquivalentUsdg = "≈ 1.430 USDG"
+ *       purchaseValueUsdg = "1.430 USDG"
+ *   - Non-USDG selected, NOT AVAILABLE:
+ *       pay = "—"
+ *       payEquivalentUsdg = "<symbol> — coming soon"
+ *       purchaseValueUsdg = "1.430 USDG"  (the cart's USDG value is still authoritative)
+ *
+ * When selectedPaymentStatus is null (still loading), we render a USDG
+ * placeholder so the layout doesn't jump.
+ */
+function buildOrderSummaryRows(input: {
+  status: import('@/lib/payment/selected-payment-status').SelectedPaymentStatus | null;
+  fallbackRequiredUsdgRaw: bigint;
+}): import('./OrderSummary').OrderSummaryRows {
+  const { status, fallbackRequiredUsdgRaw } = input;
+  if (status === null) {
+    const placeholderUsdg =
+      fallbackRequiredUsdgRaw > 0n
+        ? formatSelectedAmount(fallbackRequiredUsdgRaw.toString(), 6, 'USDG')
+        : '— USDG';
+    return {
+      pay: '—',
+      payEquivalentUsdg: null,
+      purchaseValueUsdg: placeholderUsdg,
+      fee: '0.00 USDG',
+    };
+  }
+  const purchaseRaw = status.purchaseValueUsdgRaw;
+  const purchaseValueUsdg =
+    purchaseRaw !== null
+      ? formatSelectedAmount(purchaseRaw, 6, 'USDG')
+      : fallbackRequiredUsdgRaw > 0n
+        ? formatSelectedAmount(fallbackRequiredUsdgRaw.toString(), 6, 'USDG')
+        : '— USDG';
+  const fee =
+    status.serviceFeeBps === 0 ? '0.00 USDG' : `+${(status.serviceFeeBps / 100).toFixed(1)}% service fee`;
+  if (status.assetId === 'usdg') {
+    return {
+      pay:
+        status.requiredInputRaw !== null
+          ? formatSelectedAmount(status.requiredInputRaw, status.decimals, status.symbol)
+          : purchaseValueUsdg,
+      payEquivalentUsdg: null,
+      purchaseValueUsdg,
+      fee,
+    };
+  }
+  if (status.routeStatus === 'AVAILABLE') {
+    return {
+      pay:
+        status.requiredInputRaw !== null
+          ? formatSelectedAmount(status.requiredInputRaw, status.decimals, status.symbol)
+          : `0 ${status.symbol}`,
+      payEquivalentUsdg: `≈ ${purchaseValueUsdg}`,
+      purchaseValueUsdg,
+      fee,
+    };
+  }
+  // Non-AVAILABLE route: pay is a placeholder, the secondary line says
+  // "<symbol> — coming soon" per §5.3.
+  return {
+    pay: '—',
+    payEquivalentUsdg: `${status.symbol} — coming soon`,
+    purchaseValueUsdg,
+    fee,
+  };
 }
