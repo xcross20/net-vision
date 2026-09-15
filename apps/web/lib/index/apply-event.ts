@@ -16,11 +16,15 @@ import {
   wasMarketEventSeen,
   writeListing,
 } from './store';
+import { enqueueSqlMarketEvent } from './sql-writer';
 
 export type ApplyEventResult = 'applied' | 'duplicate' | 'ignored';
 
 export function applyMarketEvent(event: MarketEvent, now = Date.now()): ApplyEventResult {
-  if (wasMarketEventSeen(event.id)) return 'duplicate';
+  if (wasMarketEventSeen(event.id)) {
+    enqueueSqlMarketEvent(event);
+    return 'duplicate';
+  }
   rememberMarketEvent(event, now);
 
   if (event.kind === 'listed') {
@@ -34,6 +38,7 @@ export function applyMarketEvent(event: MarketEvent, now = Date.now()): ApplyEve
       listedAt: event.occurredAt,
     }, now);
     writeListing(next);
+    enqueueSqlMarketEvent(event);
     return 'applied';
   }
 
@@ -44,6 +49,7 @@ export function applyMarketEvent(event: MarketEvent, now = Date.now()): ApplyEve
       now,
     );
     writeListing(next);
+    enqueueSqlMarketEvent(event);
     return 'applied';
   }
 
@@ -83,6 +89,7 @@ export function applyMarketEvent(event: MarketEvent, now = Date.now()): ApplyEve
         lastSeenAt: now,
       });
     }
+    enqueueSqlMarketEvent(event);
     return 'applied';
   }
 
@@ -100,6 +107,7 @@ export function applyMarketEvent(event: MarketEvent, now = Date.now()): ApplyEve
         lastSeenAt: now,
       });
     }
+    enqueueSqlMarketEvent(event);
     return 'applied';
   }
 
@@ -110,6 +118,7 @@ export function applyMarketEvent(event: MarketEvent, now = Date.now()): ApplyEve
       ownerAddress: event.ownerAddress,
       traits: event.metadata.traits,
     });
+    enqueueSqlMarketEvent(event);
     return 'applied';
   }
 

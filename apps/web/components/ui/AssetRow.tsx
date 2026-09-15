@@ -4,12 +4,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { ArrowRight, Heart } from '@phosphor-icons/react/dist/ssr';
-import { useState } from 'react';
 import { cn } from '@/lib/cn';
 import type { Token } from '@/lib/market';
 import { MarketplaceBadge } from './MarketplaceBadge';
 import { Price } from './Price';
 import { address, payment, relative } from '@/lib/format';
+import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
 
 /**
  * Compact row used in dense market tables. Sophisticated collectors
@@ -22,7 +22,8 @@ import { address, payment, relative } from '@/lib/format';
 export function AssetRow({ token }: { token: Token }) {
   const ask = token.listingPrice;
   const last = token.lastSalePrice;
-  const [favorited, setFavorited] = useState(false);
+  const watchlist = useWatchlist();
+  const favorited = watchlist.isWatchingToken(token.tokenId);
   const topCategory = token.traits.find((t) => t.family !== 'digits' && t.family !== 'number');
   return (
     <motion.div
@@ -97,11 +98,12 @@ export function AssetRow({ token }: { token: Token }) {
           <MarketplaceBadge source="opensea" />
           <button
             type="button"
-            aria-label={favorited ? 'Unfavorite' : 'Favorite'}
+            aria-label={favorited ? 'Unwatch' : 'Watch'}
             aria-pressed={favorited}
             onClick={(e) => {
               e.preventDefault();
-              setFavorited((v) => !v);
+              e.stopPropagation();
+              watchlist.toggleToken(token.tokenId);
             }}
             className={cn(
               'hidden h-7 w-7 items-center justify-center rounded-[var(--radius-sm)] transition-colors md:inline-flex',

@@ -26,7 +26,9 @@ import {
 import {
   walkerPaceMs,
   WALKER_COOLDOWN_PACE_MS,
+  WALKER_MIN_PACE_MS,
 } from './walker-pace';
+import { enqueueSqlReconciliation, sqlWriterEnabled, sqlWriterMetrics } from './sql-writer';
 import {
   coverageRisePercentPerHour,
   recordWalkerTick,
@@ -69,11 +71,20 @@ const ANODISED_MAX = 19999;
  *   `walker-pace.ts` for the budget rationale and the impossible-state
  *   floor (`WALKER_MIN_PACE_MS`).
  */
-const METADATA_PACE_MS = 3_000;
+const METADATA_PACE_MS_DEFAULT = 3_000;
+
+function metadataPaceMs(): number {
+  const raw = process.env.METADATA_PACE_MS?.trim();
+  if (!raw) return METADATA_PACE_MS_DEFAULT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < WALKER_MIN_PACE_MS) return METADATA_PACE_MS_DEFAULT;
+  return n;
+}
 const RATE_LIMIT_SLEEP_MS = 5 * 60_000;
 const WALKER_HOT_REFRESH_PAUSE_MS = 5 * 60_000;
 const WALKER_ERROR_BACKOFF_MS = 10_000;
-const SAVE_EVERY = 10;
+/** Local JSON checkpoint cadence. Postgres blob writes are separately coalesced. */
+const SAVE_EVERY = 200;
 const HEARTBEAT_MS = 15_000;
 export const METADATA_RETRY_BACKOFF_MS = [10_000, 30_000, 120_000, 600_000, 1_800_000] as const;
 const MAX_METADATA_RETRY_ATTEMPTS = METADATA_RETRY_BACKOFF_MS.length;
@@ -220,6 +231,7 @@ export async function reconcileOne(
   }
   const next = applyObservation(current, observation);
   writeListing(next);
+  enqueueSqlReconciliation(next);
   writeWorkerCheckpoint({ lastSuccessAt: Date.now(), lastError: null });
   sink?.(next);
   return next;
@@ -416,6 +428,9 @@ function startHeartbeat(): void {
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   heartbeatTimer = setInterval(() => {
     touchWorkerHeartbeat();
+    writeWorkerCheckpoint({
+      sqlWriter: { enabled: sqlWriterEnabled(), ...sqlWriterMetrics() },
+    });
     saveIndex();
   }, HEARTBEAT_MS);
   if (typeof heartbeatTimer === 'object' && 'unref' in heartbeatTimer) {
@@ -486,9 +501,9 @@ export function startBackgroundIndexer(
             metadataRunning = false;
             return;
           }
-          await new Promise((resolve) => setTimeout(resolve, METADATA_PACE_MS / 2));
+          await new Promise((resolve) => setTimeout(resolve, metadataPaceMs() / 2));
           await runMetadataBootstrapPass(fetchMetadata, { maxTokens: 1, sleepMs: 0 });
-          await new Promise((resolve) => setTimeout(resolve, METADATA_PACE_MS));
+          await new Promise((resolve) => setTimeout(resolve, metadataPaceMs()));
         }
       } catch (err) {
         if (isOpenSeaRateLimited(err)) {

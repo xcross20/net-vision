@@ -3,18 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { MagnifyingGlass, ShoppingBag, Hexagon, List, X } from '@phosphor-icons/react/dist/ssr';
+import { MagnifyingGlass, List, X } from '@phosphor-icons/react/dist/ssr';
 import { useState } from 'react';
 import { cn } from '@/lib/cn';
 import { WalletControl } from './WalletControl';
 import { CartButton } from '@/components/cart';
-
-const NAV = [
-  { href: '/market', label: 'Market' },
-  { href: '/categories', label: 'Categories' },
-  { href: '/activity', label: 'Activity' },
-  { href: '/portfolio', label: 'Portfolio' },
-];
+import { NetVisionLogo } from '@/components/brand/NetVisionLogo';
+import { PageContainer } from '@/components/shell/PageContainer';
+import { PRIMARY_NAV } from '@/lib/nav';
 
 /**
  * Sticky top navigation. ~72 px tall, graphite translucent backdrop
@@ -28,29 +24,13 @@ export function MarketHeader({ onOpenSearch }: { onOpenSearch?: () => void }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-30 h-[72px] border-b border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg)_85%,transparent)] backdrop-blur-md">
-      <div className="mx-auto flex h-full max-w-7xl items-center gap-6 px-4 md:px-8">
-        <Link
-          href="/"
-          className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-[var(--color-text-primary)]"
-        >
-          <motion.span
-            initial={{ rotate: 0 }}
-            whileHover={{ rotate: 30 }}
-            transition={{ type: 'spring', stiffness: 220, damping: 14 }}
-            className="flex h-8 w-8 items-center justify-center rounded-md bg-[rgba(72,235,145,0.10)] text-[var(--color-net-green)]"
-          >
-            <Hexagon size={18} weight="duotone" />
-          </motion.span>
-          <span>Net Vision</span>
-        </Link>
+    <header className="sticky top-0 z-30 h-[76px] border-b border-[rgba(92,255,153,0.10)] bg-[color-mix(in_srgb,var(--color-bg)_72%,transparent)] backdrop-blur-xl">
+      <PageContainer size="cinematic" className="flex h-full items-center gap-6">
+        <NetVisionLogo />
 
-        <nav className="hidden items-center gap-1 md:flex">
-          {NAV.map((item) => {
-            const active =
-              item.href === '/'
-                ? pathname === '/'
-                : pathname?.startsWith(item.href);
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
+          {PRIMARY_NAV.map((item) => {
+            const active = pathname?.startsWith(item.href);
             return (
               <Link
                 key={item.href}
@@ -58,7 +38,7 @@ export function MarketHeader({ onOpenSearch }: { onOpenSearch?: () => void }) {
                 className={cn(
                   'relative rounded-md px-3 py-2 text-sm transition-colors',
                   active
-                    ? 'text-[var(--color-text-primary)]'
+                    ? 'text-[var(--color-net-green)]'
                     : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
                 )}
               >
@@ -82,11 +62,11 @@ export function MarketHeader({ onOpenSearch }: { onOpenSearch?: () => void }) {
             type="button"
             aria-label="Search"
             onClick={() => onOpenSearch?.()}
-            className="hidden h-10 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-3 text-sm text-[var(--color-text-tertiary)] transition-colors hover:border-[var(--color-border-default)] hover:text-[var(--color-text-primary)] md:inline-flex"
+            className="nv-glass hidden h-11 min-w-[22rem] items-center gap-2 rounded-full px-4 text-sm text-[var(--color-text-tertiary)] transition-colors hover:border-[var(--color-border-default)] hover:text-[var(--color-text-primary)] lg:inline-flex"
           >
             <MagnifyingGlass size={14} weight="bold" />
-            <span>Search</span>
-            <kbd className="text-numeral ml-3 hidden rounded border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-tertiary)] md:inline">
+            <span className="flex-1 text-left">Search numbers, collections, or addresses...</span>
+            <kbd className="text-numeral hidden rounded-md border border-[var(--color-border-subtle)] px-1.5 py-0.5 text-[10px] text-[var(--color-text-tertiary)] md:inline">
               K
             </kbd>
           </button>
@@ -141,11 +121,8 @@ export function MarketHeader({ onOpenSearch }: { onOpenSearch?: () => void }) {
                   </button>
                 </div>
                 <div className="flex flex-col">
-                  {NAV.map((item) => {
-                    const active =
-                      item.href === '/'
-                        ? pathname === '/'
-                        : pathname?.startsWith(item.href);
+                  {PRIMARY_NAV.map((item) => {
+                    const active = pathname?.startsWith(item.href);
                     return (
                       <Link
                         key={item.href}
@@ -167,7 +144,7 @@ export function MarketHeader({ onOpenSearch }: { onOpenSearch?: () => void }) {
             </motion.div>
           ) : null}
         </AnimatePresence>
-      </div>
+      </PageContainer>
     </header>
   );
 }

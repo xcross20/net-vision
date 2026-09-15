@@ -15,6 +15,7 @@ import {
   workerCheckpoint,
 } from './store';
 import { eventsInWindow } from './market-event';
+import { sqlWriterEnabled, sqlWriterMetrics } from './sql-writer';
 import { deriveStreamHealth } from './stream-health';
 import type { StreamHealth } from './store';
 import { BRASS_EXPECTED, isIndexerRunning, isMetadataBootstrapRunning } from './worker';
@@ -92,6 +93,17 @@ export type IndexerHealthReport = {
   walkerTokensPerMinute: number | null;
   /** Verified-listing coverage rise, percent-per-hour, last 5 min. */
   coverageRisePercentPerHour: number | null;
+  sqlWriter: {
+    enabled: boolean;
+    marketEventInserts: number;
+    marketEventDuplicates: number;
+    outOfOrderEventsIgnored: number;
+    eventProjectionFailures: number;
+    reconciliationOverrides: number;
+    reconciliationSkipped: number;
+    sqlWriteLatencyP50Ms: number | null;
+    sqlWriteLatencyP95Ms: number | null;
+  };
 };
 
 function progressPercent(cursor: number, total: number): number {
@@ -201,5 +213,9 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
     },
     walkerTokensPerMinute: listing.walkerTokensPerMinute ?? null,
     coverageRisePercentPerHour: listing.coverageRisePercentPerHour ?? null,
+    sqlWriter: listing.sqlWriter ?? {
+      enabled: sqlWriterEnabled(),
+      ...sqlWriterMetrics(),
+    },
   };
 }

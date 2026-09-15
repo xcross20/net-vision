@@ -24,7 +24,7 @@ Anything that produces an executable action (`fulfillment_data`, `listing_action
 
 ## Chain identifier
 
-The OpenSea `chain` parameter is `Robinhood`. The numeric chain ID is configured in `@net-vision/chain-config` and must be cross-checked against the current official Robinhood Chain identifier before any live trade is enabled. If it changes, update `ROBINHOOD_CHAIN.id` and bump `CONFIG_VERSION`.
+The OpenSea `chain` parameter is the slug `robinhood` (`OPENSEA_CHAIN_SLUG`). The numeric wallet/RPC chain ID is `ROBINHOOD_CHAIN.id` = **4663** (see `docs/launch/CHAIN_AUTHORITY.md`). Do not hardcode 1311.
 
 ## API resilience
 

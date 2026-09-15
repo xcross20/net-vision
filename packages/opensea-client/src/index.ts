@@ -18,6 +18,7 @@
  */
 
 import { z } from 'zod';
+import { ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 
 const HEX_ADDRESS = /^0x[a-fA-F0-9]{40}$/;
 const OPTIONAL_HEX_ADDRESS = z
@@ -375,11 +376,28 @@ export type FulfillmentRequest = {
   orderHash: string;
   fulfillerAddress: string;
   chain: string;
+  /** Seaport (or other protocol) address. Required by OpenSea listing object. */
+  protocolAddress: string;
 };
 
 export type FulfillmentResponse = {
   raw: unknown;
 };
+
+/** Official OpenSea `POST /api/v2/listings/fulfillment_data` body. */
+export function openSeaListingFulfillmentBody(input: FulfillmentRequest): {
+  listing: { hash: string; chain: string; protocol_address: string };
+  fulfiller: { address: string };
+} {
+  return {
+    listing: {
+      hash: input.orderHash,
+      chain: input.chain,
+      protocol_address: input.protocolAddress,
+    },
+    fulfiller: { address: input.fulfillerAddress },
+  };
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Chain discovery                                                            */
@@ -652,7 +670,7 @@ export class OpenSeaClient {
       'POST',
       '/api/v2/listings/fulfillment_data',
       z.unknown(),
-      { body: input },
+      { body: openSeaListingFulfillmentBody(input) },
       { retry: false },
     );
     return { raw };
@@ -863,7 +881,7 @@ export class OpenSeaClient {
 /*  Factory                                                                    */
 /* -------------------------------------------------------------------------- */
 
-const ROBINHOOD_CHAIN_ID = 1311;
+const ROBINHOOD_CHAIN_ID = ROBINHOOD_CHAIN.id;
 
 /**
  * Build a client from the server environment. This is the only entry

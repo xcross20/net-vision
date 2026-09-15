@@ -89,6 +89,13 @@ export type CategoryMetrics = {
   marketCoverage: number;
   /** Partial coverage must never be presented as a final floor. */
   marketStatus: 'syncing' | 'live';
+  /**
+   * SQL read model only. Share of members with any established listing
+   * state (LISTED | UNLISTED_VERIFIED | STALE). Not TTL-fresh coverage.
+   */
+  bootstrapCoverage?: number;
+  /** SQL read model only. Worker/stream health; independent of bootstrap. */
+  realtimeHealth?: 'live' | 'degraded' | 'offline';
   owners: number;
   currency: string;
   floorPrice: number | null;
@@ -149,6 +156,8 @@ export type CollectionSnapshot = {
   staleListedCount: number;
   listingCoverage: number;
   marketStatus: 'syncing' | 'live';
+  bootstrapCoverage?: number;
+  realtimeHealth?: 'live' | 'degraded' | 'offline';
   snapshotRevision: number;
   currency: string;
   /** Min LISTED ask from the worker index. */
@@ -168,7 +177,7 @@ export type DataFreshness = {
   /** True if the source produced at least one snapshot within the freshness window. */
   fresh: boolean;
   refreshedAt: number | null;
-  source: 'opensea' | 'fixture' | 'cache';
+  source: 'opensea' | 'fixture' | 'cache' | 'sql';
   /** Resolved OpenSea chain slug from /api/v2/chains. null if discovery failed. */
   resolvedChainSlug: string | null;
 };

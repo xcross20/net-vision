@@ -3,7 +3,7 @@
  * Live OpenSea oracle comparison is a separate operator script.
  */
 import { describe, expect, it } from 'vitest';
-import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
+import { BUTTON_PRESSER_COLLECTION, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 import { VIRTUAL_COLLECTION_CATALOG } from '@net-vision/taxonomy';
 import { cartDraftFromToken } from '../cart/listing-snapshot';
 import { baseCollectionSnapshot } from './collection-facts';
@@ -40,7 +40,7 @@ describe('cart listing snapshot', () => {
     const token: Token = {
       tokenId: '756',
       contractAddress: BUTTON_PRESSER_COLLECTION.contractAddress,
-      chainId: 1311,
+      chainId: ROBINHOOD_CHAIN.id,
       imageUrl: '/x',
       name: '#756',
       listingPrice: 650,

@@ -147,6 +147,9 @@ function streamKind(eventType: string | undefined): MarketEventKind | null {
     case 'order_invalidate':
     case 'order_invalidated':
       return 'cancelled';
+    case 'order_revalidate':
+    case 'order_revalidated':
+      return 'listed';
     case 'item_transferred':
       return 'transferred';
     case 'item_metadata_updated':

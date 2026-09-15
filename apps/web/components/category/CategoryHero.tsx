@@ -1,10 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { Star } from '@phosphor-icons/react/dist/ssr';
+import {
+  ChartLine,
+  Crown,
+  ListBullets,
+  ShoppingCart,
+  Star,
+  Tag,
+  TrendUp,
+  Users,
+} from '@phosphor-icons/react/dist/ssr';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
+import { CinematicHero, ShowroomAside } from '@/components/showroom/CinematicHero';
+import {
+  PLATE_MATERIAL_SLUGS,
+  isPlateMaterialSlug,
+  showroomHeroForCategory,
+} from '@/lib/brand/media';
 import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
+import { compact, payment, pct } from '@/lib/format';
+import { cn } from '@/lib/cn';
 import type { CategoryMetrics } from '@/lib/market';
+import { VIRTUAL_COLLECTION_CATALOG } from '@net-vision/taxonomy';
 
 const FAMILY_LABEL: Record<string, string> = {
   number: 'Number',
@@ -13,52 +31,157 @@ const FAMILY_LABEL: Record<string, string> = {
   culture: 'Culture',
 };
 
-export function CategoryHero({ metrics }: { metrics: CategoryMetrics }) {
+export function CategoryHero({
+  metrics,
+  onSweep,
+  sweepDisabled,
+}: {
+  metrics: CategoryMetrics;
+  heroToken?: unknown;
+  onSweep?: () => void;
+  sweepDisabled?: boolean;
+}) {
   const { isWatchingCategory, toggleCategory } = useWatchlist();
   const watching = isWatchingCategory(metrics.slug);
   const isSyncing = metrics.marketStatus === 'syncing';
+  const currency = metrics.currency;
+
   return (
-    <header className="flex flex-col gap-6">
-      <nav className="flex items-center gap-2 text-sm text-[var(--color-text-tertiary)]">
+    <div className="flex flex-col gap-4">
+      <nav className="flex flex-wrap items-center gap-2 text-sm text-[var(--color-text-tertiary)]">
+        <Link href="/market" className="transition-colors hover:text-[var(--color-text-primary)]">
+          Market
+        </Link>
+        <span>/</span>
         <Link href="/categories" className="transition-colors hover:text-[var(--color-text-primary)]">
           Categories
         </Link>
         <span>/</span>
-        <span className="uppercase tracking-[0.16em] text-[11px]">
-          {FAMILY_LABEL[metrics.family] ?? metrics.family}
-        </span>
+        <span className="text-[var(--color-text-secondary)]">{metrics.name}</span>
       </nav>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-3">
-            <span className="text-eyebrow">{FAMILY_LABEL[metrics.family] ?? metrics.family}</span>
-            <LiveIndicator
-              tone={isSyncing ? 'amber' : 'green'}
-              size={6}
-              label={
-                isSyncing
-                  ? `Verified ${metrics.verifiedCount.toLocaleString()} / ${metrics.memberSupply.toLocaleString()}`
-                  : 'Live'
-              }
-            />
-          </div>
-          <h1 className="text-display text-[clamp(2.5rem,5.5vw,4.25rem)] text-[var(--color-text-primary)]">
-            {metrics.name}
-          </h1>
-          <p className="text-body max-w-[58ch] text-[var(--color-text-secondary)] md:text-[17px]">
-            {metrics.description}
-          </p>
+
+      <CinematicHero
+        imageSrc={showroomHeroForCategory(metrics.slug)}
+        imageAlt={`Cinematic showroom photography for the ${metrics.name} category`}
+        imagePositionClass={isPlateMaterialSlug(metrics.slug) ? 'object-center' : 'object-right'}
+        eyebrow={`${FAMILY_LABEL[metrics.family] ?? metrics.family} category`}
+        title={metrics.name}
+        body={metrics.description}
+        minHeightClass="min-h-[22rem] md:min-h-[26rem]"
+        metricsVariant="bar"
+        aside={
+          <ShowroomAside
+            lines={['Same numbers.', 'Bigger', 'possibilities.']}
+            footer={
+              <LiveIndicator
+                tone={isSyncing ? 'amber' : 'green'}
+                size={6}
+                label={
+                  isSyncing
+                    ? `Verified ${metrics.verifiedCount.toLocaleString()} / ${metrics.memberSupply.toLocaleString()}`
+                    : 'Live'
+                }
+              />
+            }
+          />
+        }
+        actions={
+          <>
+            {onSweep ? (
+              <button
+                type="button"
+                className="nv-button"
+                onClick={onSweep}
+                disabled={sweepDisabled}
+              >
+                <ShoppingCart size={15} weight="bold" />
+                Sweep category
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => toggleCategory(metrics.slug)}
+              className="nv-button nv-button-ghost"
+              aria-pressed={watching}
+            >
+              <Star size={14} weight={watching ? 'fill' : 'regular'} />
+              {watching ? 'Watching' : 'Watch category'}
+            </button>
+          </>
+        }
+        metrics={[
+          {
+            label: 'Floor (USDG)',
+            value: isSyncing ? 'Syncing' : payment(metrics.floorPrice, currency),
+            icon: <Tag size={16} weight="duotone" />,
+            emphasis: true,
+          },
+          {
+            label: 'Best offer',
+            value: isSyncing ? '—' : payment(metrics.topOfferPrice, currency),
+            icon: <TrendUp size={16} weight="duotone" />,
+          },
+          {
+            label: isSyncing ? 'Known listed' : 'Listed',
+            value: metrics.listedCount.toLocaleString(),
+            icon: <ListBullets size={16} weight="duotone" />,
+          },
+          {
+            label: 'Owners',
+            value: metrics.owners.toLocaleString(),
+            icon: <Users size={16} weight="duotone" />,
+          },
+          {
+            label: '24h volume',
+            value: isSyncing ? '—' : compact(metrics.volume24h),
+            icon: <ChartLine size={16} weight="duotone" />,
+          },
+          {
+            label: '7d volume',
+            value: isSyncing ? '—' : compact(metrics.volume7d),
+            icon: <ChartLine size={16} weight="duotone" />,
+          },
+          {
+            label: 'Highest sale',
+            value: isSyncing ? '—' : payment(metrics.highestSale?.price ?? null, currency),
+            icon: <Crown size={16} weight="duotone" />,
+          },
+          {
+            label: '7d floor',
+            value: isSyncing ? '—' : pct(metrics.floorChange7d),
+            icon: <TrendUp size={16} weight="duotone" />,
+          },
+        ]}
+      >
+        <div className="flex flex-wrap gap-2">
+          <span className="nv-chip nv-chip-strong">{FAMILY_LABEL[metrics.family] ?? metrics.family}</span>
+          <span className="nv-chip">{metrics.memberSupply.toLocaleString()} items</span>
+          {metrics.source === 'metadata' ? <span className="nv-chip">Physical craft</span> : null}
         </div>
-        <button
-          type="button"
-          onClick={() => toggleCategory(metrics.slug)}
-          className="nv-button nv-button-ghost"
-          aria-pressed={watching}
-        >
-          <Star size={14} weight={watching ? 'fill' : 'regular'} />
-          {watching ? 'Watching' : 'Watch'}
-        </button>
-      </div>
-    </header>
+        {metrics.family === 'material' ? (
+          <div className="flex flex-wrap gap-2" aria-label="Official Plate materials">
+            {PLATE_MATERIAL_SLUGS.map((slug) => {
+              const cat = VIRTUAL_COLLECTION_CATALOG.find((c) => c.slug === slug);
+              const active = slug === metrics.slug;
+              return (
+                <Link
+                  key={slug}
+                  href={`/categories/${slug}`}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'rounded-full px-3.5 py-1.5 text-[12px] font-semibold tracking-wide transition-colors',
+                    active
+                      ? 'bg-[var(--color-net-green)] text-[var(--color-bg)] shadow-[0_0_20px_rgba(72,235,145,0.28)]'
+                      : 'nv-glass-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+                  )}
+                >
+                  {cat?.name ?? slug}
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
+      </CinematicHero>
+    </div>
   );
 }

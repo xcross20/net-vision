@@ -13,6 +13,7 @@ import type { FloorSnapshot, SaleAttribution } from '../market/engine';
 import type { ListingRecord, ListingState } from '../market/listing-state';
 import { decayIfStale, emptyListingRecord } from '../market/listing-state';
 import type { MarketEvent } from './market-event';
+import { enqueueSqlMetadataFacets } from './sql-writer';
 
 export type TokenRow = {
   tokenId: string;
@@ -40,6 +41,18 @@ export type WorkerCheckpoint = {
   walkerTokensPerMinute: number | null;
   /** Verified-coverage rise, percent per hour, last 5 min. */
   coverageRisePercentPerHour: number | null;
+  /** SQL writer counters from the worker process (web reads the blob). */
+  sqlWriter: {
+    enabled: boolean;
+    marketEventInserts: number;
+    marketEventDuplicates: number;
+    outOfOrderEventsIgnored: number;
+    eventProjectionFailures: number;
+    reconciliationOverrides: number;
+    reconciliationSkipped: number;
+    sqlWriteLatencyP50Ms: number | null;
+    sqlWriteLatencyP95Ms: number | null;
+  } | null;
 };
 
 /** Resumable Plate/NFT metadata bootstrap (separate from listing scan). */
@@ -132,6 +145,7 @@ function emptySnapshot(): IndexSnapshot {
       lastSuccessAt: null,
       walkerTokensPerMinute: null,
       coverageRisePercentPerHour: null,
+      sqlWriter: null,
     },
     metadataWorker: {
       phase: 'brass-priority',
@@ -417,6 +431,44 @@ export function metadataCheckpoint(): MetadataCheckpoint {
   return loadIndex().metadataWorker;
 }
 
+export type MetadataCoverage = {
+  total: number;
+  verified: number;
+  missing: number;
+  invalid: number;
+  identityBlock: number;
+  retry: number;
+  unknown: number;
+  coveragePct: number;
+  lastSuccessAt: number | null;
+  lastError: string | null;
+  cursor: number;
+  processedTotal: number;
+  rate: number | null;
+};
+
+export function metadataCoverage(): MetadataCoverage {
+  const snap = loadIndex();
+  const total = 62_093;
+  const tokens = Object.values(snap.tokens ?? {});
+  const verified = tokens.filter((row) => row.metadataVerifiedAt !== null).length;
+  return {
+    total,
+    verified,
+    missing: 0,
+    invalid: 0,
+    identityBlock: 0,
+    retry: (snap.metadataRetryQueue ?? []).length,
+    unknown: Math.max(0, total - verified),
+    coveragePct: Math.round((verified / total) * 1000) / 10,
+    lastSuccessAt: snap.metadataWorker?.lastSuccessAt ?? null,
+    lastError: snap.metadataWorker?.lastError ?? null,
+    cursor: snap.metadataWorker?.cursor ?? 0,
+    processedTotal: snap.metadataWorker?.processedTotal ?? 0,
+    rate: null,
+  };
+}
+
 export function writeMetadataCheckpoint(patch: Partial<MetadataCheckpoint>): void {
   const snap = loadIndex();
   snap.metadataWorker = { ...snap.metadataWorker, ...patch, lastTickAt: Date.now() };
@@ -551,6 +603,7 @@ export function persistNftMetadata(
   });
   const facets = facetsForToken(tokenId, { traits: nft.traits, name: nft.name });
   setTokenFacets(tokenId, facets);
+  enqueueSqlMetadataFacets(tokenId, nft);
   return facets;
 }
 

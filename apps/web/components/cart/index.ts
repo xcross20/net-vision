@@ -1,4 +1,5 @@
 export { AddToCartButton } from './AddToCartButton';
+export { BuyNowButton } from './BuyNowButton';
 export { CartButton } from './CartButton';
 export { CartDrawer } from './CartDrawer';
 export { CartCheckout } from './CartCheckout';

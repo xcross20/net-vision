@@ -1,7 +1,7 @@
-import { Metric } from './Metric';
 import { LiveIndicator } from './LiveIndicator';
 import { compact, payment } from '@/lib/format';
 import type { CollectionSnapshot, DataFreshness } from '@/lib/market';
+import { MarketMetricsBar } from '@/components/market/MarketMetricsBar';
 
 /**
  * Borderless collection metric strip. Reads as one continuous line of
@@ -32,31 +32,30 @@ export function MetricStrip({
         <LiveIndicator tone={tone} size={6} label={freshLabel} />
         <span>Collection pulse</span>
       </div>
-      <div className="grid grid-cols-2 gap-x-8 gap-y-6 border-y border-[var(--color-border-subtle)] py-6 md:grid-cols-4">
-        <Metric
-          label="Items"
-          value={compact(snapshot.totalSupply)}
-          sub={`${snapshot.listedCount.toLocaleString()} ${listedLabel}`}
-        />
-        <Metric
-          label="Floor"
-          value={payment(snapshot.floorPrice, snapshot.currency)}
-          emphasis
-        />
-        <Metric
-          label="Volume 24h"
-          value={payment(snapshot.volume24hNative, 'ETH')}
-          sub={
-            snapshot.sales24h == null
-              ? undefined
-              : `${snapshot.sales24h.toLocaleString()} sales`
-          }
-        />
-        <Metric
-          label="Owners"
-          value={compact(snapshot.owners)}
-        />
-      </div>
+      <MarketMetricsBar
+        items={[
+          {
+            label: 'Items',
+            value: compact(snapshot.totalSupply),
+            sub: `${snapshot.listedCount.toLocaleString()} ${listedLabel}`,
+          },
+          {
+            label: 'Floor',
+            value: payment(snapshot.floorPrice, snapshot.currency),
+            emphasis: true,
+          },
+          {
+            label: 'Volume 24h',
+            value: payment(snapshot.volume24hNative, 'ETH'),
+            sub:
+              snapshot.sales24h == null ? undefined : `${snapshot.sales24h.toLocaleString()} sales`,
+          },
+          {
+            label: 'Owners',
+            value: compact(snapshot.owners),
+          },
+        ]}
+      />
     </div>
   );
 }

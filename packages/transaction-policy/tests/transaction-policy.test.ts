@@ -56,6 +56,24 @@ describe('validateTradeAction', () => {
     expect(baseBuy().allowed).toBe(true);
   });
 
+  it('allows the resolved conduit as USDG spender and rejects Seaport when a conduit was resolved', () => {
+    const conduit = '0x963F00d3ff000064fFCbA824b800c0000000C300';
+    const pass = baseBuy({
+      extraAllowlistedSpenders: [conduit],
+      openseaAction: baseAction({
+        approvals: [{ token: USDG, spender: conduit, amountRaw: 1_000_000n }],
+      }),
+    });
+    expect(pass.allowed).toBe(true);
+    const seaportSpender = baseBuy({
+      extraAllowlistedSpenders: [conduit],
+      openseaAction: baseAction({
+        approvals: [{ token: USDG, spender: ALLOW, amountRaw: 1_000_000n }],
+      }),
+    });
+    expect(seaportSpender.allowed).toBe(false);
+  });
+
   it('rejects buy without mandatory spend cap', () => {
     const decision = baseBuy({ expectedMaximumSpendRaw: undefined });
     expect(decision.allowed).toBe(false);

@@ -1,4 +1,6 @@
 export { getMarketSource, describeMarketSourceFailure } from './open-sea-source';
+export { marketReadModel } from '../index/sql-read-flags';
+export { SqlMarketSource } from './sql-market-source';
 export type {
   CategoryMetrics,
   CollectionSnapshot,

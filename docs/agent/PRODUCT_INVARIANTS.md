@@ -24,6 +24,8 @@ Encode these as tests and release checks. Source: Operating Manual v1.1.
 - `marketStatus = live` requires coverage ≥ 0.95.
 - A category member partition must reconcile to its expected supply or explicitly report incomplete membership.
 - Material membership comes only from official Plate metadata, never token-ID ranges.
+- Token identity is `(collection_id, token_id)`. A token id is not globally unique across collections.
+- `token_facets` is canonical membership; `token_categories` is a derived lookup and must not diverge.
 
 ## Impossible states
 

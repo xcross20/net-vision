@@ -81,6 +81,11 @@ export type SweepPreviewItem = {
   price: number;
   currency: string;
   orderHash: string | null;
+  contractAddress?: string;
+  chainId?: number;
+  imageUrl?: string;
+  name?: string | null;
+  listingPriceRaw?: string | null;
 };
 
 export type SweepPreviewInput = {
@@ -96,6 +101,9 @@ export type SweepPreview = {
   total: number;
   currency: string;
   truncated: boolean;
+  previewId?: string;
+  generatedAt?: number;
+  requestedQuantity?: number | null;
 };
 
 export function saleEventId(sale: CatalogSale): string {
@@ -295,6 +303,34 @@ export function trendingComponentsFromStats(input: {
 
 export const SWEEP_CART_CAP = 20;
 
+export function parseSweepPreviewInput(body: {
+  quantity?: unknown;
+  maxSpend?: unknown;
+  maxPricePerItem?: unknown;
+}): SweepPreviewInput {
+  const quantity = optionalPositiveInt(body.quantity);
+  const maxSpend = optionalPositiveNumber(body.maxSpend);
+  const maxPricePerItem = optionalPositiveNumber(body.maxPricePerItem);
+  if (quantity !== null && quantity > SWEEP_CART_CAP) {
+    throw new Error(`sweep: quantity ${quantity} exceeds cap ${SWEEP_CART_CAP}`);
+  }
+  return { quantity, maxSpend, maxPricePerItem };
+}
+
+function optionalPositiveInt(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(n) || n <= 0) throw new Error('sweep: quantity must be a positive integer');
+  return n;
+}
+
+function optionalPositiveNumber(value: unknown): number | null {
+  if (value === undefined || value === null || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) throw new Error('sweep: constraint must be a positive number');
+  return n;
+}
+
 export function previewFloorSweep(
   listings: CatalogListing[],
   input: SweepPreviewInput,
@@ -302,8 +338,18 @@ export function previewFloorSweep(
   const maxPrice = input.maxPricePerItem ?? Number.POSITIVE_INFINITY;
   const quantity = input.quantity && input.quantity > 0 ? Math.min(input.quantity, SWEEP_CART_CAP) : null;
   const maxSpend = input.maxSpend && input.maxSpend > 0 ? input.maxSpend : null;
+  const currencies = new Set(listings.map((row) => row.currency));
+  if (currencies.size > 1) {
+    throw new Error('sweep: mixed-currency listings cannot share a subtotal');
+  }
+  const seenAssets = new Set<string>();
   const sorted = [...listings]
     .filter((row) => Number.isFinite(row.price) && row.price <= maxPrice)
+    .filter((row) => {
+      if (seenAssets.has(row.tokenId)) return false;
+      seenAssets.add(row.tokenId);
+      return true;
+    })
     .sort((a, b) => a.price - b.price || Number(a.tokenId) - Number(b.tokenId));
 
   const items: SweepPreviewItem[] = [];
@@ -328,5 +374,7 @@ export function previewFloorSweep(
     total,
     currency: items[0]?.currency ?? 'USDG',
     truncated: sorted.length > items.length,
+    requestedQuantity: input.quantity ?? null,
+    generatedAt: Date.now(),
   };
 }

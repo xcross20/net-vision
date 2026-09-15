@@ -1,36 +1,62 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Star } from '@phosphor-icons/react/dist/ssr';
+import Link from 'next/link';
+import Image from 'next/image';
+import {
+  ArrowsClockwise,
+  Cube,
+  Graph,
+  Globe,
+  Hash,
+  MagnifyingGlass,
+  SquaresFour,
+  Users,
+} from '@phosphor-icons/react/dist/ssr';
 import { CategoryRow } from '@/components/ui/CategoryRow';
 import { LiveIndicator } from '@/components/ui/LiveIndicator';
 import { EmptyState } from '@/components/ui/EmptyState';
-import type { CategoryMetrics } from '@/lib/market';
+import { CinematicHero, ShowroomAside } from '@/components/showroom/CinematicHero';
+import {
+  FEATURED_CATEGORY_SLUGS,
+  PLATE_MATERIAL_SLUGS,
+  SHOWROOM_MEDIA,
+  showroomHeroForCategory,
+} from '@/lib/brand/media';
+import type { CategoryMetrics, CollectionSnapshot } from '@/lib/market';
+import { compact, payment } from '@/lib/format';
 import { useLiveCategories } from '@/lib/market/use-live-metrics';
-import { useWatchlist } from '@/lib/watchlist/WatchlistProvider';
 import { cn } from '@/lib/cn';
 
 const FAMILIES = [
-  { value: 'all', label: 'All' },
-  { value: 'number', label: 'Number' },
-  { value: 'material', label: 'Material' },
-  { value: 'pattern', label: 'Pattern' },
-  { value: 'culture', label: 'Culture' },
+  { value: 'all', label: 'All Categories', Icon: SquaresFour },
+  { value: 'number', label: 'Number', Icon: Hash },
+  { value: 'material', label: 'Material', Icon: Cube },
+  { value: 'pattern', label: 'Pattern', Icon: Graph },
+  { value: 'culture', label: 'Culture', Icon: Globe },
 ] as const;
 
-type SortKey =
-  | 'trending'
-  | 'volume'
-  | 'sales'
-  | 'floorGain'
-  | 'supply'
-  | 'highestSale';
+const WINDOWS = [
+  { value: '24h', label: '24H' },
+  { value: '7d', label: '7D' },
+  { value: '30d', label: '30D' },
+  { value: 'all', label: 'ALL' },
+] as const;
 
-export function CategoriesDirectory({ categories }: { categories: CategoryMetrics[] }) {
+type VolumeWindow = (typeof WINDOWS)[number]['value'];
+type SortKey = 'trending' | 'volume' | 'sales' | 'floorGain' | 'supply' | 'highestSale';
+
+export function CategoriesDirectory({
+  categories,
+  snapshot,
+}: {
+  categories: CategoryMetrics[];
+  snapshot?: CollectionSnapshot | null;
+}) {
   const [family, setFamily] = useState<(typeof FAMILIES)[number]['value']>('all');
-  const [sort, setSort] = useState<SortKey>('trending');
+  const [sort, setSort] = useState<SortKey>('volume');
   const [query, setQuery] = useState('');
-  const { isWatchingCategory } = useWatchlist();
+  const [window, setWindow] = useState<VolumeWindow>('24h');
   const live = useLiveCategories(categories, 10_000);
   const syncing = live.some((c) => c.marketStatus === 'syncing');
 
@@ -43,73 +69,167 @@ export function CategoriesDirectory({ categories }: { categories: CategoryMetric
     }
     next = [...next].sort((a, b) => {
       if (sort === 'trending') return b.trendingScore - a.trendingScore;
-      if (sort === 'volume') return b.volume24h - a.volume24h;
-      if (sort === 'sales') return b.sales24h - a.sales24h;
+      if (sort === 'volume') return volumeFor(b, window) - volumeFor(a, window);
+      if (sort === 'sales') return salesFor(b, window) - salesFor(a, window);
       if (sort === 'floorGain') return (b.floorChange7d ?? -999) - (a.floorChange7d ?? -999);
       if (sort === 'supply') return a.memberSupply - b.memberSupply;
       return (b.highestSale?.price ?? 0) - (a.highestSale?.price ?? 0);
     });
+    if (!query && (family === 'all' || family === 'material')) {
+      const pin = new Map<string, number>(PLATE_MATERIAL_SLUGS.map((slug, i) => [slug, i]));
+      next = [...next].sort((a, b) => {
+        const ai = pin.get(a.slug);
+        const bi = pin.get(b.slug);
+        if (ai != null && bi != null) return ai - bi;
+        if (ai != null) return -1;
+        if (bi != null) return 1;
+        return 0;
+      });
+    }
     return next;
-  }, [live, family, sort, query]);
+  }, [live, family, sort, query, window]);
+
+  const featured = useMemo(
+    () =>
+      FEATURED_CATEGORY_SLUGS.map((slug) => live.find((c) => c.slug === slug)).filter(
+        (c): c is CategoryMetrics => Boolean(c),
+      ),
+    [live],
+  );
 
   return (
-    <div className="flex flex-col gap-10">
-      <header className="flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <span className="text-eyebrow">Categories</span>
-          <LiveIndicator
-            tone={syncing ? 'amber' : 'green'}
-            size={6}
-            label={syncing ? 'Syncing market data' : 'Live'}
-          />
+    <div className="flex flex-col gap-5">
+      <CinematicHero
+        imageSrc={SHOWROOM_MEDIA.categoriesHero}
+        imageAlt="Cinematic brand atmosphere for the categories explorer"
+        eyebrow="Marketplace · Categories"
+        title={
+          <>
+            Where Numbers
+            <br />
+            <span className="text-[var(--color-net-green)]">Become Assets.</span>
+          </>
+        }
+        body="Explore collectible categories by number, material, pattern, and culture. Live market data, real ownership, and a more connected tomorrow."
+        minHeightClass="min-h-[22rem] md:min-h-[26rem]"
+        priority
+        aside={<ShowroomAside lines={['Same numbers.', 'Bigger', 'possibilities.']} />}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <a href="#category-table" className="nv-button">
+            Explore Categories
+          </a>
+          <Link href="/market" className="nv-button nv-button-ghost">
+            View Market Data
+          </Link>
         </div>
-        <h1 className="text-display text-[clamp(2.25rem,5vw,3.5rem)] text-[var(--color-text-primary)]">
-          Categories
-        </h1>
-        <p className="text-body max-w-[60ch] text-[var(--color-text-secondary)]">
-          Explore the Button Presser market by number, material, and pattern. Material comes from
-          official Plate metadata. Number and pattern are derived. Unknown listings are never shown
-          as zero.
-        </p>
-      </header>
+        <div className="flex flex-wrap items-center gap-2">
+          {FAMILIES.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => setFamily(item.value)}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium',
+                family === item.value
+                  ? 'bg-[var(--color-net-green)] text-[var(--color-bg)] shadow-[0_0_24px_rgba(72,235,145,0.28)]'
+                  : 'nv-glass-1 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+              )}
+            >
+              <item.Icon size={14} weight="duotone" />
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </CinematicHero>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {FAMILIES.map((item) => (
+      {featured.length > 0 && !query ? (
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {featured.map((c) => (
+            <Link
+              key={c.slug}
+              href={`/categories/${c.slug}`}
+              className="nv-glass-2 group relative w-[9.5rem] shrink-0 overflow-hidden rounded-[18px] sm:w-[11rem]"
+            >
+              <div className="relative h-28">
+                <Image
+                  src={showroomHeroForCategory(c.slug)}
+                  alt=""
+                  fill
+                  sizes="180px"
+                  className="object-cover object-center transition-transform duration-500 group-hover:scale-[1.05]"
+                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[rgba(5,9,8,0.92)] via-transparent to-transparent" />
+              </div>
+              <div className="relative z-10 flex flex-col gap-0.5 px-3 py-2.5">
+                <span className="truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
+                  {c.name}
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)]">
+                  {c.family}
+                </span>
+              </div>
+            </Link>
+          ))}
           <button
-            key={item.value}
             type="button"
-            onClick={() => setFamily(item.value)}
-            className={cn(
-              'rounded-full px-3 py-1.5 text-sm',
-              family === item.value
-                ? 'bg-[var(--color-surface-3)] text-[var(--color-text-primary)]'
-                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
-            )}
+            onClick={() => setFamily('all')}
+            className="nv-glass-1 flex w-[7.5rem] shrink-0 flex-col items-center justify-center gap-2 rounded-[18px] text-[12px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
           >
-            {item.label}
+            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] text-lg">
+              +
+            </span>
+            View all
+            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--color-text-tertiary)]">
+              {rows.length} categories
+            </span>
           </button>
-        ))}
-      </div>
+        </div>
+      ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="nv-glass-2 flex flex-col gap-3 rounded-[18px] p-3 lg:flex-row lg:items-center">
+        <label className="nv-glass-1 flex min-w-0 flex-1 items-center gap-2 rounded-full px-4">
+          <MagnifyingGlass size={14} className="text-[var(--color-text-tertiary)]" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search categories, e.g. brass, repeating..."
+            className="h-11 w-full bg-transparent text-sm outline-none"
+          />
+        </label>
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as SortKey)}
-          className="h-10 rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-3 text-sm"
+          className="nv-glass-1 h-11 rounded-full px-4 text-sm"
         >
+          <option value="volume">Sort by: Volume ({window})</option>
           <option value="trending">Trending</option>
-          <option value="volume">Highest volume</option>
           <option value="sales">Most sales</option>
           <option value="floorGain">Floor gain</option>
           <option value="supply">Lowest supply</option>
           <option value="highestSale">Highest sale</option>
         </select>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search categories"
-          className="h-10 min-w-[12rem] rounded-[var(--radius-md)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)] px-3 text-sm"
-        />
+        <div className="nv-glass-1 inline-flex rounded-full p-1">
+          {WINDOWS.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => setWindow(item.value)}
+              className={cn(
+                'rounded-full px-3 py-1.5 text-[12px] font-semibold',
+                window === item.value
+                  ? 'bg-[rgba(72,235,145,0.16)] text-[var(--color-net-green)]'
+                  : 'text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]',
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <LiveIndicator tone={syncing ? 'amber' : 'green'} size={6} label={syncing ? 'Syncing' : 'Live data'} />
+        <span className="nv-icon-btn h-10 w-10" aria-hidden>
+          <ArrowsClockwise size={15} />
+        </span>
       </div>
 
       {rows.length === 0 ? (
@@ -119,34 +239,73 @@ export function CategoriesDirectory({ categories }: { categories: CategoryMetric
           tone="muted"
         />
       ) : (
-        <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-border-subtle)] bg-[var(--color-surface-1)]">
-          <div className="hidden grid-cols-[2.25rem_minmax(0,1fr)_6rem_5rem_5rem_6rem_5rem_5rem_2.5rem] items-center gap-3 border-b border-[var(--color-border-subtle)] px-6 py-3 text-eyebrow-muted md:grid">
-            <span />
+        <div
+          id="category-table"
+          className="overflow-hidden rounded-[20px] border border-[rgba(92,255,153,0.12)] bg-[color-mix(in_srgb,var(--color-surface-1)_80%,transparent)]"
+        >
+          <div className="hidden grid-cols-[2.25rem_minmax(0,1.6fr)_5.5rem_6.5rem_5rem_5rem_6.5rem_5rem_5.5rem_5.5rem_6rem_2.5rem] items-center gap-3 border-b border-[var(--color-border-subtle)] px-5 py-3 text-[10px] uppercase tracking-[0.16em] text-[var(--color-text-tertiary)] lg:grid">
+            <span>#</span>
             <span>Category</span>
-            <span className="text-right">Floor</span>
+            <span>Type</span>
+            <span className="text-right">Floor (USDG)</span>
             <span className="text-right">24h</span>
             <span className="text-right">7d</span>
-            <span className="text-right">Vol 24h</span>
+            <span className="text-right">Volume ({window})</span>
             <span className="text-right">Sales</span>
             <span className="text-right">Listed</span>
+            <span className="text-right">Items</span>
+            <span className="text-right">Trend (7d)</span>
             <span />
           </div>
           <div className="flex flex-col divide-y divide-[var(--color-border-subtle)]">
-            {rows.map((c) => (
-              <div key={c.slug} className="relative">
-                {isWatchingCategory(c.slug) ? (
-                  <Star
-                    size={12}
-                    weight="fill"
-                    className="absolute left-2 top-5 text-[var(--color-net-green)] md:left-3"
-                  />
-                ) : null}
-                <CategoryRow metrics={c} movement={c.floorChange24h} />
-              </div>
+            {rows.map((c, index) => (
+              <CategoryRow key={c.slug} metrics={c} index={index + 1} volumeWindow={window} />
             ))}
           </div>
         </div>
       )}
+
+      <div className="nv-glass-2 flex flex-wrap items-center gap-3 rounded-[16px] px-4 py-3 text-[12px] text-[var(--color-text-secondary)]">
+        <LiveIndicator tone={syncing ? 'amber' : 'green'} size={6} label="Market online" />
+        <span className="nv-metric-card py-2">
+          Total categories
+          <strong className="text-numeral text-[var(--color-text-primary)]">{rows.length}</strong>
+        </span>
+        {snapshot ? (
+          <>
+            <span className="nv-metric-card py-2">
+              <Cube size={14} className="text-[var(--color-net-green)]" />
+              Total items
+              <strong className="text-numeral text-[var(--color-text-primary)]">
+                {snapshot.totalSupply.toLocaleString()}
+              </strong>
+            </span>
+            <span className="nv-metric-card py-2">
+              24h volume
+              <strong className="text-numeral text-[var(--color-text-primary)]">
+                {payment(snapshot.volume24hNative, 'ETH')}
+              </strong>
+            </span>
+            <span className="nv-metric-card py-2">
+              <Users size={14} className="text-[var(--color-net-green)]" />
+              Owners
+              <strong className="text-numeral text-[var(--color-text-primary)]">{compact(snapshot.owners)}</strong>
+            </span>
+          </>
+        ) : null}
+      </div>
     </div>
   );
+}
+
+function volumeFor(metrics: CategoryMetrics, window: VolumeWindow): number {
+  if (window === '7d') return metrics.volume7d;
+  if (window === '30d') return metrics.volume30d;
+  if (window === 'all') return metrics.volumeAllTracked;
+  return metrics.volume24h;
+}
+
+function salesFor(metrics: CategoryMetrics, window: VolumeWindow): number {
+  if (window === '7d' || window === '30d' || window === 'all') return metrics.sales7d;
+  return metrics.sales24h;
 }

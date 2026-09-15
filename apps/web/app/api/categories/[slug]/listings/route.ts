@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { listCategoryTokenPage } from '@/lib/data/categories';
 import { snapshotRevision } from '@/lib/index/store';
+import { marketReadModel } from '@/lib/index/sql-read-flags';
+import { getMarketSource } from '@/lib/market';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +61,9 @@ export async function GET(
     limit,
     offset,
     nextOffset,
-    snapshotRevision: snapshotRevision(),
+    snapshotRevision:
+      marketReadModel() === 'sql'
+        ? (await getMarketSource().getCollectionSnapshot()).snapshotRevision
+        : snapshotRevision(),
   });
 }

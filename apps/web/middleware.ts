@@ -65,7 +65,7 @@ export function middleware(request: NextRequest) {
     // tighten further once wagmi bundles are audited for nonce-based CSP.
     "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     "style-src 'self' 'unsafe-inline'",
-    "connect-src 'self' https://api.opensea.io wss://stream-api.opensea.io https://*.walletconnect.com wss://*.walletconnect.com https://rpc.robinhood.com https://*.railway.app",
+    "connect-src 'self' https://api.opensea.io wss://stream-api.opensea.io https://*.walletconnect.com wss://*.walletconnect.com https://rpc.mainnet.chain.robinhood.com https://rpc.robinhood.com https://*.railway.app",
     "worker-src 'self' blob:",
   ].join('; ');
 

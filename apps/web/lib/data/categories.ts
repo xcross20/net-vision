@@ -8,6 +8,7 @@
  */
 
 import { getMarketSource } from '@/lib/market';
+import { marketReadModel } from '@/lib/index/sql-read-flags';
 import {
   VIRTUAL_COLLECTION_CATALOG,
   enumerateMembers,
@@ -113,7 +114,12 @@ export async function getCategoryMetrics(slug: string): Promise<CategoryMetrics 
   const meta = VIRTUAL_COLLECTION_CATALOG.find((c) => c.slug === slug);
   if (!meta) return null;
   const live = await getMarketSource().getCategoryMetrics(slug);
-  if (!live) return fallbackCategoryMetrics(slug);
+  if (!live) {
+    // SQL miss must not become listedCount=0. Blob may still use the
+    // syncing fallback so the directory never 404s on a known slug.
+    if (marketReadModel() === 'sql') return null;
+    return fallbackCategoryMetrics(slug);
+  }
   return {
     ...live,
     name: meta.name,
@@ -128,9 +134,12 @@ export async function listCategories(): Promise<CategoryMetrics[]> {
   const liveSlugs = new Set(live.map((c) => c.slug));
   const allSlugs = VIRTUAL_COLLECTION_CATALOG.map((c) => c.slug);
   const missing = allSlugs.filter((slug) => !liveSlugs.has(slug));
-  const fallbacks = missing
-    .map((slug) => fallbackCategoryMetrics(slug))
-    .filter((m): m is CategoryMetrics => m !== null);
+  const fallbacks =
+    marketReadModel() === 'sql'
+      ? []
+      : missing
+          .map((slug) => fallbackCategoryMetrics(slug))
+          .filter((m): m is CategoryMetrics => m !== null);
   const merged = [...live, ...fallbacks];
   return merged.map((c) => {
     const meta = VIRTUAL_COLLECTION_CATALOG.find((m) => m.slug === c.slug);

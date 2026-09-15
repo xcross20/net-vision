@@ -47,7 +47,8 @@ export type CartItemDraft = {
 
 export type CartAction =
   | { type: 'ADD'; item: CartItem }
-  | { type: 'REMOVE'; tokenId: string }
+  | { type: 'UPSERT'; item: CartItem }
+  | { type: 'REMOVE'; tokenId: string; contractAddress?: string }
   | { type: 'CLEAR' }
   | { type: 'HYDRATE'; items: CartItem[] }
   | { type: 'REMOVE_CONFIRMED'; tokenIds: ReadonlyArray<string> };
@@ -55,6 +56,8 @@ export type CartAction =
 export type CartState = {
   items: CartItem[];
   hydrated: boolean;
+  /** Monotonic. Binds async revalidate/status/prepare responses. */
+  revision: number;
 };
 
 export type CheckoutItem =
@@ -69,6 +72,7 @@ export type CheckoutItem =
       liveCurrency: string;
       liveProtocolAddress: string;
       liveValidUntil: number | null;
+      liveConduitKey?: string | null;
       priceChanged: boolean;
     }
   | {
@@ -84,10 +88,30 @@ export type CheckoutItem =
       message: string;
     };
 
+export type SelectedPayment = {
+  assetId:
+    | 'USDG'
+    | 'ETH'
+    | 'NET'
+    | 'AAPL'
+    | 'NVDA'
+    | 'TSLA'
+    | 'MSFT'
+    | 'AMZN'
+    | 'GOOGL'
+    | 'COIN'
+    | 'SPCX'
+    | 'SPY';
+};
+
 export type CartPhase =
   | { kind: 'browsing' }
+  | { kind: 'wallet_required' }
+  | { kind: 'network_required' }
   | { kind: 'revalidating' }
   | { kind: 'review'; items: CheckoutItem[] }
+  | { kind: 'payment_select'; items: CheckoutItem[]; payment: SelectedPayment }
   | { kind: 'executing'; items: CheckoutItem[]; currentIndex: number; confirmedTokenIds: string[] }
   | { kind: 'complete'; confirmed: CheckoutItem[]; failed: CheckoutItem[] }
+  | { kind: 'recovery'; confirmed: CheckoutItem[]; failed: CheckoutItem[]; message: string }
   | { kind: 'error'; message: string };
