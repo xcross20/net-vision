@@ -135,12 +135,12 @@ describe('jurisdiction', () => {
     expect(nvda?.jurisdiction).toBe('UNKNOWN');
   });
 
-  it('non-US may use launch Stock Tokens; conversion route stays unavailable', () => {
+  it('non-US may use launch Stock Tokens; Uniswap conversion route is available', () => {
     const nvda = listPaymentMethods('FR').find((m) => m.assetId === 'rh-nvda');
     expect(nvda?.jurisdiction).toBe('ALLOWED');
     expect(nvda?.available).toBe(true);
     expect(nvda?.feeBps).toBe(200);
-    expect(nvda?.routeStatus).toBe('UNAVAILABLE');
+    expect(nvda?.routeStatus).toBe('AVAILABLE');
   });
 });
 

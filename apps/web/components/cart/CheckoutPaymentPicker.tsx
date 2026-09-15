@@ -159,15 +159,14 @@ function PaymentGroup({
  * Last-resort fallback when /api/payment/methods has not responded yet.
  * Approximates the server's mapping without country context:
  *   - USDG has a direct settlement route, so AVAILABLE
- *   - ETH / NetNet NET have no router pinned yet, so COMING_SOON
- *   - Stock tokens have no router pinned yet, so COMING_SOON
+ *   - ETH / NET / stocks with a pinned Uniswap route are AVAILABLE
  *   - DISABLED assets become UNSUPPORTED
  * Region-restricted is impossible without country; the server supplies
  * the real signal.
  */
 function deriveFallbackRouteStatus(asset: PaymentAsset): RouteStatus {
   if (asset.status === 'DISABLED') return 'UNSUPPORTED';
-  if (asset.assetId === 'usdg') return 'AVAILABLE';
+  if (asset.settlementRoutes.length > 0) return 'AVAILABLE';
   return 'COMING_SOON';
 }
 

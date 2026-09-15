@@ -9,9 +9,9 @@ Canonical settlement is USDG on Robinhood Chain `4663`.
 | Canonical id | Display | Status | Notes |
 | --- | --- | --- | --- |
 | `USDG` | USDG | verified_enabled (code) | Direct Seaport payment. Public trading still off. |
-| `ETH` | ETH | coming_soon | Native ETH → USDG. Venue/router not hardcoded from memory. |
-| `NET` | NET (NetNet) | coming_soon | NetNet `0xca9c78dd…` must stay distinct from any other NET ticker. |
-| `NVDA` | NVDA | coming_soon | One stock. Other stocks are separate ids. |
+| `ETH` | ETH | verified_enabled | Native ETH → USDG via Uniswap SwapRouter02 on 4663, then Seaport. |
+| `NET` | NET (NetNet) | verified_enabled | NetNet `0xca9c78dd…` must stay distinct from Cloudflare NET. |
+| `NVDA` | NVDA | verified_enabled (non-US) | One stock. Other stocks are separate ids. US stays region-restricted. |
 
 ## Per-route checklist (must all PASS)
 

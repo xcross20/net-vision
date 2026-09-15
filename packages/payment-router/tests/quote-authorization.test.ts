@@ -6,6 +6,7 @@ import {
   feeAmountUsdg,
   findAssetByContract,
   getPaymentAsset,
+  requiredUsdgOut,
   validateDirectUsdgQuote,
 } from '../src';
 import {
@@ -162,7 +163,28 @@ describe('createPaymentQuote', () => {
     });
     expect(created.ok).toBe(false);
     if (created.ok) return;
-    expect(created.reasonCode).toBe('ROUTE_UNAVAILABLE');
+    expect(created.reasonCode).toBe('ROUTE_QUOTE_REQUIRED');
+  });
+
+  it('non-US stock quote executes when a Uniswap exact-out is bound', () => {
+    const created = createPaymentQuote({
+      configuredChainId: ROBINHOOD_CHAIN.id,
+      buyer: BUYER,
+      assetId: 'rh-googl',
+      listingOrderHash: '0xorder',
+      listingUsdgRaw: LISTING,
+      country: 'FR',
+      nowMs: 1_000,
+      liveListing: { orderHash: '0xorder', usdgRaw: LISTING },
+      swapQuote: {
+        inputAmountRaw: 1_000_000_000_000_000_000n,
+        expectedUsdgOutRaw: requiredUsdgOut(LISTING, 200n),
+        minUsdgOutRaw: requiredUsdgOut(LISTING, 200n),
+        router: '0xCaf681a66D020601342297493863E78C959E5cb2',
+        maxSlippageBps: 100,
+      },
+    });
+    expect(created.ok).toBe(true);
   });
 
   it('ETH and NetNet NET quotes are not region-blocked', () => {
