@@ -38,6 +38,26 @@ export function validCheckoutItems(
   );
 }
 
+/**
+ * Count the checkout CTA must use. The cart list is `cartItems.length`.
+ * Revalidated executable lines are `validCheckoutItems`. Mixing them
+ * makes a populated browsing cart render "Cart is empty".
+ */
+export function checkoutCtaItemCount(
+  phase: CartPhase,
+  cartItems: ReadonlyArray<CartItem>,
+): number {
+  switch (phase.kind) {
+    case 'browsing':
+    case 'wallet_required':
+    case 'network_required':
+    case 'revalidating':
+      return cartItems.length;
+    default:
+      return validCheckoutItems(phase, cartItems).length;
+  }
+}
+
 export function originalTotalDecimal(
   phase: CartPhase,
   cartItems: ReadonlyArray<CartItem>,

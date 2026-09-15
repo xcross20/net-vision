@@ -33,6 +33,7 @@ import { recordCheckoutEvent } from '@/lib/cart/checkout-events';
 import { deriveCheckoutCta, formatSelectedAmount } from '@/lib/payment/checkout-cta';
 import { useSelectedPaymentStatus } from '@/lib/payment/use-selected-payment-status';
 import {
+  checkoutCtaItemCount,
   checkoutCurrency,
   currentCheckoutItems,
   currentTotalDecimal,
@@ -245,16 +246,17 @@ export function CartCheckout() {
   }, [selectedPaymentStatus, cartRevision]);
 
   const canBuy = validItems.length > 0 && (drifted.length === 0 || acceptedPriceDrift);
+  const ctaItemCount = checkoutCtaItemCount(phase, items);
   const cta = useMemo(
     () =>
       deriveCheckoutCta({
         selected: selectedPaymentStatus ?? null,
         isConnected: Boolean(isConnected && address),
         onRobinhood,
-        cartItemCount: validItems.length,
+        cartItemCount: ctaItemCount,
         canBuy,
       }),
-    [address, isConnected, onRobinhood, validItems.length, canBuy, selectedPaymentStatus],
+    [address, isConnected, onRobinhood, ctaItemCount, canBuy, selectedPaymentStatus],
   );
 
   useEffect(() => {
@@ -753,13 +755,17 @@ export function CartCheckout() {
   }, [phase.kind]);
 
   if (phase.kind === 'browsing' || phase.kind === 'wallet_required' || phase.kind === 'network_required') {
+    // Listings are not revalidated yet. Count visible cart lines so a
+    // populated cart cannot render "Cart is empty". canBuy stays false
+    // so the label is "Review N items", not "Choose payment method".
     const earlyCta = deriveCheckoutCta({
       selected: null,
       isConnected: Boolean(isConnected && address),
       onRobinhood,
-      cartItemCount: validItems.length,
-      canBuy,
+      cartItemCount: checkoutCtaItemCount(phase, items),
+      canBuy: false,
     });
+    const reviewDisabled = items.length === 0;
     return (
       <div className="flex flex-col gap-2">
         {!isConnected ? (
@@ -790,17 +796,11 @@ export function CartCheckout() {
         ) : (
           <button
             type="button"
-            disabled={items.length === 0 || earlyCta.kind === 'review_required'}
+            disabled={reviewDisabled}
             onClick={() => void onReview()}
-            className={cn(
-              'nv-button w-full',
-              (items.length === 0 || earlyCta.kind === 'review_required') &&
-                'cursor-not-allowed opacity-50',
-            )}
+            className={cn('nv-button w-full', reviewDisabled && 'cursor-not-allowed opacity-50')}
           >
-            {earlyCta.kind === 'review_required'
-              ? earlyCta.label
-              : `Review ${items.length} item${items.length === 1 ? '' : 's'}`}
+            {earlyCta.label}
           </button>
         )}
       </div>
