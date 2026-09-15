@@ -15,6 +15,7 @@ import type { TokenFacet } from '@net-vision/taxonomy';
 import { SCHEMA_V2_SQL } from './schema-v2';
 import { SCHEMA_METADATA_BOOTSTRAP_SQL } from './schema-metadata-bootstrap';
 import { SCHEMA_NATIVE_MARKET_SQL } from './schema-native-market';
+import { SCHEMA_PURCHASE_INTENT_SQL } from './schema-purchase-intent';
 import { destructiveNormalizedRebuildEnabled } from './sql-writer-flags';
 import {
   blobSaveMinIntervalMs,
@@ -149,6 +150,7 @@ export async function ensureSchema(): Promise<boolean> {
   await db.query(SCHEMA_V2_SQL);
   await db.query(SCHEMA_METADATA_BOOTSTRAP_SQL);
   await db.query(SCHEMA_NATIVE_MARKET_SQL);
+  await db.query(SCHEMA_PURCHASE_INTENT_SQL);
   schemaReady = true;
   return true;
 }

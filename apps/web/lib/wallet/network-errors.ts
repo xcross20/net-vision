@@ -2,6 +2,11 @@
  * Normalized wallet-network errors. UI must never surface raw
  * viem/wagmi Request Arguments dumps as the primary message.
  */
+import {
+  SOLD_DURING_CHECKOUT_COPY,
+  isSoldDuringCheckout,
+} from '@/lib/commerce/sold-during-checkout';
+
 export type NetworkErrorCode =
   | 'WRONG_NETWORK'
   | 'SWITCH_REJECTED'
@@ -108,6 +113,7 @@ export function userMessageForWalletError(err: unknown): string {
 /** Network errors get product copy; all other failures keep their own message. */
 export function checkoutFailureMessage(err: unknown): string {
   if (err instanceof NetworkGateError) return err.message;
+  if (isSoldDuringCheckout(err)) return SOLD_DURING_CHECKOUT_COPY;
   const code = classifyWalletError(err);
   if (code === 'UNKNOWN_NETWORK_ERROR') {
     return err instanceof Error ? err.message : String(err);

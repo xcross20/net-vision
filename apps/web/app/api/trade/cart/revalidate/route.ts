@@ -13,6 +13,8 @@ import { getMarketSource } from '@/lib/market';
 import { createOpenSeaClient } from '@net-vision/opensea-client';
 import { CartStorageSchema } from '@/lib/cart/schema';
 import type { CartItem } from '@/lib/cart/types';
+import { listingFlight, OPENSEA_PREPARE_CONCURRENCY } from '@/lib/commerce/runtime';
+import { mapPool } from '@/lib/commerce/single-flight';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,13 +107,17 @@ export async function POST(request: Request) {
     OPENSEA_CHAIN: freshness.resolvedChainSlug,
   });
 
-  const results = await Promise.all(
-    validated.map(async (item): Promise<RevalidateResult> => {
+  const results = await mapPool(
+    validated,
+    OPENSEA_PREPARE_CONCURRENCY,
+    async (item): Promise<RevalidateResult> => {
       try {
-        const listing = await client.getBestListing({
-          slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-          tokenId: item.tokenId,
-        });
+        const listing = (await listingFlight.do(`best:${item.tokenId}`, () =>
+          client.getBestListing({
+            slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+            tokenId: item.tokenId,
+          }),
+        )) as Awaited<ReturnType<typeof client.getBestListing>>;
         if (!listing) {
           return { tokenId: item.tokenId, state: 'unavailable', cartItem: item, reason: 'no_listing' };
         }
@@ -168,7 +174,7 @@ export async function POST(request: Request) {
           message: err instanceof Error ? err.message : String(err),
         };
       }
-    }),
+    },
   );
 
   return NextResponse.json({ items: results });

@@ -22,6 +22,11 @@ import { boundedApproveAmount } from '@/lib/trade/bounded-approve';
 import { useRobinhoodNetworkGate } from '@/lib/wallet/NetworkGateProvider';
 import { useWalletConnectModal } from '@/lib/wallet/WalletConnectProvider';
 import { checkoutFailureMessage } from '@/lib/wallet/network-errors';
+import { newPurchaseIntentId } from '@/lib/commerce/purchase-intent';
+import {
+  SOLD_DURING_CHECKOUT,
+  SoldDuringCheckoutError,
+} from '@/lib/commerce/sold-during-checkout';
 import {
   assertWalletOnRobinhood,
   isRobinhoodChainId,
@@ -183,6 +188,7 @@ export function CartCheckout() {
   revisionRef.current = cartRevision;
   const resumeInFlight = useRef(false);
   const lastRevalidateRevision = useRef(-1);
+  const purchaseIntentIds = useRef(new Map<string, string>());
 
   const onRobinhood = isRobinhoodChainId(chainId);
   const displayItems = currentCheckoutItems(phase, items);
@@ -538,6 +544,9 @@ export function CartCheckout() {
         }
         const live = finalJson.items?.[0];
         if (!finalRes.ok || !live || live.state !== 'valid') {
+          if (live && live.state === 'unavailable' && live.reason === 'sold') {
+            throw new SoldDuringCheckoutError();
+          }
           throw new Error(
             live && live.state === 'unavailable'
               ? `Listing gone (${live.reason})`
@@ -553,6 +562,12 @@ export function CartCheckout() {
           acceptedPriceRaw,
           listingState: live.state,
         });
+        const intentKey = `${it.tokenId}:${live.liveOrderHash}:${revisionRef.current}`;
+        let purchaseIntentId = purchaseIntentIds.current.get(intentKey);
+        if (!purchaseIntentId) {
+          purchaseIntentId = newPurchaseIntentId();
+          purchaseIntentIds.current.set(intentKey, purchaseIntentId);
+        }
         const prepRes = await fetch('/api/trade/buy/prepare', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -561,14 +576,24 @@ export function CartCheckout() {
             buyerAddress: address,
             acceptedPriceRaw,
             acceptedOrderHash: live.liveOrderHash,
+            purchaseIntentId,
+            cartRevision: revisionRef.current,
+            source: it.cartItem.sourceMarketplace === 'net_vision' ? 'native' : 'opensea',
           }),
         });
-        const prepJson = (await prepRes.json()) as PrepareSuccess & { error?: string };
+        const prepJson = (await prepRes.json()) as PrepareSuccess & {
+          error?: string;
+          message?: string;
+          purchaseIntentId?: string;
+        };
         if (!isCheckoutResponseCurrent(bound, liveBind())) {
           throw new Error('Cart changed during checkout; review again.');
         }
         if (!prepRes.ok || !prepJson.transaction) {
-          throw new Error(prepJson.error ?? `prepare failed (${prepRes.status})`);
+          if (prepJson.error === SOLD_DURING_CHECKOUT) {
+            throw new SoldDuringCheckoutError();
+          }
+          throw new Error(prepJson.message ?? prepJson.error ?? `prepare failed (${prepRes.status})`);
         }
         await assertWalletOnRobinhood({
           getChainId: connector?.getChainId?.bind(connector),
