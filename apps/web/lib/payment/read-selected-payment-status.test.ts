@@ -4,6 +4,33 @@ import { readSelectedPaymentStatus, routeStatusFromPolicy } from './read-selecte
 import type { PaymentPolicyDecision } from '@net-vision/payment-router';
 
 // Mock readUsdgStatus so the AVAILABLE branch is testable without an RPC.
+vi.mock('@/lib/payment/uniswap-exact-out', () => ({
+  tokenInForAsset: () => '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
+  quoteExactOutToUsdg: vi.fn(async () => ({
+    tokenIn: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73',
+    fee: 100,
+    amountIn: 600_000_000_000_000n,
+    amountOut: 1_430_000_000n,
+    amountInMaximum: 606_000_000_000_000n,
+  })),
+}));
+
+vi.mock('@/lib/payment/read-routed-wallet', () => ({
+  robinhoodPublicClient: vi.fn(() => ({})),
+  readNativeBalance: vi.fn(async () => ({
+    state: 'KNOWN_SUFFICIENT' as const,
+    raw: '1000000000000000000',
+  })),
+  readErc20Balance: vi.fn(async () => ({
+    state: 'KNOWN_SUFFICIENT' as const,
+    raw: '1000000000',
+  })),
+  readErc20Allowance: vi.fn(async () => ({
+    state: 'KNOWN_SUFFICIENT' as const,
+    raw: '1000000000',
+  })),
+}));
+
 vi.mock('@/lib/trade/usdg-status', () => ({
   readUsdgStatus: vi.fn(async () => ({
     chainId: 4663,
@@ -140,7 +167,7 @@ describe('readSelectedPaymentStatus — non-USDG assets short-circuit', () => {
     vi.clearAllMocks();
   });
 
-  it('returns COMING_SOON for ETH in any region', async () => {
+  it('returns AVAILABLE for ETH with a Uniswap exact-out quote', async () => {
     const result = await readSelectedPaymentStatus({
       buyerAddress: BUYER,
       assetId: 'eth',
@@ -152,13 +179,13 @@ describe('readSelectedPaymentStatus — non-USDG assets short-circuit', () => {
     if (!result.ok) return;
     expect(result.status.assetId).toBe('eth');
     expect(result.status.symbol).toBe('ETH');
-    expect(result.status.routeStatus).toBe('COMING_SOON');
-    expect(result.status.requiredInputRaw).toBeNull();
-    expect(result.status.balance).toEqual({ state: 'UNKNOWN', raw: null });
+    expect(result.status.routeStatus).toBe('AVAILABLE');
+    expect(result.status.requiredInputRaw).toBe('606000000000000');
+    expect(result.status.balance.state).toBe('KNOWN_SUFFICIENT');
     expect(result.status.allowance).toEqual({ kind: 'NOT_REQUIRED' });
   });
 
-  it('returns COMING_SOON for NET in any region', async () => {
+  it('returns AVAILABLE for NET in any region', async () => {
     const result = await readSelectedPaymentStatus({
       buyerAddress: BUYER,
       assetId: 'netnet-net',
@@ -168,7 +195,7 @@ describe('readSelectedPaymentStatus — non-USDG assets short-circuit', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.status.routeStatus).toBe('COMING_SOON');
+    expect(result.status.routeStatus).toBe('AVAILABLE');
     expect(result.status.symbol).toBe('NET');
     expect(result.status.decimals).toBe(9);
   });
@@ -206,8 +233,7 @@ describe('readSelectedPaymentStatus — non-USDG assets short-circuit', () => {
     expect(result.status.routeReasonCode).toBe('REGION_UNKNOWN');
   });
 
-  it('returns COMING_SOON for AAPL in DE (non-US, non-blocked)', async () => {
-    // jurisdiction ALLOWED + routeStatus UNAVAILABLE → COMING_SOON.
+  it('returns AVAILABLE for AAPL in DE (non-US) with a Uniswap route', async () => {
     const result = await readSelectedPaymentStatus({
       buyerAddress: BUYER,
       assetId: 'rh-aapl',
@@ -217,7 +243,7 @@ describe('readSelectedPaymentStatus — non-USDG assets short-circuit', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.status.routeStatus).toBe('COMING_SOON');
+    expect(result.status.routeStatus).toBe('AVAILABLE');
     expect(result.status.serviceFeeBps).toBe(200);
   });
 
@@ -266,7 +292,7 @@ describe('readSelectedPaymentStatus — purchaseValueUsdgRaw always present when
     if (!result.ok) return;
     expect(result.status.purchaseValueUsdgRaw).toBe('1430000000');
     expect(result.status.serviceFeeBps).toBe(200);
-    expect(result.status.serviceFeeRaw).toBeNull(); // no live quote → null
+    expect(result.status.serviceFeeRaw).toBe(((1_430_000_000n * 200n) / 10_000n).toString());
   });
 });
 

@@ -19,6 +19,14 @@ export type CreateQuoteInput = {
   quoteId?: string;
   /** Required for every non-USDG rail. Client-supplied amounts are not authority. */
   liveListing?: LiveListingBind;
+  /** On-chain Uniswap exact-out quote. Required for every non-USDG rail. */
+  swapQuote?: {
+    inputAmountRaw: bigint;
+    expectedUsdgOutRaw: bigint;
+    minUsdgOutRaw: bigint;
+    router: HexAddress;
+    maxSlippageBps: number;
+  };
 };
 
 export type CreateQuoteResult =
@@ -102,7 +110,35 @@ export function createPaymentQuote(input: CreateQuoteInput): CreateQuoteResult {
     };
   }
 
-  return { ok: false, reasonCode: 'ROUTE_UNAVAILABLE' };
+  const swap = input.swapQuote;
+  if (!swap) return { ok: false, reasonCode: 'ROUTE_QUOTE_REQUIRED' };
+  if (!route.router || swap.router.toLowerCase() !== route.router.toLowerCase()) {
+    return { ok: false, reasonCode: 'ROUTER_MISMATCH' };
+  }
+  if (swap.expectedUsdgOutRaw < required) return { ok: false, reasonCode: 'QUOTE_UNDERFILLS' };
+  if (swap.minUsdgOutRaw < required) return { ok: false, reasonCode: 'MIN_OUT_UNDERFILLS' };
+  if (swap.inputAmountRaw <= 0n) return { ok: false, reasonCode: 'INVALID_SWAP_INPUT' };
+
+  return {
+    ok: true,
+    quote: {
+      quoteId: input.quoteId ?? newQuoteId(input.nowMs),
+      userAddress: input.buyer.toLowerCase() as HexAddress,
+      inputAssetId: asset.assetId,
+      inputAmountRaw: swap.inputAmountRaw,
+      expectedUsdgOutRaw: swap.expectedUsdgOutRaw,
+      minUsdgOutRaw: swap.minUsdgOutRaw,
+      route,
+      listingOrderHash: input.listingOrderHash,
+      listingUsdgRaw: input.listingUsdgRaw,
+      serviceFeeBps: feeBps,
+      serviceFeeUsdgRaw,
+      requiredUsdgRaw: required,
+      expiresAtMs: input.nowMs + QUOTE_TTL_MS,
+      policyVersion: PAYMENT_POLICY_VERSION,
+      jurisdiction: policy.jurisdiction,
+    },
+  };
 }
 
 export function quoteToJson(quote: PaymentQuote) {

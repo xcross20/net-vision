@@ -1,15 +1,21 @@
-import { PAYMENT_TOKENS, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
-import type { PaymentAsset } from './types';
+import { PAYMENT_TOKENS, ROBINHOOD_CHAIN, UNISWAP_ROBINHOOD } from '@net-vision/chain-config';
+import type { PaymentAsset, SettlementRoute } from './types';
 
 const CHAIN = ROBINHOOD_CHAIN.id;
+
+const UNISWAP_TO_USDG: SettlementRoute = {
+  venue: 'uniswap-v4',
+  router: UNISWAP_ROBINHOOD.swapRouter02,
+  maxSlippageBps: 100,
+  maxPriceImpactBps: 300,
+};
 
 /**
  * Identity is assetId + contract, never ticker.
  * Cloudflare Stock Token NET ≠ NetNet $NET (9 decimals).
  *
- * USDG is the only direct settlement rail. ETH and NetNet $NET are ENABLED
- * in every jurisdiction. Launch Stock Tokens are ENABLED for non-US geography.
- * Conversion to USDG stays fail-closed until a router is pinned.
+ * USDG is the direct Seaport rail. ETH, NetNet $NET, and launch Stock Tokens
+ * swap to USDG through the pinned Uniswap SwapRouter02 on 4663, then fill.
  * Cloudflare Stock Token NET is identity-only — never a checkout method.
  */
 export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
@@ -35,7 +41,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     decimals: 18,
     status: 'ENABLED',
     feeBps: 0,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
   {
     assetId: 'netnet-net',
@@ -48,7 +54,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     issuer: 'NetNet',
     status: 'ENABLED',
     feeBps: 0,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
   {
     assetId: 'rh-net-cloudflare',
@@ -74,7 +80,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     issuer: 'Robinhood',
     status: 'ENABLED',
     feeBps: 200,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
   {
     assetId: 'rh-aapl',
@@ -87,7 +93,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     issuer: 'Robinhood',
     status: 'ENABLED',
     feeBps: 200,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
   {
     assetId: 'rh-tsla',
@@ -100,7 +106,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     issuer: 'Robinhood',
     status: 'ENABLED',
     feeBps: 200,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
   {
     assetId: 'rh-msft',
@@ -113,7 +119,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     issuer: 'Robinhood',
     status: 'ENABLED',
     feeBps: 200,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
   {
     assetId: 'rh-amzn',
@@ -126,7 +132,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     issuer: 'Robinhood',
     status: 'ENABLED',
     feeBps: 200,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
   {
     assetId: 'rh-coin',
@@ -139,7 +145,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     issuer: 'Robinhood',
     status: 'ENABLED',
     feeBps: 200,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
   {
     assetId: 'rh-spy',
@@ -152,7 +158,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     issuer: 'Robinhood',
     status: 'ENABLED',
     feeBps: 200,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
   {
     assetId: 'rh-spcx',
@@ -165,7 +171,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     issuer: 'Robinhood',
     status: 'ENABLED',
     feeBps: 200,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
   {
     assetId: 'rh-googl',
@@ -178,7 +184,7 @@ export const PAYMENT_ASSETS: readonly PaymentAsset[] = [
     issuer: 'Robinhood',
     status: 'ENABLED',
     feeBps: 200,
-    settlementRoutes: [],
+    settlementRoutes: [UNISWAP_TO_USDG],
   },
 ];
 

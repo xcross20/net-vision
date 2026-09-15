@@ -34,6 +34,15 @@ import {
   symbolForAssetId,
 } from './selected-payment-status';
 import { readUsdgStatus } from '@/lib/trade/usdg-status';
+import { UNISWAP_ROBINHOOD } from '@net-vision/chain-config';
+import { requiredUsdgOut } from '@net-vision/payment-router';
+import {
+  readErc20Allowance,
+  readErc20Balance,
+  readNativeBalance,
+  robinhoodPublicClient,
+} from './read-routed-wallet';
+import { quoteExactOutToUsdg, tokenInForAsset } from './uniswap-exact-out';
 
 export type ReadSelectedPaymentStatusInput = {
   buyerAddress: Address;
@@ -72,6 +81,80 @@ export function routeStatusFromPolicy(policy: PaymentPolicyDecision): RouteStatu
   }
   // Enabled but no router pinned yet — ship-disabled per the invariant.
   return 'COMING_SOON';
+}
+
+async function readRoutedAvailableStatus(
+  input: ReadSelectedPaymentStatusInput,
+  asset: PaymentAsset,
+  policy: PaymentPolicyDecision,
+): Promise<SelectedPaymentStatus> {
+  const client = robinhoodPublicClient();
+  const requiredUsdg =
+    input.requiredUsdgRaw === null
+      ? null
+      : requiredUsdgOut(input.requiredUsdgRaw, BigInt(policy.feeBps));
+  let requiredInputRaw: string | null = null;
+  try {
+    if (requiredUsdg !== null) {
+      const dex = await quoteExactOutToUsdg({
+        publicClient: client,
+        tokenIn: tokenInForAsset(asset),
+        amountOutUsdg: requiredUsdg,
+        slippageBps: asset.settlementRoutes[0]?.maxSlippageBps ?? 100,
+      });
+      requiredInputRaw = dex.amountInMaximum.toString();
+    }
+  } catch {
+    requiredInputRaw = null;
+  }
+  const requiredIn =
+    requiredInputRaw === null ? null : BigInt(requiredInputRaw);
+  const balance =
+    asset.kind === 'native'
+      ? await readNativeBalance(input.buyerAddress, requiredIn, client)
+      : asset.contractAddress
+        ? await readErc20Balance(
+            asset.contractAddress as Address,
+            input.buyerAddress,
+            requiredIn,
+            client,
+          )
+        : { state: 'UNKNOWN' as const, raw: null };
+  const allowance =
+    asset.kind === 'native'
+      ? ({ kind: 'NOT_REQUIRED' } as const)
+      : {
+          kind: 'REQUIRED' as const,
+          spender: UNISWAP_ROBINHOOD.swapRouter02,
+          allowance: asset.contractAddress
+            ? await readErc20Allowance(
+                asset.contractAddress as Address,
+                input.buyerAddress,
+                requiredIn,
+                client,
+              )
+            : { state: 'UNKNOWN' as const, raw: null },
+        };
+  return {
+    assetId: asset.assetId,
+    symbol: asset.symbol,
+    decimals: asset.decimals,
+    routeStatus: 'AVAILABLE',
+    routeReasonCode: null,
+    routeNote: null,
+    quoteId: requiredInputRaw ? `swap-${asset.assetId}-${requiredInputRaw}` : null,
+    requiredInputRaw,
+    balance,
+    allowance,
+    purchaseValueUsdgRaw: input.requiredUsdgRaw?.toString() ?? null,
+    serviceFeeBps: policy.feeBps,
+    serviceFeeRaw:
+      policy.feeBps === 0
+        ? '0'
+        : input.requiredUsdgRaw === null
+          ? null
+          : ((input.requiredUsdgRaw * BigInt(policy.feeBps)) / 10_000n).toString(),
+  };
 }
 
 /**
@@ -133,8 +216,11 @@ export async function readSelectedPaymentStatus(
   const policy = evaluateAssetPolicy(asset, input.country);
   const routeStatus = routeStatusFromPolicy(policy);
 
-  // USDG path: AVAILABLE + ENABLED. This is the only path that reads
-  // wallet state today. Future ETH/NET/stock live paths will branch here.
+  if (routeStatus === 'AVAILABLE' && asset.assetId !== 'usdg') {
+    return { ok: true, status: await readRoutedAvailableStatus(input, asset, policy) };
+  }
+
+  // USDG path: AVAILABLE + ENABLED.
   if (
     routeStatus === 'AVAILABLE' &&
     asset.assetId === 'usdg' &&

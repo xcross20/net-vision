@@ -12,7 +12,7 @@
  */
 import { defineChain } from 'viem';
 
-export const CONFIG_VERSION = 2;
+export const CONFIG_VERSION = 3;
 
 export const BUTTON_PRESSER_COLLECTION = {
   name: 'Button Presser',
@@ -125,6 +125,19 @@ export const ALLOWLISTED_PROTOCOLS = {
   conduitController: '0x00000000F9490004C11Cef243f5400493c00Ad63' as const,
 } as const;
 
+/**
+ * Uniswap on Robinhood Chain 4663. Addresses from Uniswap v3 deployments
+ * + HoodPerp/hood.dev (Universal Router, WETH, QuoterV2, SwapRouter02).
+ * Routed rails swap into USDG then use the Seaport buy path.
+ */
+export const UNISWAP_ROBINHOOD = {
+  universalRouter: '0x8876789976dEcBfCbBbe364623C63652db8C0904' as const,
+  swapRouter02: '0xCaf681a66D020601342297493863E78C959E5cb2' as const,
+  permit2: '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const,
+  weth: '0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73' as const,
+  quoterV2: '0x33e885eD0Ec9bF04EcfB19341582aADCb4c8A9E7' as const,
+} as const;
+
 export const ZERO_CONDUIT_KEY =
   '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
 
@@ -150,6 +163,9 @@ export const ALLOWLISTED_CONTRACT_SET = new Set<string>([
   BUTTON_PRESSER_COLLECTION.contractAddress.toLowerCase(),
   ALLOWLISTED_PROTOCOLS.seaport16.toLowerCase(),
   ALLOWLISTED_PROTOCOLS.conduitController.toLowerCase(),
+  UNISWAP_ROBINHOOD.swapRouter02.toLowerCase(),
+  UNISWAP_ROBINHOOD.universalRouter.toLowerCase(),
+  UNISWAP_ROBINHOOD.weth.toLowerCase(),
   ...ALLOWLISTED_PAYMENT_TOKEN_SET,
 ]);
 

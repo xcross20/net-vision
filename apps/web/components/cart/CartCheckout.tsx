@@ -19,6 +19,8 @@ import { PAYMENT_TOKENS, ROBINHOOD_CHAIN } from '@net-vision/chain-config';
 import { checkoutVisibleAssets } from '@net-vision/payment-router';
 import { payment } from '@/lib/format';
 import { boundedApproveAmount } from '@/lib/trade/bounded-approve';
+import { ensureSwapAllowance, prepareUsdgSwap } from '@/lib/payment/execute-usdg-swap';
+import { robinhoodPublicClient } from '@/lib/payment/read-routed-wallet';
 import { useRobinhoodNetworkGate } from '@/lib/wallet/NetworkGateProvider';
 import { useWalletConnectModal } from '@/lib/wallet/WalletConnectProvider';
 import { checkoutFailureMessage } from '@/lib/wallet/network-errors';
@@ -497,6 +499,62 @@ export function CartCheckout() {
       return;
     }
     const confirmed: string[] = [];
+    const selectedId =
+      phase.kind === 'payment_select'
+        ? paymentAssetIdForPhase(phase.payment.assetId)
+        : selectedAssetId;
+    if (selectedId && selectedId !== 'usdg') {
+      const first = starting[0];
+      if (!first) {
+        setPhase({ kind: 'error', message: 'No items are available for purchase.' });
+        return;
+      }
+      try {
+        const swap = await prepareUsdgSwap({
+          buyer: address,
+          assetId: selectedId,
+          listingOrderHash: first.liveOrderHash,
+          listingUsdgRaw: requiredUsdgRaw(
+            { kind: 'executing', items: starting, currentIndex: 0, confirmedTokenIds: [] },
+            itemsRef.current,
+          ),
+        });
+        if (!swap.native) {
+          await ensureSwapAllowance({
+            token: swap.tokenIn,
+            owner: address,
+            amount: swap.amountInMaximum,
+            publicClient: publicClient ?? robinhoodPublicClient(),
+            writeContract: async (args) =>
+              writeContractAsync({
+                address: args.address,
+                abi: args.abi,
+                functionName: args.functionName,
+                args: [...args.args],
+                chainId: ROBINHOOD_CHAIN.id,
+              }),
+            wait: (publicClient ?? robinhoodPublicClient()).waitForTransactionReceipt.bind(
+              publicClient ?? robinhoodPublicClient(),
+            ),
+          });
+        }
+        const hash = await sendTransactionAsync({
+          to: swap.to,
+          data: swap.data,
+          value: swap.value,
+          chainId: ROBINHOOD_CHAIN.id,
+        });
+        const receipt = await (publicClient ?? robinhoodPublicClient()).waitForTransactionReceipt({
+          hash,
+        });
+        if (receipt.status !== 'success') {
+          throw new Error('Conversion to USDG reverted. No NFT purchase was submitted.');
+        }
+      } catch (err) {
+        setPhase({ kind: 'error', message: checkoutFailureMessage(err) });
+        return;
+      }
+    }
     setPhase({ kind: 'executing', items: displayItems, currentIndex: 0, confirmedTokenIds: [] });
     for (let i = 0; i < starting.length; i += 1) {
       const it = starting[i];
@@ -631,7 +689,9 @@ export function CartCheckout() {
     removeConfirmed,
     requestNetworkForAction,
     selectedPaymentStatus,
+    selectedAssetId,
     sendTransactionAsync,
+    writeContractAsync,
     setCheckoutIntent,
     setPhase,
   ]);
@@ -957,7 +1017,7 @@ export function CartCheckout() {
           routeStatus:
             a.status === 'DISABLED'
               ? ('UNSUPPORTED' as const)
-              : a.assetId === 'usdg'
+              : a.settlementRoutes.length > 0
                 ? ('AVAILABLE' as const)
                 : ('COMING_SOON' as const),
         }));
