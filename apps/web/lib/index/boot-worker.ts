@@ -3,7 +3,13 @@
  * Starts indexing immediately — no HTTP request, no browser, no laptop.
  */
 import { startStandaloneMarketIndexer } from '../market/open-sea-source';
-import { hydrateIndexFromPostgres, saveIndex } from './store';
+import {
+  hydrateIndexFromPostgres,
+  listingBootstrapComplete,
+  loadIndex,
+  saveIndex,
+  workerCheckpoint,
+} from './store';
 import { ensureSchema, databaseUrl } from './pg';
 import { startCanonicalMetadataBootstrap } from './canonical-metadata-bootstrap';
 
@@ -18,7 +24,15 @@ export async function bootMarketWorker(): Promise<void> {
   }
 
   const source = await hydrateIndexFromPostgres();
-  console.log('[market-worker] restoredFrom=', source);
+  const listing = workerCheckpoint();
+  console.log(
+    '[market-worker] restoredFrom=',
+    source,
+    'listingBootstrapComplete=',
+    listingBootstrapComplete(listing),
+    'listedRows=',
+    Object.keys(loadIndex().listings).length,
+  );
 
   if (!process.env.OPENSEA_API_KEY?.trim()) {
     throw new Error('OPENSEA_API_KEY is required for market-worker');

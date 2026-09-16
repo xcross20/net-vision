@@ -53,6 +53,7 @@ function snapshot(listings: ListingRecord[]): IndexSnapshot {
       phase: 'bootstrap',
       cursor: 0,
       processedTotal: 0,
+      bootstrapComplete: false,
       lastTickAt: 0,
       lastError: null,
       last429At: null,

@@ -39,6 +39,7 @@ import {
   countVerifiedMetadataInRange,
   dueMetadataRetries,
   enqueueMetadataRetry,
+  listingBootstrapComplete,
   listingRecord,
   loadIndex,
   maintenanceState,
@@ -263,6 +264,7 @@ export async function runIndexerPass(
       cursor,
       processedTotal: newProcessedTotal,
       phase: cursor >= queue.length ? 'hot-refresh' : 'bootstrap',
+      bootstrapComplete: cursor >= queue.length,
       lastError: null,
       walkerTokensPerMinute: currentWalkerTokensPerMinute(Date.now()),
       coverageRisePercentPerHour: coverageRisePercentPerHour(Date.now()),
@@ -461,12 +463,20 @@ export function startBackgroundIndexer(
     try {
       if (recentlyRateLimited()) {
         await new Promise((resolve) => setTimeout(resolve, WALKER_COOLDOWN_PACE_MS));
+      } else if (listingBootstrapComplete(workerCheckpoint())) {
+        // Last-known listings already hydrated. Stream + REST poll +
+        // hot-verify patch live OpenSea diffs. Do not re-walk 62k.
+        await new Promise((resolve) => setTimeout(resolve, WALKER_HOT_REFRESH_PAUSE_MS));
       } else {
         await runIndexerPass(lookup, { maxTokens: 1, sink, sleepMs: 0 });
         const checkpoint = workerCheckpoint();
         const queue = buildQueue();
         if (checkpoint.cursor >= queue.length) {
-          writeWorkerCheckpoint({ phase: 'hot-refresh', cursor: 0 });
+          writeWorkerCheckpoint({
+            phase: 'hot-refresh',
+            cursor: 0,
+            bootstrapComplete: true,
+          });
           saveIndex();
           await new Promise((resolve) => setTimeout(resolve, WALKER_HOT_REFRESH_PAUSE_MS));
         } else {
