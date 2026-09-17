@@ -162,15 +162,8 @@ export async function fetchCompleteAskSet(fetchPage: PageFetch): Promise<FetchRe
 
 export async function fetchOpenSeaAskSet(client: OpenSeaClient): Promise<FetchResult> {
   const slug = BUTTON_PRESSER_COLLECTION.openseaSlug;
-  const best = await fetchCompleteAskSet((input) =>
-    client.getCollectionBestListings({
-      slug,
-      cursor: input.cursor,
-      limit: input.limit,
-    }),
-  );
-  if (best.complete) return best;
-
+  // `/all` is the listed-set authority. `/best` is cheapest-first and will
+  // omit expensive Brass asks once the book is larger than one page.
   const all = await fetchCompleteAskSet((input) =>
     client.getCollectionListings({
       slug,
@@ -178,15 +171,20 @@ export async function fetchOpenSeaAskSet(client: OpenSeaClient): Promise<FetchRe
       limit: input.limit,
     }),
   );
-  if (all.complete) return all;
-
-  const merged = new Map(best.asks);
-  for (const ask of all.asks.values()) keepCheaper(merged, ask);
+  const best = await fetchCompleteAskSet((input) =>
+    client.getCollectionBestListings({
+      slug,
+      cursor: input.cursor,
+      limit: input.limit,
+    }),
+  );
+  const merged = new Map(all.asks);
+  for (const ask of best.asks.values()) keepCheaper(merged, ask);
   return {
-    complete: false,
+    complete: all.complete,
     asks: merged,
-    pages: best.pages + all.pages,
-    reason: 'cursor-loop',
+    pages: all.pages + best.pages,
+    reason: all.reason,
   };
 }
 
