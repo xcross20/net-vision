@@ -9,6 +9,7 @@ import {
   resetIndexForTests,
   snapshotRevision,
   saveIndex,
+  writeWorkerCheckpoint,
 } from './store';
 import {
   PRIORITY_TOKEN_IDS,
@@ -47,6 +48,29 @@ describe('listing reconciliation worker', () => {
     expect(listingRecord('966').price).toBe(540);
     expect(listingRecord('628').state).toBe('UNLISTED_VERIFIED');
     expect(listingRecord('870').state).toBe('UNKNOWN');
+  });
+
+  it('still reconciles tokens after listing bootstrap is complete', async () => {
+    writeWorkerCheckpoint({
+      phase: 'hot-refresh',
+      cursor: 0,
+      processedTotal: 62_095,
+      bootstrapComplete: true,
+    });
+    const result = await runIndexerPass(
+      async () => ({
+        kind: 'ask',
+        price: 12,
+        currency: 'USDG',
+        orderHash: '0xhot',
+        seller: null,
+        listedAt: 1,
+      }),
+      { maxTokens: 1 },
+    );
+    expect(result.processed).toBe(1);
+    expect(listingRecord(PRIORITY_TOKEN_IDS[0]).state).toBe('LISTED');
+    expect(listingRecord(PRIORITY_TOKEN_IDS[0]).price).toBe(12);
   });
 
   it('resumes from the persisted cursor', async () => {
