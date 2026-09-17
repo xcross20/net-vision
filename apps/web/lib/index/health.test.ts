@@ -59,6 +59,8 @@ describe('indexer health report', () => {
     expect(report.maintenance.streamHealth).toBe('disconnected');
     expect(report.maintenance.streamConnected).toBe(false);
     expect(report.maintenance.eventsLast15m).toBe(0);
+    expect(report.maintenance.orderbookListedCount).toBeNull();
+    expect(report.maintenance.orderbookComplete).toBe(false);
   });
 
   it('reports walker throughput and coverage rise rate from the persisted checkpoint', () => {
