@@ -91,4 +91,15 @@ describe('indexer health report', () => {
     expect(report.walkerTokensPerMinute).toBe(30);
     expect(report.coverageRisePercentPerHour).toBe(1.2);
   });
+
+  it('does not report a listing resync after bootstrap completes', () => {
+    writeWorkerCheckpoint({
+      phase: 'bootstrap',
+      cursor: 0,
+      processedTotal: 62_095,
+    });
+    const report = buildIndexerHealthReport();
+    expect(report.listingWorker.bootstrapComplete).toBe(true);
+    expect(report.listingProgressPercent).toBe(100);
+  });
 });

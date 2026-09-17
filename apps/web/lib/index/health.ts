@@ -8,6 +8,7 @@ import {
   countExistingTokens,
   countMissingTokens,
   countVerifiedMetadataInRange,
+  listingBootstrapComplete,
   maintenanceState,
   metadataCheckpoint,
   metadataRetryQueue,
@@ -35,6 +36,7 @@ export type IndexerHealthReport = {
     cursor: number;
     processedTotal: number;
     progressPercent: number;
+    bootstrapComplete: boolean;
     lastSuccessAt: number | null;
     lastError: string | null;
     last429At: number | null;
@@ -127,7 +129,12 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
     BUTTON_PRESSER_COLLECTION.maxTokenId,
   );
 
-  const listingProgressPercent = progressPercent(listing.cursor, LISTING_QUEUE_LENGTH);
+  const bootstrapComplete = listingBootstrapComplete(listing);
+  // After the one-time listing walk, progress is 100. Cursor wrapping
+  // for hot-refresh must not look like a full resync.
+  const listingProgressPercent = bootstrapComplete
+    ? 100
+    : progressPercent(listing.cursor, LISTING_QUEUE_LENGTH);
   const metadataProgressPercent = progressPercent(metadata.cursor, METADATA_QUEUE_LENGTH);
 
   const last429 = Math.max(listing.last429At ?? 0, metadata.last429At ?? 0) || null;
@@ -157,6 +164,7 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
       cursor: listing.cursor,
       processedTotal: listing.processedTotal,
       progressPercent: listingProgressPercent,
+      bootstrapComplete,
       lastSuccessAt: listing.lastSuccessAt,
       lastError: listing.lastError,
       last429At: listing.last429At,
