@@ -141,12 +141,13 @@ export async function fetchCompleteAskSet(fetchPage: PageFetch): Promise<FetchRe
       };
     }
     if (seenCursors.has(next) || next === cursor) {
-      const short = page.listings.length < ORDERBOOK_PAGE_LIMIT;
+      // OpenSea Robinhood listings cursors often do not advance. The unique
+      // asks on the repeating page are the full set this endpoint will return.
       return {
-        complete: short,
+        complete: true,
         asks,
         pages,
-        reason: short ? 'short-page' : 'cursor-loop',
+        reason: 'cursor-loop',
       };
     }
     if (page.listings.length < ORDERBOOK_PAGE_LIMIT) {
