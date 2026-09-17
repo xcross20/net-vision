@@ -590,7 +590,8 @@ class OpenSeaMarketSource implements MarketSource {
 
   private async ingestOrderbookOnce(stale: Order[]): Promise<Order[]> {
     // Only `/best` on the request path — one call, price-sorted floors.
-    // Full `/all` reconciliation belongs to the background worker later.
+    // Full collection listed-set reconcile lives on the worker
+    // (`orderbook-reconcile.ts`).
     let bestPage: { listings: Order[] } = { listings: [] };
     try {
       bestPage = await this.client.getCollectionBestListings({

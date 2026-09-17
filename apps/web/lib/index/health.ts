@@ -90,6 +90,9 @@ export type IndexerHealthReport = {
     restLastPollAt: number | null;
     eventsLast15m: number;
     lastError: string | null;
+    orderbookListedCount: number | null;
+    orderbookSyncedAt: number | null;
+    orderbookComplete: boolean;
   };
   /** Walker tokens processed per minute, averaged over the last 5 min. */
   walkerTokensPerMinute: number | null;
@@ -218,6 +221,9 @@ export function buildIndexerHealthReport(now = Date.now()): IndexerHealthReport 
       restLastPollAt: maint.restLastPollAt,
       eventsLast15m: restEventsLast15m,
       lastError: maint.lastError,
+      orderbookListedCount: maint.orderbookListedCount,
+      orderbookSyncedAt: maint.orderbookSyncedAt,
+      orderbookComplete: maint.orderbookComplete,
     },
     walkerTokensPerMinute: listing.walkerTokensPerMinute ?? null,
     coverageRisePercentPerHour: listing.coverageRisePercentPerHour ?? null,
