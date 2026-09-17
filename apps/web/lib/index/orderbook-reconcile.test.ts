@@ -85,7 +85,7 @@ describe('fetchCompleteAskSet', () => {
     expect(result.asks.get('10')?.orderHash).toBe('0xb');
   });
 
-  it('treats a repeating full-page cursor as incomplete', async () => {
+  it('treats a repeating full-page cursor as the complete OpenSea book', async () => {
     const listings = Array.from({ length: ORDERBOOK_PAGE_LIMIT }, (_, i) =>
       order(String(i + 1), '1000000'),
     );
@@ -95,7 +95,7 @@ describe('fetchCompleteAskSet', () => {
       return { listings, next: 'same' };
     });
     expect(calls).toBe(2);
-    expect(result.complete).toBe(false);
+    expect(result.complete).toBe(true);
     expect(result.reason).toBe('cursor-loop');
     expect(result.asks.size).toBe(ORDERBOOK_PAGE_LIMIT);
   });
@@ -192,7 +192,7 @@ describe('applyFetchedAskSet', () => {
       complete: false,
       asks,
       pages: 2,
-      reason: 'cursor-loop',
+      reason: 'page-cap',
     });
     expect(listingRecord('12').state).toBe('LISTED');
     expect(listingRecord('99').state).toBe('LISTED');
