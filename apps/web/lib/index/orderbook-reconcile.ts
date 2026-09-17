@@ -1,14 +1,12 @@
 /**
  * Recovery owner: listed count vs OpenSea.
  *
- * Detection: page OpenSea collection `/best` (fallback `/all`) until the
- * cursor ends. The unique token set is the live listed set.
- * Recovery: upsert those asks as LISTED; on a *complete* snapshot,
- * demote every other LISTED/STALE (cancel) and UNKNOWN (no-ask).
+ * Detection: page OpenSea collection `/all` (prices from `/best`) until
+ * the cursor ends. Upsert those asks as LISTED.
+ * Demote only on a *complete* snapshot (next=null or a short last page).
+ * A full page that cursor-loops is truncated — never demote.
+ * Rediscovery of asks missing from that truncated page is the walker.
  * SLA: ORDERBOOK_RECONCILE_MS.
- *
- * Incomplete pages (cursor loop, 429, page cap) still upsert asks but
- * must not unlisted — a partial book is not proof of absence.
  */
 import { BUTTON_PRESSER_COLLECTION, isOfficialExistingTokenId } from '@net-vision/chain-config';
 import type { OpenSeaClient, Order } from '@net-vision/opensea-client';
@@ -25,7 +23,7 @@ import {
 import { enqueueSqlReconciliation } from './sql-writer';
 
 export const ORDERBOOK_RECONCILE_MS = 60_000;
-/** OpenSea `/best` and `/all` cursor-loop at page-size 50. 200 fits a ~75 listing book on one short page so we can mark the snapshot complete. */
+/** OpenSea Robinhood listings often cursor-loop; 200 is one page. A full page + loop is truncated, not complete. */
 export const ORDERBOOK_PAGE_LIMIT = 200;
 export const ORDERBOOK_MAX_PAGES = 80;
 
@@ -141,13 +139,12 @@ export async function fetchCompleteAskSet(fetchPage: PageFetch): Promise<FetchRe
       };
     }
     if (seenCursors.has(next) || next === cursor) {
-      // OpenSea Robinhood listings cursors often do not advance. The unique
-      // asks on the repeating page are the full set this endpoint will return.
+      const short = page.listings.length < ORDERBOOK_PAGE_LIMIT;
       return {
-        complete: true,
+        complete: short,
         asks,
         pages,
-        reason: 'cursor-loop',
+        reason: short ? 'short-page' : 'cursor-loop',
       };
     }
     if (page.listings.length < ORDERBOOK_PAGE_LIMIT) {
