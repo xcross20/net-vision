@@ -25,7 +25,8 @@ import {
 import { enqueueSqlReconciliation } from './sql-writer';
 
 export const ORDERBOOK_RECONCILE_MS = 60_000;
-export const ORDERBOOK_PAGE_LIMIT = 50;
+/** OpenSea `/best` and `/all` cursor-loop at page-size 50. 200 fits a ~75 listing book on one short page so we can mark the snapshot complete. */
+export const ORDERBOOK_PAGE_LIMIT = 200;
 export const ORDERBOOK_MAX_PAGES = 80;
 
 export type OrderbookAsk = {
