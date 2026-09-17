@@ -467,10 +467,6 @@ export function startBackgroundIndexer(
     try {
       if (recentlyRateLimited()) {
         await new Promise((resolve) => setTimeout(resolve, WALKER_COOLDOWN_PACE_MS));
-      } else if (listingBootstrapComplete(workerCheckpoint())) {
-        // Last-known listings already hydrated. Stream + REST poll +
-        // hot-verify patch live OpenSea diffs. Do not re-walk 62k.
-        await new Promise((resolve) => setTimeout(resolve, WALKER_HOT_REFRESH_PAUSE_MS));
       } else {
         await runIndexerPass(lookup, { maxTokens: 1, sink, sleepMs: 0 });
         const checkpoint = workerCheckpoint();
