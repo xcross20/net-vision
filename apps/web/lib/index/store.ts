@@ -7,6 +7,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { BUTTON_PRESSER_COLLECTION } from '@net-vision/chain-config';
 import { facetsForToken, type TokenFacet } from '@net-vision/taxonomy';
 import type { CatalogSale } from '../market/catalog';
 import type { FloorSnapshot, SaleAttribution } from '../market/engine';
@@ -31,6 +32,11 @@ export type WorkerCheckpoint = {
   phase: 'bootstrap' | 'hot-refresh' | 'unknown-sweep';
   cursor: number;
   processedTotal: number;
+  /**
+   * First full-supply listing walk finished. After this, last-known
+   * listing rows are the read model; live OpenSea only patches diffs.
+   */
+  bootstrapComplete: boolean;
   lastTickAt: number;
   lastError: string | null;
   last429At: number | null;
@@ -137,6 +143,7 @@ function emptySnapshot(): IndexSnapshot {
       phase: 'bootstrap',
       cursor: 0,
       processedTotal: 0,
+      bootstrapComplete: false,
       lastTickAt: 0,
       lastError: null,
       last429At: null,
@@ -176,9 +183,28 @@ function emptySnapshot(): IndexSnapshot {
   };
 }
 
+/**
+ * Last-known listings are complete once we have finished one full
+ * supply walk (or already entered hot-refresh). Existing snapshots
+ * without the flag still count — processedTotal survives deploys.
+ */
+export function listingBootstrapComplete(
+  worker: Pick<WorkerCheckpoint, 'bootstrapComplete' | 'phase' | 'processedTotal'>,
+): boolean {
+  if (worker.bootstrapComplete) return true;
+  if (worker.phase === 'hot-refresh') return true;
+  return (worker.processedTotal ?? 0) >= BUTTON_PRESSER_COLLECTION.maxTokenId;
+}
+
 function coerceSnapshot(parsed: IndexSnapshot): IndexSnapshot {
   const base = emptySnapshot();
-  const worker = { ...base.worker, ...(parsed.worker ?? {}) };
+  const workerIn = { ...base.worker, ...(parsed.worker ?? {}) };
+  const complete = listingBootstrapComplete(workerIn);
+  const worker: WorkerCheckpoint = {
+    ...workerIn,
+    bootstrapComplete: complete,
+    phase: complete && workerIn.phase === 'bootstrap' ? 'hot-refresh' : workerIn.phase,
+  };
   const metadataWorker = { ...base.metadataWorker, ...(parsed.metadataWorker ?? {}) };
   return {
     ...base,
@@ -224,6 +250,7 @@ function coerceSnapshot(parsed: IndexSnapshot): IndexSnapshot {
 function snapshotHasProgress(snap: IndexSnapshot): boolean {
   return (
     Object.keys(snap.tokens ?? {}).length > 0 ||
+    Object.keys(snap.listings ?? {}).length > 0 ||
     (snap.worker?.processedTotal ?? 0) > 0 ||
     (snap.worker?.cursor ?? 0) > 0 ||
     (snap.metadataWorker?.processedTotal ?? 0) > 0 ||
@@ -386,12 +413,11 @@ export function setTokenCategories(tokenId: string, slugs: string[]): void {
   }
 }
 
-export function listingRecord(tokenId: string, now = Date.now()): ListingRecord {
+export function listingRecord(tokenId: string): ListingRecord {
   const snap = loadIndex();
-  const current = snap.listings[tokenId] ?? emptyListingRecord(tokenId);
-  const decayed = decayIfStale(current, now);
-  if (decayed.state !== current.state) snap.listings[tokenId] = decayed;
-  return decayed;
+  // Read is not a write. TTL decay is a freshness view for hot-verify
+  // picking — last-known LISTED rows stay until a live OpenSea observation.
+  return snap.listings[tokenId] ?? emptyListingRecord(tokenId);
 }
 
 export function writeListing(record: ListingRecord): void {
