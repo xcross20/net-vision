@@ -109,6 +109,14 @@ describe('fetchCompleteAskSet', () => {
     expect(result.reason).toBe('short-page');
     expect(result.asks.size).toBe(1);
   });
+
+  it('completes a 75-ask OpenSea book when the cursor loops after a short page', async () => {
+    const listings = Array.from({ length: 75 }, (_, i) => order(String(i + 1), '1000000'));
+    const result = await fetchCompleteAskSet(async () => ({ listings, next: 'loop' }));
+    expect(result.complete).toBe(true);
+    expect(result.asks.size).toBe(75);
+    expect(result.reason).toBe('short-page');
+  });
 });
 
 describe('applyFetchedAskSet', () => {
