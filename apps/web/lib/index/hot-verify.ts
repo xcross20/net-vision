@@ -1,11 +1,12 @@
 /**
  * Recovery owner: Stream misses cancel.
- * Detection: this hot queue (LISTED + STALE, cheapest / oldest first).
+ * Detection: LISTED + STALE first (missed cancels), then
+ * UNLISTED_VERIFIED (missed new asks). Oldest lastVerifiedAt first.
  * Recovery: best-listing lookup via reconcileOne.
  * SLA: HOT_VERIFY_INTERVAL_MS (90s) per batch of HOT_VERIFY_BATCH.
  *
- * OpenSea REST events do not include cancels, so missed Stream
- * cancellations would stick as LISTED until the slow 62k walk.
+ * The collection-listings page is truncated on Robinhood; the walker
+ * plus this queue re-verify the whole supply.
  */
 import { isOpenSeaRateLimited } from '../market/opensea-errors';
 import type { BestListingLookup } from './worker';
@@ -15,17 +16,25 @@ import { listingsInState, patchMaintenance, saveIndex } from './store';
 export const HOT_VERIFY_INTERVAL_MS = 90_000;
 export const HOT_VERIFY_BATCH = 8;
 
+function byOldestThenCheapest(
+  a: { lastVerifiedAt: number | null; price: number | null },
+  b: { lastVerifiedAt: number | null; price: number | null },
+): number {
+  const aStale = a.lastVerifiedAt ?? 0;
+  const bStale = b.lastVerifiedAt ?? 0;
+  if (aStale !== bStale) return aStale - bStale;
+  return (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY);
+}
+
 export function pickHotVerifyIds(limit = HOT_VERIFY_BATCH): string[] {
-  const listed = [...listingsInState('LISTED'), ...listingsInState('STALE')];
-  return [...listed]
-    .sort((a, b) => {
-      const aStale = a.lastVerifiedAt ?? 0;
-      const bStale = b.lastVerifiedAt ?? 0;
-      if (aStale !== bStale) return aStale - bStale;
-      return (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY);
-    })
-    .slice(0, limit)
-    .map((row) => row.tokenId);
+  const listed = [...listingsInState('LISTED'), ...listingsInState('STALE')].sort(
+    byOldestThenCheapest,
+  );
+  if (listed.length >= limit) {
+    return listed.slice(0, limit).map((row) => row.tokenId);
+  }
+  const unlisted = listingsInState('UNLISTED_VERIFIED').sort(byOldestThenCheapest);
+  return [...listed, ...unlisted].slice(0, limit).map((row) => row.tokenId);
 }
 
 export async function runHotVerifyBatch(lookup: BestListingLookup): Promise<number> {

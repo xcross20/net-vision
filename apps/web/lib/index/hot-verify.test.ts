@@ -26,4 +26,20 @@ describe('hot listing verify', () => {
     await runHotVerifyBatch(async () => ({ kind: 'no-ask' }));
     expect(listingRecord('966').state).not.toBe('LISTED');
   });
+
+  it('rediscovers UNLISTED_VERIFIED when the LISTED/STALE queue is short', async () => {
+    const unlisted = applyObservation(listingRecord('12'), { kind: 'no-ask' });
+    writeListing({ ...unlisted, lastVerifiedAt: 1 });
+    expect(pickHotVerifyIds(1)).toEqual(['12']);
+    await runHotVerifyBatch(async () => ({
+      kind: 'ask',
+      price: 900,
+      currency: 'USDG',
+      orderHash: '0x12',
+      seller: null,
+      listedAt: 2,
+    }));
+    expect(listingRecord('12').state).toBe('LISTED');
+    expect(listingRecord('12').price).toBe(900);
+  });
 });
