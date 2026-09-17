@@ -85,7 +85,7 @@ describe('fetchCompleteAskSet', () => {
     expect(result.asks.get('10')?.orderHash).toBe('0xb');
   });
 
-  it('treats a repeating full-page cursor as the complete OpenSea book', async () => {
+  it('treats a repeating full-page cursor as truncated, not complete', async () => {
     const listings = Array.from({ length: ORDERBOOK_PAGE_LIMIT }, (_, i) =>
       order(String(i + 1), '1000000'),
     );
@@ -95,7 +95,7 @@ describe('fetchCompleteAskSet', () => {
       return { listings, next: 'same' };
     });
     expect(calls).toBe(2);
-    expect(result.complete).toBe(true);
+    expect(result.complete).toBe(false);
     expect(result.reason).toBe('cursor-loop');
     expect(result.asks.size).toBe(ORDERBOOK_PAGE_LIMIT);
   });
@@ -197,5 +197,30 @@ describe('applyFetchedAskSet', () => {
     expect(listingRecord('12').state).toBe('LISTED');
     expect(listingRecord('99').state).toBe('LISTED');
     expect(maintenanceState().orderbookComplete).toBe(false);
+  });
+
+  it('does not demote on a full-page cursor-loop snapshot', () => {
+    seedListed('99', 50);
+    const asks = new Map([
+      [
+        '12',
+        {
+          tokenId: '12',
+          price: 890,
+          currency: 'USDG',
+          orderHash: '0x12',
+          seller: null,
+          listedAt: 2,
+        },
+      ],
+    ]);
+    applyFetchedAskSet({
+      complete: false,
+      asks,
+      pages: 2,
+      reason: 'cursor-loop',
+    });
+    expect(listingRecord('12').state).toBe('LISTED');
+    expect(listingRecord('99').state).toBe('LISTED');
   });
 });

@@ -82,7 +82,6 @@ function metadataPaceMs(): number {
   return n;
 }
 const RATE_LIMIT_SLEEP_MS = 5 * 60_000;
-const WALKER_HOT_REFRESH_PAUSE_MS = 5 * 60_000;
 const WALKER_ERROR_BACKOFF_MS = 10_000;
 /** Local JSON checkpoint cadence. Postgres blob writes are separately coalesced. */
 const SAVE_EVERY = 200;
@@ -451,6 +450,11 @@ export function startBackgroundIndexer(
   started = true;
   running = true;
   startHeartbeat();
+  // Hot-refresh must re-verify the whole collection, not idle after
+  // bootstrap. Restart from the priority/Brass head of the queue.
+  if (listingBootstrapComplete(workerCheckpoint())) {
+    writeWorkerCheckpoint({ phase: 'hot-refresh', cursor: 0 });
+  }
 
   const recentlyRateLimited = () => {
     const listing429 = workerCheckpoint().last429At;
@@ -478,13 +482,9 @@ export function startBackgroundIndexer(
             bootstrapComplete: true,
           });
           saveIndex();
-          await new Promise((resolve) => setTimeout(resolve, WALKER_HOT_REFRESH_PAUSE_MS));
-        } else {
-          // No streamConnected branch: the helper owns the budget. See
-          // ./walker-pace for the rationale and the floor invariant.
-          const pace = walkerPaceMs({ recentlyRateLimited: false });
-          await new Promise((resolve) => setTimeout(resolve, pace));
         }
+        const pace = walkerPaceMs({ recentlyRateLimited: false });
+        await new Promise((resolve) => setTimeout(resolve, pace));
       }
     } catch (err) {
       if (isOpenSeaRateLimited(err)) {
