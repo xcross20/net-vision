@@ -88,6 +88,9 @@ function snapshot(listings: ListingRecord[]): IndexSnapshot {
       seenEventIds: [],
       eventTimestamps: [],
       mode: 'rest',
+      orderbookListedCount: null,
+      orderbookSyncedAt: null,
+      orderbookComplete: false,
     },
     restoredFrom: null,
   };

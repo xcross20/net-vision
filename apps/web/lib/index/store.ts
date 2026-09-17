@@ -97,6 +97,10 @@ export type MaintenanceState = {
   seenEventIds: string[];
   eventTimestamps: number[];
   mode: 'stream+rest' | 'rest';
+  /** Unique tokens in the last OpenSea collection-listings snapshot. */
+  orderbookListedCount: number | null;
+  orderbookSyncedAt: number | null;
+  orderbookComplete: boolean;
 };
 
 export type IndexSnapshot = {
@@ -178,6 +182,9 @@ function emptySnapshot(): IndexSnapshot {
       seenEventIds: [],
       eventTimestamps: [],
       mode: 'rest',
+      orderbookListedCount: null,
+      orderbookSyncedAt: null,
+      orderbookComplete: false,
     },
     restoredFrom: null,
   };
