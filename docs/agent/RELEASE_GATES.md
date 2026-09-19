@@ -37,6 +37,16 @@ Audit IDs: **01** Market data integrity · **02** Wallet tx security · **03** C
 | Before merge | PASS / BLOCK |
 | After deploy | Production smoke + observability |
 
+## Buy activation (high-concurrency commerce)
+
+Public browsing and fail-closed code promotion do **not** require this gate. Turning `TRADING_ENABLED` / `BUY_ENABLED` on **does**.
+
+Source: `docs/launch/HIGH_CONCURRENCY_COMMERCE_GATE.md`.
+
+Invariant: Net Vision never promises exclusivity it does not own. The chain picks the winner. Losers fail safe, fast, and without false confirmation.
+
+Until that document’s **PRODUCTION BUY ACTIVATION** row is PASS: keep Buy off in production.
+
 ## Current sprint constraint
 
 Until the data-read layer is trustworthy: **do not begin the full visual rebuild.** Prefer audits **01** and **03** over new product surfaces. Do not add Kafka/Redis/rewrites; prove Postgres + worker first.

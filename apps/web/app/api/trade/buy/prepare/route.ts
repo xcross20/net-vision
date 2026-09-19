@@ -29,6 +29,25 @@ import { isSurfaceEnabled, tradingDisabledResponse } from '@/lib/trade/kill-swit
 import { simulateTradeTransaction } from '@/lib/trade/simulate';
 import { encodeSeaportFulfillment } from '@/lib/trade/encode-seaport-fulfillment';
 import { resolveApprovalSpender } from '@/lib/trade/resolve-conduit';
+import {
+  listingFlight,
+  listingLeases,
+  nativeFillLock,
+  prepareRateLimit,
+  purchaseIntents,
+} from '@/lib/commerce/runtime';
+import {
+  defaultIntentExpiry,
+  newPurchaseIntentId,
+  normalizeBuyer,
+} from '@/lib/commerce/purchase-intent';
+import {
+  PREPARING_ELSEWHERE,
+  PREPARING_ELSEWHERE_COPY,
+  SOLD_DURING_CHECKOUT,
+  SOLD_DURING_CHECKOUT_COPY,
+} from '@/lib/commerce/sold-during-checkout';
+import { BUTTON_PRESSER_COLLECTION_ID } from '@/lib/index/schema-v2';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,6 +74,70 @@ export async function POST(request: Request) {
   }
   if (!parsed) return NextResponse.json({ error: 'unreachable' }, { status: 500 });
 
+  if (!prepareRateLimit.allow(parsed.buyerAddress)) {
+    return NextResponse.json({ error: 'rate_limited', surface: 'buy' }, { status: 429 });
+  }
+
+  const purchaseIntentId = parsed.purchaseIntentId ?? newPurchaseIntentId();
+  const cartRevision = parsed.cartRevision ?? 0;
+  const source = parsed.source ?? 'opensea';
+  const intentKey = {
+    purchaseIntentId,
+    buyer: parsed.buyerAddress,
+    orderHash: parsed.acceptedOrderHash,
+    cartRevision,
+  };
+  const existing = purchaseIntents.replay(intentKey);
+  const intent =
+    existing ??
+    purchaseIntents.create({
+      id: purchaseIntentId,
+      buyer: parsed.buyerAddress,
+      orderHash: parsed.acceptedOrderHash,
+      collectionId: BUTTON_PRESSER_COLLECTION_ID,
+      tokenId: Number(parsed.tokenId),
+      cartRevision,
+      source,
+    });
+
+  const lease = listingLeases.acquire({
+    orderHash: parsed.acceptedOrderHash,
+    buyer: parsed.buyerAddress,
+    intentId: intent.id,
+  });
+  if (!lease.ok) {
+    return NextResponse.json(
+      {
+        error: PREPARING_ELSEWHERE,
+        message: PREPARING_ELSEWHERE_COPY,
+        expiresAt: lease.expiresAt,
+        purchaseIntentId: intent.id,
+      },
+      { status: 409 },
+    );
+  }
+
+  if (source === 'native') {
+    const claim = nativeFillLock.claim({
+      orderHash: parsed.acceptedOrderHash,
+      buyer: normalizeBuyer(parsed.buyerAddress),
+      intentId: intent.id,
+      expiresAt: defaultIntentExpiry(),
+    });
+    if (!claim.ok && claim.reason !== 'NOT_FOUND') {
+      listingLeases.release(parsed.acceptedOrderHash, intent.id);
+      return NextResponse.json(
+        {
+          error: claim.reason === 'FILLED' ? SOLD_DURING_CHECKOUT : PREPARING_ELSEWHERE,
+          message:
+            claim.reason === 'FILLED' ? SOLD_DURING_CHECKOUT_COPY : PREPARING_ELSEWHERE_COPY,
+          purchaseIntentId: intent.id,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   try {
     const market = getMarketSource();
     const freshness = await market.getFreshness();
@@ -78,12 +161,24 @@ export async function POST(request: Request) {
       OPENSEA_CHAIN: freshness.resolvedChainSlug,
     });
 
-    const listing = await client.getBestListing({
-      slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
-      tokenId: parsed.tokenId,
-    });
+    const listing = (await listingFlight.do(`best:${parsed.tokenId}`, () =>
+      client.getBestListing({
+        slug: BUTTON_PRESSER_COLLECTION.openseaSlug,
+        tokenId: parsed.tokenId,
+      }),
+    )) as Awaited<ReturnType<typeof client.getBestListing>>;
     if (!listing) {
-      return NextResponse.json({ error: 'no active listing for this token' }, { status: 404 });
+      purchaseIntents.transition(intent.id, 'SOLD');
+      listingLeases.release(parsed.acceptedOrderHash, intent.id);
+      nativeFillLock.release(parsed.acceptedOrderHash, intent.id);
+      return NextResponse.json(
+        {
+          error: SOLD_DURING_CHECKOUT,
+          message: SOLD_DURING_CHECKOUT_COPY,
+          purchaseIntentId: intent.id,
+        },
+        { status: 409 },
+      );
     }
 
     // Independently extract Seaport semantics from the order (not user intent).
@@ -255,7 +350,10 @@ export async function POST(request: Request) {
     const listingCurrency =
       (listing.price as { current?: { currency?: string } }).current?.currency ?? 'USDG';
 
+    purchaseIntents.transition(intent.id, 'PREPARED');
+
     return NextResponse.json({
+      purchaseIntentId: intent.id,
       listing: {
         orderHash: liveOrderHash,
         chain: listing.chain,
@@ -298,10 +396,14 @@ export async function POST(request: Request) {
       },
     });
   } catch (err) {
+    listingLeases.release(parsed.acceptedOrderHash, intent.id);
+    nativeFillLock.release(parsed.acceptedOrderHash, intent.id);
+    purchaseIntents.transition(intent.id, 'FAILED');
     return NextResponse.json(
       {
         error: 'failed to prepare buy',
         detail: err instanceof Error ? err.message : String(err),
+        purchaseIntentId: intent.id,
       },
       { status: 502 },
     );

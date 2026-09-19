@@ -88,7 +88,9 @@ describe('classifyWalletError', () => {
   });
 
   it('does not rewrite listing or prepare failures as network copy', () => {
-    expect(checkoutFailureMessage(new Error('Listing gone (sold)'))).toBe('Listing gone (sold)');
+    expect(checkoutFailureMessage(new Error('Listing gone (sold)'))).toBe(
+      'This NFT was purchased before your transaction completed. No purchase was made. Your funds remain in your wallet.',
+    );
     expect(checkoutFailureMessage(new NetworkGateError('WRONG_NETWORK'))).toBe(
       'Switch to Robinhood Chain to continue.',
     );

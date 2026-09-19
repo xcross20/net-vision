@@ -6,4 +6,7 @@ export const BuyPrepareBody = z.object({
   buyerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   acceptedPriceRaw: z.string().regex(/^\d+$/),
   acceptedOrderHash: z.string().min(1),
+  purchaseIntentId: z.string().min(8).max(80).optional(),
+  cartRevision: z.number().int().nonnegative().optional(),
+  source: z.enum(['opensea', 'native']).optional(),
 });

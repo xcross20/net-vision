@@ -71,7 +71,7 @@ This PR does **not** flip any production env vars. Promotion of code is a prereq
 **Recommended production env plan after merge:**
 
 1. **Stage 1 (immediate, this PR):** No env changes. Production stays read-only — market data, categories, listings, activity, portfolio all visible. All trading surfaces 503.
-2. **Stage 2 (separate, requires full E2E re-verification on prod):** Set `TRADING_ENABLED=true` and `BUY_ENABLED=true`. Everything else stays off. Verify buy E2E against mainnet using staging's `prepare` semantics.
+2. **Stage 2 (separate):** Set `TRADING_ENABLED=true` and `BUY_ENABLED=true` only after `docs/launch/HIGH_CONCURRENCY_COMMERCE_GATE.md` is PASS **and** live USDG E2E. High concurrency must hurt speed before correctness. Everything else stays off.
 3. **Stage 3 (later):** Enable List (`LIST_ENABLED=true`) only after a fresh E2E pass on prod.
 4. **Stage 4 (later):** Enable Offer / Sweep / AcceptOffer, each with its own E2E pass and recovery proof.
 
